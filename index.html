@@ -405,11 +405,7 @@ table.data tr:hover td { background: var(--surface-container-low); transition: b
   </style>
 </head>
 <body>
-  <div class="app-shell" id="app-shell">
-    <div class="main">
-      <main class="content" id="app-view"></main>
-    </div>
-  </div>
+  <div class="app-shell" id="app-shell"><div class="main"><main class="content" id="app-view"></main></div></div>
   <script>
 
 // ===== js\config.js =====
@@ -432,7 +428,7 @@ const CONFIG = Object.freeze({
   // URL de tu Apps Script Web App (acaba en /exec). Obligatoria.
   API_URL: "https://script.google.com/macros/s/AKfycbzfHoO_aFdhRwL5ljw1VIdnKYgASC2APzC54xly739WFgkC4jgA9MGqeobgp7cAsIWy/exec",
   // ID del spreadsheet (se ve en la URL de Google Sheets). Informativo.
-  SPREADSHEET_ID: "AKfycbzfHoO_aFdhRwL5ljw1VIdnKYgASC2APzC54xly739WFgkC4jgA9MGqeobgp7cAsIWy",
+  SPREADSHEET_ID: "174E_xBzcmL5u8byK8L_WXkh2rMmljxEIKmupD0TbIaY",
   DB_NAME: "ERP_PANADERIA_DATABASE",
   SESSION_KEY: "erp_session",
   TOKEN_KEY: "erp_token",
@@ -1253,7 +1249,7 @@ const KpiCard = (() => {
  * DataTable.js — tabla reutilizable con sort, paginación, búsqueda, render por columna y estados vacío/loading.
  */
 const DataTable = (() => {
-  const instances = 0;
+  let instances = 0;
 
   function build({ mount, columns, rows, pageSize = 50, searchable = true, onRowClick, emptyText = 'Sin datos', loading = false }) {
     const id = 'dt' + (++instances);
