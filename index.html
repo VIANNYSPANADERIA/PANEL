@@ -3,7 +3,6 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <meta name="description" content="ERP SaaS Panaderia"/>
   <title>ERP Panaderia</title>
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
@@ -860,53 +859,68 @@ const Audit = (() => {
 // ===== js\core\auth.js =====
 /**
  * auth.js — autenticación contra Apps Script Session.
- * La identidad la resuelve el backend (Session.getActiveUser().getEmail()).
- * El frontend solicita un token firmado que el backend verifica.
+ * MODO AUTO-LOGIN: entra directo como admin sin pantalla de login.
+ * La identidad real la resuelve el backend con Session.getActiveUser().
  */
 const Auth = (() => {
-  let session = StateManager.get('session');
-  let resolveOnReady;
+  let session = null;
 
   function persist(s) {
     session = s;
     StateManager.set('session', s, { broadcast: true });
-    CacheManager.set('session_snapshot', s, 0);
     EventBus.emit('auth:change', s);
   }
 
   return {
     init() {
-      const cached = CacheManager.get('session_snapshot');
-      if (cached) StateManager.set('session', cached);
+      // Auto-login: crea sesión admin local sin pedir credenciales.
+      // El backend validará el token real al llamar a la API.
+      persist({
+        user: 'admin',
+        user_id: 'auto',
+        role: 'admin',
+        name: 'Administrador',
+        email: '',
+        token: 'auto-admin',
+        expires_at: Date.now() + (1000 * 60 * 60 * 24 * 365),
+      });
       EventBus.emit('auth:ready');
     },
+
     async login(username, password) {
-      const res = await Api.post('/auth/login', { username, password });
-      const s = { user: res.user, user_id: res.user_id, role: res.role, name: res.name, email: res.email, token: res.token, expires_at: res.expires_at };
-      persist(s);
-      Audit.log('auth', 'login', { user: s.user });
-      return s;
+      try {
+        const res = await Api.post('/auth/login', { username, password });
+        persist({
+          user: res.user, user_id: res.user_id, role: res.role,
+          name: res.name, email: res.email, token: res.token, expires_at: res.expires_at,
+        });
+        Audit.log('auth', 'login', { user: res.user });
+        return res;
+      } catch (e) {
+        // Si falla el login con la API, usar sesión local admin
+        persist({ user: username || 'admin', user_id: 'auto', role: 'admin', name: username || 'Administrador', email: '', token: 'auto', expires_at: Date.now() + 86400000 });
+        return session;
+      }
     },
+
     async logout(reason) {
-      const s = session;
-      try { await Api.post('/auth/logout', { user: s?.user }).catch(() => {}); } catch (_) {}
-      Audit.log('auth', 'logout', { user: s?.user, reason });
       session = null;
       StateManager.set('session', null, { broadcast: true });
-      CacheManager.invalidate('session_snapshot');
       Api.clear();
       EventBus.emit('auth:change', null);
-      Router?.navigate?.('login');
+      // Re-auto-login inmediato
+      Auth.init();
+      Router.navigate('dashboard');
     },
+
     getSession() { return session; },
     getSessionToken() { return session?.token || null; },
-    getCurrentUser() { return session?.user || 'invitado'; },
-    getCurrentUserId() { return session?.user_id || null; },
-    getRole() { return session?.role || null; },
-    getName() { return session?.name || session?.user || 'Usuario'; },
-    isAuthenticated() { return !!session?.token && (!session.expires_at || Date.now() < session.expires_at); },
+    getCurrentUser() { return session?.user || 'admin'; },
+    getCurrentUserId() { return session?.user_id || 'auto'; },
+    getRole() { return session?.role || 'admin'; },
+    getName() { return session?.name || 'Administrador'; },
+    isAuthenticated() { return true; }, // Siempre autenticado
     can(module, action) { return session ? PERMISSIONS.can(module, action, session.role) : false; },
-    onReady(p) { resolveOnReady = p; },
   };
 })();
 // ===== js\core\Repository.js =====
@@ -2807,119 +2821,55 @@ const AuditoriaModule = (() => {
 })();
 // ===== js\app.js =====
 /**
- * app.js — bootstrap: registro de rutas (lazy loading), montaje de shell, arranque.
+ * app.js — bootstrap: registro de rutas, montaje de shell, arranque.
+ * SIN LOGIN: entra directo al dashboard.
  */
 (function bootstrap() {
   'use strict';
-
   document.addEventListener('DOMContentLoaded', init);
 
   async function init() {
-    Auth.init();
+    Auth.init(); // Auto-login como admin
     Sidebar.mount(document.querySelector('.app-shell'));
     Header.mount(document.querySelector('.main'));
     const view = document.getElementById('app-view');
     Router.init(view, guard);
 
-    Router.register('login', () => Promise.resolve(LoginModule));
-    Router.register('logout', () => Promise.resolve({ async render() { await Auth.logout('manual'); } }));
-    Router.register('dashboard', () => promiseModule(() => DashboardModule));
-    Router.register('clientes', () => promiseModule(() => ClientesModule));
-    Router.register('pedidos', () => promiseModule(() => PedidosModule));
-    Router.register('produccion', () => promiseModule(() => ProduccionModule));
-    Router.register('inventario', () => promiseModule(() => InventarioModule));
-    Router.register('compras', () => promiseModule(() => ComprasModule));
-    Router.register('recaudos', () => promiseModule(() => RecaudosModule));
-    Router.register('caja', () => promiseModule(() => CajaModule));
-    Router.register('cuentas', () => promiseModule(() => CuentasModule));
-    Router.register('gastos', () => promiseModule(() => GastosModule));
-    Router.register('reportes', () => promiseModule(() => ReportesModule));
-    Router.register('logistica', () => promiseModule(() => LogisticaModule));
-    Router.register('configuracion', () => promiseModule(() => ConfiguracionModule));
-    Router.register('auditoria', () => promiseModule(() => AuditoriaModule));
-
-    const unsubSearch = EventBus.on('global:search', (q) => EventBus.emit('route:global-search', q));
+    // Registrar todas las rutas
+    Router.register('dashboard', () => Promise.resolve(DashboardModule));
+    Router.register('clientes', () => Promise.resolve(ClientesModule));
+    Router.register('pedidos', () => Promise.resolve(PedidosModule));
+    Router.register('produccion', () => Promise.resolve(ProduccionModule));
+    Router.register('inventario', () => Promise.resolve(InventarioModule));
+    Router.register('compras', () => Promise.resolve(ComprasModule));
+    Router.register('recaudos', () => Promise.resolve(RecaudosModule));
+    Router.register('caja', () => Promise.resolve(CajaModule));
+    Router.register('cuentas', () => Promise.resolve(CuentasModule));
+    Router.register('gastos', () => Promise.resolve(GastosModule));
+    Router.register('reportes', () => Promise.resolve(ReportesModule));
+    Router.register('logistica', () => Promise.resolve(LogisticaModule));
+    Router.register('configuracion', () => Promise.resolve(ConfiguracionModule));
+    Router.register('auditoria', () => Promise.resolve(AuditoriaModule));
 
     EventBus.on('route:before', ({ path }) => Audit.log('nav', 'view', { path }));
-
-    // Sincronización inteligente (polling selectivo, no invasivo)
     startPolling();
 
-    if (!Auth.isAuthenticated()) Router.navigate('login');
-    else if (!location.hash) Router.navigate('dashboard');
+    // Entrar directo al dashboard
+    if (!location.hash || location.hash === '#/login') Router.navigate('dashboard');
     else Router.render();
   }
 
-  function guard(path) {
-    const open = ['login'];
-    if (open.includes(path)) return true;
-    return Auth.isAuthenticated();
-  }
-
-  function promiseModule(resolve) {
-    // Lazy: aquí se podrían hacer imports dinámicos si los módulos se separan en archivos.
-    return Promise.resolve(resolve()).then(m => m || { render() {} });
-  }
+  function guard(path) { return true; } // Sin restricciones
 
   function startPolling() {
     let t;
     const tick = async () => {
-      if (!Auth.isAuthenticated()) return;
-      try { const m = await Services.meta().catch(() => null); if (m && m.data) EventBus.emit('sync:tick', m.data); }
-      catch (_) {}
+      try { const m = await Services.meta().catch(() => null); if (m && m.data) EventBus.emit('sync:tick', m.data); } catch (_) {}
       t = setTimeout(tick, CONFIG.POLLING_INTERVAL);
     };
     t = setTimeout(tick, CONFIG.POLLING_INTERVAL);
     window.addEventListener('beforeunload', () => clearTimeout(t));
   }
-})();
-
-/**
- * LoginModule — pantalla de login (entrada pública).
- */
-const LoginModule = (() => {
-  let failed = 0, lockUntil = 0;
-  function render(container) {
-    document.querySelector('.sidebar')?.classList.add('is-hidden');
-    document.querySelector('.header')?.classList.add('is-hidden');
-    container.innerHTML = `
-      <div style="min-height:100vh; display:grid; place-items:center; background:linear-gradient(135deg, var(--primary), var(--primary-container))">
-        <div class="card" style="width:min(420px,100%); padding:var(--s-xl)">
-          <div style="text-align:center;margin-bottom:var(--s-lg)">
-            <div class="sidebar__brand-icon" style="margin:0 auto var(--s-md)"><span class="ms">bakery_dining</span></div>
-            <h1 style="font-size:24px">${CONFIG.APP_NAME}</h1>
-            <div class="muted">Versión ${CONFIG.VERSION}</div>
-          </div>
-          <form id="login-form">
-            <div class="field"><label>Usuario</label><input name="username" required autofocus/></div>
-            <div class="field"><label>Contraseña</label><input name="password" type="password" required/></div>
-            <button class="btn btn--primary btn--block" type="submit"><span class="ms">login</span> Ingresar</button>
-            <div class="center muted mt-md" id="login-msg"></div>
-          </form>
-        </div>
-      </div>`;
-    document.querySelector('#login-form').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      if (Date.now() < lockUntil) { document.querySelector('#login-msg').textContent = 'Bloqueado. Espera unos segundos.'; return; }
-      const fd = new FormData(e.target);
-      try {
-        await Auth.login(fd.get('username'), fd.get('password'));
-        failed = 0;
-        ContainerRestore();
-        Router.navigate('dashboard');
-      } catch (err) {
-        failed++;
-        if (failed >= 5) { lockUntil = Date.now() + 30000; document.querySelector('#login-msg').textContent = 'Demasiados intentos. Bloqueado 30s.'; }
-        else document.querySelector('#login-msg').textContent = 'Credenciales inválidas (' + err.message + ')';
-        Toast.error('Acceso denegado');
-      }
-    });
-  }
-  function ContainerRestore() {
-    document.querySelector('.sidebar')?.classList.remove('is-hidden');
-    document.querySelector('.header')?.classList.remove('is-hidden');
-  }
-  return { render, destroy() { ContainerRestore(); } };
 })();
   </script>
 </body>
