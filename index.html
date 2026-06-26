@@ -1,0 +1,2926 @@
+<!doctype html>
+<html lang="es" class="light">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="description" content="ERP SaaS Panaderia"/>
+  <title>ERP Panaderia</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@100..900&family=Geist+Mono:wght@100..900&family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+  <style>
+/* =========================================================================
+   ERP Panadería — Design System (réplica exacta stitch_panader_a_erp_pro_saas)
+   Tokens Material 3 + Geist. Sin dependencias externas.
+   ========================================================================= */
+
+:root {
+  /* Colors */
+  --primary: #3525cd;
+  --on-primary: #ffffff;
+  --primary-container: #4f46e5;
+  --on-primary-container: #dad7ff;
+  --primary-fixed: #e2dfff;
+  --primary-fixed-dim: #c3c0ff;
+
+  --secondary: #904d00;
+  --on-secondary: #ffffff;
+  --secondary-container: #fe932c;
+  --on-secondary-container: #663500;
+  --secondary-fixed: #ffdcc3;
+  --secondary-fixed-dim: #ffb77d;
+
+  --tertiary: #005338;
+  --on-tertiary: #ffffff;
+  --tertiary-container: #006e4b;
+  --on-tertiary-container: #67f4b7;
+  --tertiary-fixed: #6ffbbe;
+  --tertiary-fixed-dim: #4edea3;
+
+  --error: #ba1a1a;
+  --on-error: #ffffff;
+  --error-container: #ffdad6;
+  --on-error-container: #93000a;
+
+  --background: #f9f9ff;
+  --on-background: #151c27;
+  --surface: #f9f9ff;
+  --on-surface: #151c27;
+  --on-surface-variant: #464555;
+  --surface-variant: #dce2f3;
+
+  --surface-container-lowest: #ffffff;
+  --surface-container-low: #f0f3ff;
+  --surface-container: #e7eefe;
+  --surface-container-high: #e2e8f8;
+  --surface-container-highest: #dce2f3;
+
+  --surface-dim: #d3daea;
+  --surface-bright: #f9f9ff;
+  --surface-tint: #4d44e3;
+  --inverse-surface: #2a313d;
+  --inverse-on-surface: #ebf1ff;
+  --inverse-primary: #c3c0ff;
+
+  --outline: #777587;
+  --outline-variant: #c7c4d8;
+
+  /* Brand accents (recaudo/finanzas) */
+  --nequi: #d6006e;
+  --bancolombia: #ffdd00;
+  --bancolombia-blue: #004b98;
+
+  /* Radii */
+  --r-sm: 0.125rem;
+  --r-default: 0.25rem;
+  --r-md: 0.375rem;
+  --r-lg: 0.5rem;
+  --r-xl: 0.75rem;
+  --r-2xl: 1rem;
+  --r-full: 9999px;
+
+  /* Spacing */
+  --s-base: 4px;
+  --s-xs: 4px;
+  --s-sm: 8px;
+  --s-md: 16px;
+  --s-lg: 24px;
+  --s-xl: 40px;
+  --container-max: 1440px;
+  --sidebar-width: 260px;
+  --gutter: 16px;
+  --header-h: 64px;
+
+  /* Typography */
+  --font-sans: 'Geist', 'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --shadow-card: 0 1px 2px rgba(21, 28, 39, 0.04);
+  --shadow-pop: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+
+* { box-sizing: border-box; }
+
+html, body { height: 100%; }
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  background: var(--background);
+  color: var(--on-surface);
+  font-size: 14px;
+  line-height: 20px;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+h1, h2, h3, h4 { margin: 0; }
+a { color: inherit; text-decoration: none; }
+button { font-family: inherit; cursor: pointer; }
+input, select, textarea { font-family: inherit; }
+
+/* =========================================================================
+   Layout shell
+   ========================================================================= */
+.app-shell { display: flex; min-height: 100vh; }
+
+.sidebar {
+  position: fixed; left: 0; top: 0;
+  width: var(--sidebar-width); height: 100vh;
+  background: var(--surface-container-lowest);
+  border-right: 1px solid var(--outline-variant);
+  display: flex; flex-direction: column;
+  padding: var(--s-md);
+  z-index: 50;
+}
+
+.main {
+  margin-left: var(--sidebar-width);
+  flex: 1; min-width: 0;
+  display: flex; flex-direction: column;
+}
+
+.header {
+  position: sticky; top: 0; z-index: 40;
+  height: var(--header-h);
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--outline-variant);
+  padding: 0 var(--s-lg);
+  display: flex; align-items: center; gap: var(--s-md);
+}
+
+.content {
+  padding: var(--s-lg);
+  max-width: var(--container-max);
+  width: 100%;
+  margin: 0 auto;
+}
+
+/* =========================================================================
+   Sidebar
+   ========================================================================= */
+.sidebar__brand { display: flex; align-items: center; gap: var(--s-sm); padding: var(--s-sm) var(--s-xs); margin-bottom: var(--s-md); }
+.sidebar__brand-icon {
+  width: 40px; height: 40px; border-radius: var(--r-lg);
+  background: var(--primary-container); color: var(--on-primary);
+  display: grid; place-items: center;
+}
+.sidebar__brand-title { font-size: 20px; font-weight: 700; line-height: 22px; }
+.sidebar__brand-sub { font-size: 12px; color: var(--on-surface-variant); }
+
+.sidebar__cta {
+  margin: var(--s-sm) 0 var(--s-md);
+  background: var(--primary); color: var(--on-primary);
+  padding: var(--s-sm) var(--s-md);
+  border-radius: var(--r-lg);
+  display: flex; align-items: center; justify-content: center; gap: var(--s-xs);
+  border: none; width: 100%; font-weight: 600;
+  transition: transform .15s, opacity .15s;
+  box-shadow: 0 4px 12px rgba(53, 37, 205, .2);
+}
+.sidebar__cta:active { transform: scale(0.98); }
+
+.nav { display: flex; flex-direction: column; gap: 2px; flex: 1; }
+.nav__item {
+  display: flex; align-items: center; gap: var(--s-md);
+  padding: var(--s-sm) var(--s-md);
+  border-radius: var(--r-lg);
+  color: var(--on-surface-variant);
+  font-size: 14px; font-weight: 500;
+  cursor: pointer; user-select: none;
+  border-left: 4px solid transparent;
+  transition: background .2s, color .2s;
+}
+.nav__item:hover { background: var(--surface-container-high); }
+.nav__item.is-active {
+  color: var(--primary); font-weight: 700;
+  background: var(--surface-container-low);
+  border-left-color: var(--primary);
+  border-radius: 0 var(--r-lg) var(--r-lg) 0;
+}
+.nav__item.is-active .ms { font-variation-settings: 'FILL' 1; }
+
+.ms { font-family: 'Material Symbols Outlined'; font-size: 20px; line-height: 1; font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
+
+.sidebar__footer { border-top: 1px solid var(--outline-variant); padding-top: var(--s-sm); display: flex; flex-direction: column; gap: 2px; }
+
+/* =========================================================================
+   Header
+   ========================================================================= */
+.header__title { font-size: 20px; font-weight: 700; color: var(--primary); white-space: nowrap; }
+.header__spacer { flex: 1; }
+.search {
+  position: relative; display: flex; align-items: center;
+}
+.search input {
+  background: var(--surface-container-low);
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--r-full);
+  padding: 8px 12px 8px 36px;
+  font-size: 14px; color: var(--on-surface);
+  outline: none; transition: border-color .15s, box-shadow .15s;
+  width: 256px;
+}
+.search input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(53,37,205,.12); }
+.search .ms { position: absolute; left: 10px; color: var(--on-surface-variant); font-size: 20px; pointer-events: none; }
+
+.icon-btn {
+  width: 40px; height: 40px; border-radius: var(--r-lg);
+  background: transparent; border: none; color: var(--on-surface-variant);
+  display: grid; place-items: center; position: relative;
+  transition: background .15s, color .15s;
+}
+.icon-btn:hover { background: var(--surface-container-low); color: var(--primary); }
+.icon-btn .dot { position: absolute; top: 8px; right: 8px; width: 8px; height: 8px; background: var(--error); border-radius: 50%; }
+
+.divider-v { width: 1px; height: 32px; background: var(--outline-variant); }
+
+.avatar {
+  width: 32px; height: 32px; border-radius: 50%;
+  background: var(--surface-container-high); color: var(--on-surface);
+  display: grid; place-items: center; font-weight: 600; font-size: 13px;
+}
+
+/* =========================================================================
+   Buttons
+   ========================================================================= */
+.btn {
+  display: inline-flex; align-items: center; gap: var(--s-xs); justify-content: center;
+  padding: var(--s-sm) var(--s-md);
+  border-radius: var(--r-lg);
+  font-weight: 600; font-size: 14px;
+  border: 1px solid transparent;
+  transition: transform .12s, background .15s, opacity .15s;
+  white-space: nowrap;
+}
+.btn:active { transform: scale(0.98); }
+.btn--primary { background: var(--primary); color: var(--on-primary); box-shadow: 0 4px 12px rgba(53,37,205,.2); }
+.btn--primary:hover { background: #2d1fbb; }
+.btn--secondary { background: var(--secondary-container); color: var(--on-secondary-container); }
+.btn--tertiary { background: var(--tertiary-container); color: var(--on-tertiary); }
+.btn--ghost { background: var(--surface-container-lowest); border-color: var(--outline-variant); color: var(--on-surface); }
+.btn--ghost:hover { background: var(--surface-container); }
+.btn--danger { background: transparent; color: var(--error); border-color: var(--error-container); }
+.btn--danger:hover { background: var(--error-container); }
+.btn--sm { padding: 4px 10px; font-size: 12px; }
+.btn--block { width: 100%; }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+
+/* =========================================================================
+   Cards
+   ========================================================================= */
+.card { background: var(--surface-container-lowest); border: 1px solid var(--outline-variant); border-radius: var(--r-xl); box-shadow: var(--shadow-card); }
+.card__header { padding: var(--s-md); border-bottom: 1px solid var(--outline-variant); display: flex; align-items: center; gap: var(--s-sm); }
+.card__header-link { font-size: 13px; color: var(--primary); font-weight: 600; margin-left: auto; }
+.card__body { padding: var(--s-md); }
+.card__title { font-size: 16px; font-weight: 600; }
+
+/* KPI */
+.kpi { background: var(--surface-container-lowest); border: 1px solid var(--outline-variant); border-radius: var(--r-xl); padding: var(--s-md); position: relative; }
+.kpi__icon { width: 40px; height: 40px; border-radius: var(--r-lg); display: grid; place-items: center; }
+.kpi__icon--primary { background: var(--primary-fixed); color: var(--primary); }
+.kpi__icon--secondary { background: var(--secondary-fixed); color: var(--secondary); }
+.kpi__icon--tertiary { background: var(--tertiary-fixed); color: var(--tertiary); }
+.kpi__icon--error { background: var(--error-container); color: var(--error); }
+.kpi__label { font-size: 12px; font-weight: 500; letter-spacing: .04em; text-transform: uppercase; color: var(--on-surface-variant); margin-top: var(--s-sm); }
+.kpi__value { font-size: 22px; font-weight: 700; margin-top: 2px; }
+.kpi__delta { display: inline-flex; align-items: center; gap: 2px; font-size: 11px; font-weight: 700; padding: 2px 6px; border-radius: var(--r-full); position: absolute; top: var(--s-md); right: var(--s-md); }
+.kpi__delta--up { background: rgba(111,251,190,.25); color: var(--tertiary); }
+.kpi__delta--down { background: var(--error-container); color: var(--error); }
+.kpi--filled { background: var(--primary); color: var(--on-primary); border-color: transparent; }
+.kpi--filled .kpi__label, .kpi--filled .kpi__icon { color: var(--on-primary); }
+.kpi--filled .kpi__icon { background: rgba(255,255,255,.18); }
+
+/* =========================================================================
+   Tables
+   ========================================================================= */
+.table-wrap { background: var(--surface-container-lowest); border: 1px solid var(--outline-variant); border-radius: var(--r-xl); overflow: hidden; box-shadow: var(--shadow-card); overflow-x: auto; }
+table.data { width: 100%; border-collapse: collapse; }
+table.data > thead { background: var(--surface-container-low); }
+table.data th { padding: var(--s-sm) var(--s-md); text-align: left; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--on-surface-variant); white-space: nowrap; }
+table.data td { padding: var(--s-sm) var(--s-md); border-top: 1px solid var(--outline-variant); font-size: 14px; vertical-align: middle; }
+table.data tr:hover td { background: var(--surface-container-low); transition: background .15s; }
+.num { font-family: var(--font-mono); text-align: right; }
+
+/* Badges */
+.badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 10px; border-radius: var(--r-sm); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; white-space: nowrap; }
+.badge--success { background: var(--tertiary-fixed); color: var(--tertiary); }
+.badge--info { background: var(--primary-fixed); color: var(--primary); }
+.badge--warn { background: var(--secondary-fixed); color: var(--secondary); }
+.badge--error { background: var(--error-container); color: var(--error); }
+.badge--muted { background: var(--surface-container-high); color: var(--on-surface-variant); }
+.badge--pill { border-radius: var(--r-full); padding: 2px 12px; }
+
+.chip { display: inline-flex; align-items: center; gap: 4px; padding: 4px 12px; border-radius: var(--r-full); background: var(--surface-container-high); color: var(--on-surface-variant); font-size: 12px; font-weight: 600; cursor: pointer; border: 1px solid transparent; transition: background .15s, color .15s; }
+.chip.is-active { background: var(--primary); color: var(--on-primary); }
+
+/* =========================================================================
+   Forms
+   ========================================================================= */
+.field { display: flex; flex-direction: column; gap: 4px; margin-bottom: var(--s-md); }
+.field label { font-size: 12px; color: var(--on-surface-variant); font-weight: 500; }
+.field input, .field select, .field textarea {
+  background: var(--surface-container-low);
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--r-lg);
+  padding: 8px 12px; font-size: 14px; color: var(--on-surface);
+  outline: none; transition: border-color .15s, box-shadow .15s;
+  width: 100%;
+}
+.field input:focus, .field select:focus, .field textarea:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(53,37,205,.12); }
+.field input.is-invalid { border-color: var(--error); }
+.field__hint { font-size: 11px; color: var(--on-surface-variant); }
+.field__err { font-size: 11px; color: var(--error); display: none; }
+.field.is-invalid .field__err { display: block; }
+.grid-form { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: var(--s-md); }
+.grid-form--3 { grid-template-columns: repeat(3, minmax(0,1fr)); }
+@media (max-width: 720px) { .grid-form, .grid-form--3 { grid-template-columns: 1fr; } }
+
+/* =========================================================================
+   Modals
+   ========================================================================= */
+.modal-overlay { position: fixed; inset: 0; background: rgba(21,28,39,.45); backdrop-filter: blur(2px); display: grid; place-items: center; z-index: 100; padding: var(--s-lg); animation: fade .15s; }
+.modal { background: var(--surface-container-lowest); border: 1px solid var(--outline-variant); border-radius: var(--r-xl); box-shadow: var(--shadow-pop); width: min(560px, 100%); max-height: 90vh; display: flex; flex-direction: column; }
+.modal--lg { width: min(880px, 100%); }
+.modal__header { padding: var(--s-md) var(--s-lg); border-bottom: 1px solid var(--outline-variant); display: flex; align-items: center; gap: var(--s-sm); }
+.modal__title { font-size: 18px; font-weight: 600; flex: 1; }
+.modal__body { padding: var(--s-lg); overflow-y: auto; }
+.modal__footer { padding: var(--s-md) var(--s-lg); border-top: 1px solid var(--outline-variant); display: flex; gap: var(--s-sm); justify-content: flex-end; }
+@keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+
+/* Toasts */
+.toast-wrap { position: fixed; right: var(--s-lg); bottom: var(--s-lg); display: flex; flex-direction: column; gap: var(--s-sm); z-index: 200; }
+.toast { background: var(--inverse-surface); color: var(--inverse-on-surface); padding: var(--s-sm) var(--s-md); border-radius: var(--r-lg); font-size: 13px; box-shadow: var(--shadow-pop); display: flex; align-items: center; gap: var(--s-sm); animation: toast-in .2s; max-width: 360px; }
+.toast--error { background: var(--error); color: var(--on-error); }
+.toast--success { background: var(--tertiary); color: var(--on-tertiary); }
+@keyframes toast-in { from { transform: translateY(8px); opacity: 0; } to { transform: none; opacity: 1; } }
+
+/* Empty / loading */
+.empty { padding: var(--s-xl); text-align: center; color: var(--on-surface-variant); }
+.skeleton { background: linear-gradient(90deg, var(--surface-container) 25%, var(--surface-container-high) 50%, var(--surface-container) 75%); background-size: 200% 100%; animation: sk 1.2s infinite; border-radius: var(--r-md); height: 16px; }
+@keyframes sk { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
+/* Page header */
+.page-head { display: flex; align-items: center; gap: var(--s-sm); margin-bottom: var(--s-lg); flex-wrap: wrap; }
+.page-head h1 { font-size: 28px; font-weight: 700; }
+.page-head .subtitle { color: var(--on-surface-variant); font-size: 14px; }
+
+.grid { display: grid; gap: var(--s-md); }
+.grid--4 { grid-template-columns: repeat(4, minmax(0,1fr)); }
+.grid--3 { grid-template-columns: repeat(3, minmax(0,1fr)); }
+.grid--2 { grid-template-columns: repeat(2, minmax(0,1fr)); }
+@media (max-width: 1024px) { .grid--4, .grid--3 { grid-template-columns: repeat(2, minmax(0,1fr)); } }
+@media (max-width: 640px) { .grid--4, .grid--3, .grid--2 { grid-template-columns: 1fr; } }
+
+.progress { height: 8px; background: var(--surface-container-high); border-radius: var(--r-full); overflow: hidden; }
+.progress > i { display: block; height: 100%; background: var(--tertiary); }
+
+.muted { color: var(--on-surface-variant); }
+.bold { font-weight: 700; }
+.right { text-align: right; }
+.center { text-align: center; }
+.flex { display: flex; }
+.flex-between { display: flex; align-items: center; justify-content: space-between; }
+.gap { gap: var(--s-md); }
+.mt-md { margin-top: var(--s-md); }
+.mt-lg { margin-top: var(--s-lg); }
+
+/* Mobile bottom nav */
+.bottom-nav { position: fixed; left: 0; right: 0; bottom: 0; display: none; background: var(--surface-container-lowest); border-top: 1px solid var(--outline-variant); padding: 6px 0; z-index: 60; }
+.bottom-nav__item { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 10px; color: var(--on-surface-variant); background: none; border: none; }
+.bottom-nav__item.is-active { color: var(--primary); }
+
+@media (max-width: 768px) {
+  .sidebar { transform: translateX(-100%); }
+  .sidebar.is-open { transform: none; }
+  .main { margin-left: 0; }
+  .bottom-nav { display: flex; }
+  .content { padding: var(--s-md); padding-bottom: 80px; }
+  .header__title { font-size: 18px; }
+}
+
+.fade-in { animation: fade .25s; }
+.is-hidden { display: none !important; }
+.font-code-mono { font-family: var(--font-mono); }
+  </style>
+</head>
+<body>
+  <div class="app-shell" id="app-shell">
+    <div class="main">
+      <main class="content" id="app-view"></main>
+    </div>
+  </div>
+  <script>
+
+// ===== js\config.js =====
+/**
+ * CONFIG centralizada del ERP Panadería.
+ * Único origen de configuración. No duplicar URLs ni constantes en otros archivos.
+ *
+ * DESPLIEGUE EN GITHUB PAGES:
+ *   1. Sube la carpeta ERP_PANADERIA a tu repo (ver docs/GITHUB_PAGES.md).
+ *   2. Pega aquí la URL de tu Web App de Apps Script en API_URL.
+ *   3. Pega aquí el SPREADSHEET_ID de tu Google Sheets.
+ *   4. Haz commit y push. Se publica en https://<tu-usuario>.github.io/<tu-repo>/
+ *
+ * NOTA: GitHub Pages sirve el frontend; los datos siguen en Google Sheets
+ *       y la API en Apps Script. Ningún dato se guarda en GitHub.
+ */
+const CONFIG = Object.freeze({
+  APP_NAME: "ERP Panadería",
+  VERSION: "1.0.0",
+  // URL de tu Apps Script Web App (acaba en /exec). Obligatoria.
+  API_URL: "https://script.google.com/macros/s/AKfycbzfHoO_aFdhRwL5ljw1VIdnKYgASC2APzC54xly739WFgkC4jgA9MGqeobgp7cAsIWy/exec",
+  // ID del spreadsheet (se ve en la URL de Google Sheets). Informativo.
+  SPREADSHEET_ID: "174E_xBzcmL5u8byK8L_WXkh2rMmljxEIKmupD0TbIaY",
+  DB_NAME: "ERP_PANADERIA_DATABASE",
+  SESSION_KEY: "erp_session",
+  TOKEN_KEY: "erp_token",
+  CURRENCY: "COP",
+  LOCALE: "es-CO",
+  REQUEST_TIMEOUT: 30000,
+  CACHE_TTL: 60000,
+  DEBOUNCE_SEARCH: 300,
+  THROTTLE_SAVE: 800,
+  POLLING_INTERVAL: 45000,
+  COMPANY_DEFAULTS: {
+    razon_social: "Vianny's Panadería",
+    nit: "1.076.501.617",
+    telefono: "",
+    direccion: "",
+    resolucion_dian: "",
+  },
+});
+// ===== js\core\utils.js =====
+/**
+ * utils.js — utilidades puras compartidas (formato moneda, fechas, IDs, debounce, throttle, csv).
+ */
+const Utils = {
+  uid(prefix = '') {
+    const ts = Date.now().toString(36);
+    const rnd = Math.random().toString(36).slice(2, 8);
+    return (prefix ? prefix + '_' : '') + ts + rnd;
+  },
+  money(n) {
+    const v = Number(n || 0);
+    return v.toLocaleString(CONFIG.LOCALE, { style: 'currency', currency: CONFIG.CURRENCY, maximumFractionDigits: 0 });
+  },
+  num(n, dec = 0) {
+    return Number(n || 0).toLocaleString(CONFIG.LOCALE, { maximumFractionDigits: dec, minimumFractionDigits: dec });
+  },
+  date(d) {
+    const dt = d instanceof Date ? d : new Date(d);
+    if (isNaN(dt)) return '';
+    return dt.toLocaleDateString(CONFIG.LOCALE, { year: 'numeric', month: '2-digit', day: '2-digit' });
+  },
+  dateTime(d) {
+    const dt = d instanceof Date ? d : new Date(d);
+    if (isNaN(dt)) return '';
+    return dt.toLocaleString(CONFIG.LOCALE, { dateStyle: 'short', timeStyle: 'short' });
+  },
+  iso(d = new Date()) {
+    const dt = d instanceof Date ? d : new Date(d);
+    return dt.toISOString();
+  },
+  todayKey() {
+    const dt = new Date();
+    return dt.toISOString().slice(0, 10);
+  },
+  debounce(fn, ms = CONFIG.DEBOUNCE_SEARCH) {
+    let t;
+    const wrapped = (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); };
+    wrapped.cancel = () => clearTimeout(t);
+    return wrapped;
+  },
+  throttle(fn, ms = CONFIG.THROTTLE_SAVE) {
+    let last = 0, t;
+    return (...a) => {
+      const now = Date.now();
+      const rem = ms - (now - last);
+      if (rem <= 0) { last = now; fn(...a); }
+      else { clearTimeout(t); t = setTimeout(() => { last = Date.now(); fn(...a); }, rem); }
+    };
+  },
+  debounceAsync(fn, ms = CONFIG.DEBOUNCE_SEARCH) {
+    let t, lastArgs;
+    return (...a) => new Promise((resolve, reject) => {
+      lastArgs = a;
+      clearTimeout(t);
+      t = setTimeout(async () => { try { resolve(await fn(...lastArgs)); } catch (e) { reject(e); } }, ms);
+    });
+  },
+  csvEscape(v) {
+    const s = String(v ?? '');
+    return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  },
+  toCSV(rows, columns) {
+    const head = columns.map(c => Utils.csvEscape(c.label)).join(',');
+    const body = rows.map(r => columns.map(c => Utils.csvEscape(c.get ? c.get(r) : r[c.key])).join(',')).join('\n');
+    return head + '\n' + body;
+  },
+  download(filename, content, mime = 'text/plain') {
+    const blob = new Blob([content], { type: mime + ';charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename; document.body.appendChild(a);
+    a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  },
+  clone(o) { return structuredClone?.(o) ?? JSON.parse(JSON.stringify(o)); },
+  eqId(a, b) { return String(a ?? '').toLowerCase() === String(b ?? '').toLowerCase(); },
+  hash(str) {
+    let h = 0;
+    for (let i = 0; i < str.length; i++) { h = (h << 5) - h + str.charCodeAt(i); h |= 0; }
+    return 'h' + Math.abs(h).toString(36);
+  },
+  qs(params = {}) {
+    const e = Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== '').map(([k, v]) => encodeURIComponent(k) + '=' + encodeURIComponent(v));
+    return e.length ? '?' + e.join('&') : '';
+  },
+  validateEmail(v) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v); },
+  validatePhone(v) { return /^[+]?[\d\s()-]{6,20}$/.test(v ?? ''); },
+  paginate(list, page = 1, size = 50) {
+    const total = list.length;
+    const pages = Math.max(1, Math.ceil(total / size));
+    const p = Math.min(Math.max(1, page), pages);
+    return { data: list.slice((p - 1) * size, p * size), page: p, size, pages, total };
+  },
+  sortBy(list, key, asc = true) {
+    const c = Utils.clone(list);
+    c.sort((a, b) => {
+      const av = a[key], bv = b[key];
+      if (av == null) return asc ? -1 : 1;
+      if (bv == null) return asc ? 1 : -1;
+      if (typeof av === 'number' && typeof bv === 'number') return asc ? av - bv : bv - av;
+      return asc ? String(av).localeCompare(String(bv), CONFIG.LOCALE) : String(bv).localeCompare(String(av), CONFIG.LOCALE);
+    });
+    return c;
+  },
+};
+// ===== js\core\EventBus.js =====
+/**
+ * EventBus — pub/sub central desacoplado.
+ * Permite comunicar módulos sin referencias directas.
+ */
+const EventBus = (() => {
+  const channels = new Map();
+  return {
+    on(evt, handler) {
+      if (!channels.has(evt)) channels.set(evt, new Set());
+      channels.get(evt).add(handler);
+      return () => channels.get(evt)?.delete(handler);
+    },
+    off(evt, handler) { channels.get(evt)?.delete(handler); },
+    emit(evt, payload) {
+      const set = channels.get(evt);
+      if (set) for (const h of [...set]) {
+        try { h(payload); } catch (e) { console.error(`EventBus handler [${evt}]`, e); }
+      }
+    },
+    clear(evt) { if (evt) channels.delete(evt); else channels.clear(); },
+  };
+})();
+// ===== js\core\StateManager.js =====
+/**
+ * StateManager — único store reactivo de la app.
+ * Estado por módulo + estado global (session, ui).
+ * Sin variables globales sueltas.
+ */
+const StateManager = (() => {
+  const state = { session: null, ui: { sidebarOpen: false, currentModule: null, theme: 'light' }, modules: {} };
+  const subs = new Map();
+
+  function notify(path) {
+    const set = subs.get(path);
+    if (set) for (const fn of [...set]) try { fn(get(path)); } catch (e) { console.error('StateManager notify', path, e); }
+    EventBus.emit('state:' + path, get(path));
+  }
+
+  function get(path) {
+    const parts = path.split('.');
+    let cur = state;
+    for (const p of parts) { if (cur == null) return undefined; cur = cur[p]; }
+    return cur;
+  }
+
+  function set(path, value, opts = {}) {
+    const parts = path.split('.');
+    let cur = state;
+    for (let i = 0; i < parts.length - 1; i++) {
+      const k = parts[i];
+      if (cur[k] == null || typeof cur[k] !== 'object') cur[k] = {};
+      cur = cur[k];
+    }
+    cur[parts[parts.length - 1]] = typeof value === 'function' ? value(get(path)) : value;
+    notify(path);
+    if (opts.broadcast) EventBus.emit('state', { path, value: get(path) });
+    return get(path);
+  }
+
+  return {
+    get,
+    set,
+    /** Inscribir módulo con estado inicial propio. */
+    registerModule(name, initial = {}) {
+      if (!state.modules[name]) set('modules.' + name, initial);
+    },
+    subscribe(path, fn) {
+      if (!subs.has(path)) subs.set(path, new Set());
+      subs.get(path).add(fn);
+      fn(get(path));
+      return () => subs.get(path)?.delete(fn);
+    },
+    snapshot() { return structuredClone(state); },
+  };
+})();
+// ===== js\core\CacheManager.js =====
+/**
+ * CacheManager — caché en memoria con TTL por módulo.
+ * Sustituye a LocalStorage como fuente de verdad (solo caché read-only de UI).
+ */
+const CacheManager = (() => {
+  const store = new Map();
+  const ttlMap = new Map();
+  let _hits = 0, _misses = 0;
+  const now = () => Date.now();
+
+  return {
+    get(key) {
+      const e = store.get(key);
+      if (!e) { _misses++; return null; }
+      if (ttlMap.has(key) && ttlMap.get(key) < now()) { store.delete(key); ttlMap.delete(key); _misses++; return null; }
+      _hits++;
+      return e;
+    },
+    set(key, value, ttl = CONFIG.CACHE_TTL) {
+      store.set(key, value);
+      if (ttl > 0) ttlMap.set(key, now() + ttl); else ttlMap.delete(key);
+    },
+    invalidate(key) {
+      if (!key) { store.clear(); ttlMap.clear(); return; }
+      if (key.endsWith('*')) {
+        const prefix = key.slice(0, -1);
+        for (const k of [...store.keys()]) if (k.startsWith(prefix)) { store.delete(k); ttlMap.delete(k); }
+      } else { store.delete(key); ttlMap.delete(key); }
+    },
+    has(key) { return this.get(key) !== null; },
+    stats() { return { size: store.size, hits: _hits, misses: _misses }; },
+    reset() { store.clear(); ttlMap.clear(); _hits = 0; _misses = 0; },
+  };
+})();
+// ===== js\core\api.js =====
+/**
+ * api.js — cliente REST para Google Apps Script Web App.
+ *
+ * Apps Script NO soporta segmentos de path tras /exec: todo debe ir por query.
+ * Convención:  /exec?path=/<recurso>[/<id>]   y   /exec?path=/action/<accion>
+ * El token puede ir en header `Authorization: Bearer …` o, como respaldo, en ?token=.
+ */
+const Api = (() => {
+  let token = null;
+
+  function getToken() {
+    if (token) return token;
+    const tk = Auth?.getSessionToken?.();
+    if (tk) token = tk;
+    return token;
+  }
+  function clear() { token = null; }
+
+  function buildUrl(route, query = {}) {
+    const tk = getToken();
+    const q = { path: route, ...query };
+    if (tk) q.token = tk;
+    return CONFIG.API_URL + Utils.qs(q);
+  }
+
+  async function request(method, route, body = null, { signal } = {}) {
+    if (!CONFIG.API_URL || CONFIG.API_URL === 'PENDIENTE') {
+      throw new ApiError('CONFIG.API_URL no configurada. Despliega el Apps Script y pega la URL.', 'CONFIG');
+    }
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), CONFIG.REQUEST_TIMEOUT);
+    if (signal) signal.addEventListener('abort', () => ctrl.abort());
+
+    const url = method === 'GET' || method === 'DELETE'
+      ? buildUrl(route)
+      : buildUrl(route); // path via query para todos los métodos
+
+    const headers = { 'Accept': 'application/json' };
+    const opts = { method, headers, signal: ctrl.signal, redirect: 'follow' };
+    if (body && method !== 'GET') {
+      headers['Content-Type'] = 'text/plain;charset=utf-8';
+      // Apps Script a veces rechaza POST con application/json por CORS preflight;
+      // mandamos el JSON como texto plano. ContentService lo parsea igual.
+      opts.body = JSON.stringify(body);
+    }
+
+    try {
+      const res = await fetch(url, opts);
+      const ct = res.headers.get('content-type') || '';
+      let payload;
+      if (ct.includes('application/json')) payload = await res.json();
+      else { const txt = await res.text(); try { payload = JSON.parse(txt); } catch (_) { payload = { ok: false, raw: txt, code: res.status }; } }
+
+      if (res.status === 401) { Auth?.logout?.('Sesión expirada'); throw new ApiError('No autorizado: ' + (payload.message || res.status), 401, payload); }
+      if (res.status === 403) throw new ApiError('Sin permisos: ' + (payload.message || ''), 403, payload);
+      if (!res.ok) throw new ApiError(payload.message || ('HTTP ' + res.status), res.status, payload);
+      return payload;
+    } catch (e) {
+      if (e instanceof ApiError) throw e;
+      if (e.name === 'AbortError') throw new ApiError('Tiempo de espera agotado', 'TIMEOUT');
+      throw new ApiError('Error de red: ' + e.message, 'NETWORK', { cause: e });
+    } finally {
+      clearTimeout(t);
+    }
+  }
+
+  function get(route, q = {}, opts) { return request('GET', route, null, opts); }
+  function post(route, body, opts) { return request('POST', route, body, opts); }
+  function put(route, body, opts) { return request('PUT', route, body, opts); }
+  function del(route, q = {}, opts) { return request('DELETE', route, null, opts); }
+
+  function factory(resource) {
+    const base = '/' + resource;
+    return {
+      list: (q, opts) => get(base, q, opts),
+      get: (id, q, opts) => get(base + '/' + encodeURIComponent(id), q, opts),
+      create: (data, opts) => post(base, data, opts),
+      update: (id, data, opts) => put(base + '/' + encodeURIComponent(id), data, opts),
+      remove: (id, opts) => del(base + '/' + encodeURIComponent(id), {}, opts),
+    };
+  }
+
+  return { request, get, post, put, del, factory, clear, buildUrl };
+})();
+
+class ApiError extends Error {
+  constructor(message, code = 'ERR', payload = null) {
+    super(message);
+    this.name = 'ApiError';
+    this.code = code;
+    this.payload = payload;
+  }
+}
+// ===== js\core\permissions.js =====
+/**
+ * permissions.js — matriz de permisos por rol y helper de comprobación.
+ * Definición central; el backend (Apps Script) debe replicarla en Auth.gs.
+ */
+const PERMISSIONS = (() => {
+  const M = ['dashboard', 'clientes', 'pedidos', 'produccion', 'inventario', 'compras', 'recaudos', 'caja', 'cuentas', 'gastos', 'reportes', 'configuracion', 'auditoria'];
+
+  const ACTIONS = {
+    dashboard:    ['view'],
+    clientes:     ['view', 'create', 'update', 'delete'],
+    pedidos:      ['view', 'create', 'update', 'delete', 'estado'],
+    produccion:   ['view', 'create', 'update', 'delete'],
+    inventario:   ['view', 'create', 'update', 'delete', 'ajuste'],
+    compras:      ['view', 'create', 'update', 'delete', 'recibir'],
+    recaudos:     ['view', 'create', 'update', 'delete', 'conciliar'],
+    caja:         ['view', 'abrir', 'cerrar', 'movimiento'],
+    cuentas:      ['view', 'create', 'update', 'delete', 'transferir', 'conciliar'],
+    gastos:       ['view', 'create', 'update', 'delete'],
+    reportes:     ['view', 'export'],
+    configuracion:['view', 'usuarios', 'roles', 'preferencias'],
+    auditoria:    ['view'],
+  };
+
+  const ROLES = {
+    admin: Object.fromEntries(M.map(m => [m, ACTIONS[m] || ['*']])),
+    gerente: {
+      dashboard: ['view'], clientes: ['view', 'create', 'update'], pedidos: ACTIONS.pedidos,
+      produccion: ACTIONS.produccion, inventario: ['view', 'create', 'update', 'ajuste'],
+      compras: ACTIONS.compras, recaudos: ACTIONS.recaudos, caja: ACTIONS.caja,
+      cuentas: ['view'], gastos: ACTIONS.gastos, reportes: ['view', 'export'],
+      configuracion: [], auditoria: ['view'],
+    },
+    vendedor: {
+      dashboard: ['view'], clientes: ['view'], pedidos: ['view', 'create', 'update', 'estado'],
+      produccion: ['view'], inventario: ['view'], compras: [], recaudos: ['view', 'create', 'update'],
+      caja: ['view', 'abrir', 'movimiento'], cuentas: [], gastos: ['view', 'create'], reportes: ['view'],
+      configuracion: [], auditoria: [],
+    },
+    repartidor: {
+      dashboard: ['view'], clientes: ['view'], pedidos: ['view', 'estado'],
+      recaudos: ['view', 'create', 'update'], caja: ['view'], reportes: ['view'],
+    },
+  };
+
+  return {
+    ROLES,
+    MODULES: M,
+    ACTIONS,
+    can(module, action, role = null) {
+      const r = role || StateManager.get('session.role');
+      if (!r || !ROLES[r]) return false;
+      const acts = new Set([...(ROLES[r][module] || [])]);
+      if (acts.has('*')) return true;
+      return acts.has(action);
+    },
+    canModule(module, role = null) { return PERMISSIONS.can(module, 'view', role); },
+    filterModules(role = null) { return M.filter(m => PERMISSIONS.can(m, 'view', role)); },
+  };
+})();
+// ===== js\core\audit.js =====
+/**
+ * audit.js — cliente de auditoría. Cada acción sensible emite un registro que la API persiste en hoja `auditoria`.
+ */
+const Audit = (() => {
+  const queue = [];
+  let flushing = false;
+
+  async function flush() {
+    if (flushing || !queue.length) return;
+    flushing = true;
+    const batch = queue.splice(0, queue.length);
+    try { await Api.post('/auditoria', { batch }, { signal: null }); }
+    catch (e) { queue.unshift(...batch); }
+    finally { flushing = false; if (queue.length) setTimeout(flush, 2000); }
+  }
+
+  return {
+    log(module, action, detail = {}) {
+      const entry = {
+        modulo: module,
+        accion: action,
+        detalle: typeof detail === 'string' ? { info: detail } : detail,
+        usuario: Auth?.getCurrentUser?.() || 'invitado',
+        fecha: Utils.iso(),
+      };
+      queue.push(entry);
+      EventBus.emit('audit', entry);
+      // best-effort, sin bloquear UI
+      Utils.throttle(flush, 1000)();
+    },
+    flush,
+  };
+})();
+// ===== js\core\auth.js =====
+/**
+ * auth.js — autenticación contra Apps Script Session.
+ * La identidad la resuelve el backend (Session.getActiveUser().getEmail()).
+ * El frontend solicita un token firmado que el backend verifica.
+ */
+const Auth = (() => {
+  let session = StateManager.get('session');
+  let resolveOnReady;
+
+  function persist(s) {
+    session = s;
+    StateManager.set('session', s, { broadcast: true });
+    CacheManager.set('session_snapshot', s, 0);
+    EventBus.emit('auth:change', s);
+  }
+
+  return {
+    init() {
+      const cached = CacheManager.get('session_snapshot');
+      if (cached) StateManager.set('session', cached);
+      EventBus.emit('auth:ready');
+    },
+    async login(username, password) {
+      const res = await Api.post('/auth/login', { username, password });
+      const s = { user: res.user, user_id: res.user_id, role: res.role, name: res.name, email: res.email, token: res.token, expires_at: res.expires_at };
+      persist(s);
+      Audit.log('auth', 'login', { user: s.user });
+      return s;
+    },
+    async logout(reason) {
+      const s = session;
+      try { await Api.post('/auth/logout', { user: s?.user }).catch(() => {}); } catch (_) {}
+      Audit.log('auth', 'logout', { user: s?.user, reason });
+      session = null;
+      StateManager.set('session', null, { broadcast: true });
+      CacheManager.invalidate('session_snapshot');
+      Api.clear();
+      EventBus.emit('auth:change', null);
+      Router?.navigate?.('login');
+    },
+    getSession() { return session; },
+    getSessionToken() { return session?.token || null; },
+    getCurrentUser() { return session?.user || 'invitado'; },
+    getCurrentUserId() { return session?.user_id || null; },
+    getRole() { return session?.role || null; },
+    getName() { return session?.name || session?.user || 'Usuario'; },
+    isAuthenticated() { return !!session?.token && (!session.expires_at || Date.now() < session.expires_at); },
+    can(module, action) { return session ? PERMISSIONS.can(module, action, session.role) : false; },
+    onReady(p) { resolveOnReady = p; },
+  };
+})();
+// ===== js\core\Repository.js =====
+/**
+ * Repository.js — patrón Repository genérico sobre la API REST.
+ * Cada módulo obtiene su repo con Api.factory y añade lógica de caché + invalidación.
+ */
+class Repository {
+  constructor(resource, { cacheTtl = CONFIG.CACHE_TTL, eager = true } = {}) {
+    this.resource = resource;
+    this.api = Api.factory(resource);
+    this.cacheKey = 'repo:' + resource;
+    this.cacheTtl = cacheTtl;
+    if (eager) this._promise = null;
+  }
+
+  async list({ useCache = true, ...q } = {}) {
+    const key = this.cacheKey + ':list' + (Object.keys(q).length ? ':' + Utils.hash(JSON.stringify(q)) : '');
+    if (useCache) { const c = CacheManager.get(key); if (c) return c; }
+    const res = await this.api.list(q);
+    const data = res.data ?? res.items ?? res ?? [];
+    if (useCache) CacheManager.set(key, data, this.cacheTtl);
+    return data;
+  }
+
+  async get(id, { useCache = true } = {}) {
+    const key = this.cacheKey + ':' + id;
+    if (useCache) { const c = CacheManager.get(key); if (c) return c; }
+    const res = await this.api.get(id);
+    const data = res.data ?? res;
+    if (useCache) CacheManager.set(key, data, this.cacheTtl);
+    return data;
+  }
+
+  async create(payload) {
+    const res = await this.api.create({ ...payload, fecha_creacion: Utils.iso(), usuario_creacion: Auth.getCurrentUser() });
+    this.invalidate();
+    Audit.log(this.resource, 'create', { id: res.id || res.data?.id });
+    EventBus.emit('repo:' + this.resource + ':change', { op: 'create', data: res.data ?? res });
+    return res.data ?? res;
+  }
+
+  async update(id, payload) {
+    const res = await this.api.update(id, { ...payload, fecha_actualizacion: Utils.iso(), usuario_actualizacion: Auth.getCurrentUser() });
+    this.invalidate();
+    Audit.log(this.resource, 'update', { id, fields: Object.keys(payload) });
+    EventBus.emit('repo:' + this.resource + ':change', { op: 'update', id, data: res.data ?? res });
+    return res.data ?? res;
+  }
+
+  async remove(id) {
+    const res = await this.api.remove(id);
+    this.invalidate();
+    Audit.log(this.resource, 'delete', { id });
+    EventBus.emit('repo:' + this.resource + ':change', { op: 'delete', id });
+    return res;
+  }
+
+  async upsert(payload, idField = 'id') {
+    if (payload[idField]) return this.update(payload[idField], payload);
+    return this.create(payload);
+  }
+
+  invalidate() {
+    CacheManager.invalidate(this.cacheKey + '*');
+    EventBus.emit('repo:' + this.resource + ':invalidate');
+  }
+}
+// ===== js\core\BaseService.js =====
+/**
+ * BaseService.js — caso de uso (Service Layer). Encapsula operaciones multi-repo + reglas de negocio.
+ */
+class BaseService {
+  constructor() { this.repos = {}; }
+  /** Sobrescribir para inyectar repos. */
+  register(name, repo) { this.repos[name] = repo; return this; }
+  repo(name) {
+    if (!this.repos[name]) throw new Error('Repositorio no registrado: ' + name);
+    return this.repos[name];
+  }
+  emit(evt, p) { EventBus.emit(evt, p); }
+  on(evt, fn) { return EventBus.on(evt, fn); }
+}
+// ===== js\core\services.js =====
+/**
+ * services.js — Singletons de repositorios y servicios por módulo.
+ * Dependency injection point: aquí se cablean Repos -> Services.
+ */
+const Services = (() => {
+  const repos = {
+    config:       new Repository('config'),
+    usuarios:     new Repository('usuarios'),
+    roles:        new Repository('roles'),
+    permisos:     new Repository('permisos'),
+    clientes:     new Repository('clientes'),
+    productos:    new Repository('productos'),
+    categorias:   new Repository('categorias'),
+    inventario:   new Repository('inventario'),
+    movimientos:  new Repository('movimientos_inventario'),
+    proveedores:  new Repository('proveedores'),
+    compras:      new Repository('compras'),
+    detalleCompras: new Repository('detalle_compras'),
+    pedidos:      new Repository('pedidos'),
+    detallePedidos: new Repository('detalle_pedidos'),
+    produccion:   new Repository('produccion'),
+    gastos:       new Repository('gastos'),
+    recaudos:     new Repository('recaudos'),
+    cuentas:      new Repository('cuentas_bancarias'),
+    transferencias: new Repository('transferencias'),
+    caja:         new Repository('movimientos_caja'),
+    auditoria:    new Repository('auditoria'),
+    reportes:     new Repository('reportes_cache'),
+  };
+
+  /** Helpers de servicios compartidos. */
+  function call(action, payload) {
+    return Api.post('/action/' + action, payload);
+  }
+  function meta() { return Api.get('/meta'); }
+
+  return { repos, call, meta };
+})();
+// ===== js\core\router.js =====
+/**
+ * router.js — router hash-based con lazy loading de módulos.
+ * Cada módulo expone render(container) y destroy?().
+ */
+const Router = (() => {
+  const routes = new Map();
+  let current = null;
+  let container = null;
+  let guard = null;
+
+  function parse() {
+    const h = location.hash.replace(/^#\/?/, '');
+    const [path, qs] = h.split('?');
+    const params = Object.fromEntries(new URLSearchParams(qs || ''));
+    return { path: path || 'dashboard', params };
+  }
+
+  async function navigate(path, params = {}) {
+    const q = new URLSearchParams(params).toString();
+    location.hash = '/' + path + (q ? '?' + q : '');
+  }
+
+  async function render() {
+    const { path, params } = parse();
+    if (guard && !guard(path)) { navigate('login'); return; }
+
+    const route = routes.get(path);
+    const containerEl = container || document.getElementById('app-view');
+    if (!route) { if (current?.destroy) current.destroy(); current = null; containerEl.innerHTML = `<div class="empty"><h2>404</h2><p>Ruta no encontrada: ${path}</p></div>`; return; }
+
+    if (current?.destroy) current.destroy();
+    containerEl.innerHTML = '';
+    EventBus.emit('route:before', { path, params });
+    try {
+      const mod = await route.loader();
+      current = mod;
+      StateManager.set('ui.currentModule', path);
+      await mod.render(containerEl, params);
+      EventBus.emit('route:after', { path, params });
+      updateActiveNav(path);
+    } catch (e) {
+      console.error('Router render error', path, e);
+      containerEl.innerHTML = `<div class="empty"><h2>Error</h2><p>${e.message}</p></div>`;
+    }
+  }
+
+  function updateActiveNav(path) {
+    document.querySelectorAll('.nav__item').forEach(el => el.classList.toggle('is-active', el.dataset.route === path));
+  }
+
+  return {
+    init(_container, _guard = null) { container = _container; guard = _guard; window.addEventListener('hashchange', render); },
+    register(path, loader) { routes.set(path, { loader }); return Router; },
+    navigate,
+    go: navigate,
+    current() { return current; },
+    reload() { return render(); },
+    render,
+  };
+})();
+// ===== js\components\Toast.js =====
+/**
+ * Toast.js — notificaciones temporales no intrusivas.
+ */
+const Toast = (() => {
+  let host;
+  function ensure() {
+    if (host) return host;
+    host = document.createElement('div');
+    host.className = 'toast-wrap';
+    host.setAttribute('aria-live', 'polite');
+    document.body.appendChild(host);
+    return host;
+  }
+  function show(message, type = 'info', ms = 4000) {
+    const el = document.createElement('div');
+    el.className = 'toast' + (type !== 'info' ? ' toast--' + type : '');
+    const icon = type === 'success' ? 'check_circle' : type === 'error' ? 'error' : 'info';
+    el.innerHTML = `<span class="ms">${icon}</span><span>${message}</span>`;
+    ensure().appendChild(el);
+    setTimeout(() => { el.style.opacity = '0'; el.style.transform = 'translateY(8px)'; el.style.transition = 'opacity .25s, transform .25s'; }, ms - 250);
+    setTimeout(() => el.remove(), ms);
+  }
+  return {
+    info: (m, t) => show(m, 'info', t),
+    success: (m, t) => show(m, 'success', t),
+    error: (m, t) => show(m, 'error', m ? 6000 : t),
+    warn: (m, t) => show(m, 'error', t),
+  };
+})();
+// ===== js\components\Modal.js =====
+/**
+ * Modal.js — modal accesible con foco, escape y scroll lock.
+ */
+const Modal = (() => {
+  let active = null;
+
+  function open({ title, body, footer, size = 'md', onClose }) {
+    close();
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.innerHTML = `
+      <div class="modal ${size === 'lg' ? 'modal--lg' : ''}" role="dialog" aria-modal="true" aria-label="${title || ''}">
+        <div class="modal__header">
+          <h3 class="modal__title">${title || ''}</h3>
+          <button class="icon-btn" data-close aria-label="Cerrar"><span class="ms">close</span></button>
+        </div>
+        <div class="modal__body" id="modal-body">${body || ''}</div>
+        ${footer ? `<div class="modal__footer">${footer}</div>` : ''}
+      </div>`;
+    document.body.appendChild(overlay);
+    document.body.style.overflow = 'hidden';
+    active = { overlay, onClose };
+    overlay.addEventListener('click', (e) => { if (e.target === overlay || e.target.closest('[data-close]')) close(); });
+    document.addEventListener('keydown', onKey, { capture: true });
+    const focusable = overlay.querySelector('input,select,textarea,button');
+    if (focusable) setTimeout(() => focusable.focus(), 30);
+    return overlay.querySelector('#modal-body');
+  }
+
+  function close() {
+    if (!active) return;
+    const { overlay, onClose } = active;
+    active = null;
+    overlay.remove();
+    document.body.style.overflow = '';
+    document.removeEventListener('keydown', onKey, { capture: true });
+    if (onClose) try { onClose(); } catch (e) { console.warn('Modal onClose', e); }
+  }
+  function onKey(e) { if (e.key === 'Escape') { e.preventDefault(); close(); } }
+
+  function confirm({ title = '¿Confirmar?', message = '', confirmText = 'Confirmar', danger = false }) {
+    return new Promise((resolve) => {
+      open({
+        title,
+        body: `<p>${message}</p>`,
+        footer: `<button class="btn btn--ghost" data-cancel>Cancelar</button><button class="btn ${danger ? 'btn--danger' : 'btn--primary'}" data-ok>${confirmText}</button>`,
+        onClose: () => resolve(false),
+      });
+      const overlay = document.querySelector('.modal-overlay');
+      overlay.querySelector('[data-cancel]').addEventListener('click', () => { close(); resolve(false); });
+      overlay.querySelector('[data-ok]').addEventListener('click', () => { close(); resolve(true); });
+    });
+  }
+
+  return { open, close, confirm };
+})();
+// ===== js\components\Form.js =====
+/**
+ * Form.js — genera campos de formulario desde esquema declarativo y recolecta datos.
+ */
+const Form = (() => {
+  function field(def) {
+    const { name, label, type = 'text', required, value = '', placeholder, options, hint, span = 1, validate } = def;
+    const id = 'f_' + name;
+    const colSpan = span > 1 ? `grid-column: span ${span};` : '';
+    let input;
+    if (type === 'select') input = `<select id="${id}" name="${name}">${(options || []).map(o => `<option value="${o.value}" ${o.value === value ? 'selected' : ''}>${o.label}</option>`).join('')}</select>`;
+    else if (type === 'textarea') input = `<textarea id="${id}" name="${name}" rows="3" placeholder="${placeholder || ''}">${value || ''}</textarea>`;
+    else if (type === 'checkbox') input = `<label style="flex-direction:row;align-items:center;gap:8px"><input type="checkbox" id="${id}" name="${name}" ${value ? 'checked' : ''}/><span>${label}</span></label>`;
+    else input = `<input type="${type}" id="${id}" name="${name}" value="${value ?? ''}" placeholder="${placeholder || ''}" ${required ? 'required' : ''}/>`;
+    if (type === 'checkbox') return `<div class="field" style="${colSpan}">${input}<div class="field__err">${hint || ''}</div></div>`;
+    return `<div class="field" style="${colSpan}"><label for="${id}">${label}${required ? ' *' : ''}</label>${input}${hint ? `<div class="field__hint">${hint}</div>` : ''}<div class="field__err">Revisa este campo</div></div>`;
+  }
+
+  function build(schema, values = {}) {
+    const grid = (schema.grid === 3 ? 'grid-form grid-form--3' : 'grid-form') + (schema.columns === 1 ? '' : '');
+    const fields = schema.fields.map(f => field({ ...f, value: values[f.name] ?? f.value ?? '' })).join('');
+    return `<div class="${grid}">${fields}</div>`;
+  }
+
+  function collect(hostOrModalBody) {
+    const root = hostOrModalBody.querySelector ? hostOrModalBody : document;
+    const data = {};
+    root.querySelectorAll('input, select, textarea').forEach(el => {
+      if (!el.name) return;
+      if (el.type === 'checkbox') data[el.name] = el.checked;
+      else data[el.name] = el.value;
+    });
+    return data;
+  }
+
+  return { build, collect, field };
+})();
+// ===== js\components\KpiCard.js =====
+/**
+ * KpiCard.js — helper para tarjetas KPI del dashboard y módulos.
+ */
+const KpiCard = (() => {
+  function build({ icon, label, value, delta, deltaDir = 'up', variant = 'default', sub }) {
+    const filled = variant === 'filled';
+    return `
+      <div class="kpi ${filled ? 'kpi--filled' : ''}">
+        ${delta ? `<span class="kpi__delta kpi__delta--${deltaDir}"><span class="ms" style="font-size:14px">${deltaDir === 'up' ? 'trending_up' : 'trending_down'}</span>${delta}</span>` : ''}
+        <div class="kpi__icon kpi__icon--${variant === 'default' ? 'primary' : variant}">
+          <span class="ms">${icon}</span>
+        </div>
+        <div class="kpi__label">${label}</div>
+        <div class="kpi__value">${value}</div>
+        ${sub ? `<div class="muted" style="font-size:12px;margin-top:4px">${sub}</div>` : ''}
+      </div>`;
+  }
+  return { build };
+})();
+// ===== js\components\DataTable.js =====
+/**
+ * DataTable.js — tabla reutilizable con sort, paginación, búsqueda, render por columna y estados vacío/loading.
+ */
+const DataTable = (() => {
+  const instances = 0;
+
+  function build({ mount, columns, rows, pageSize = 50, searchable = true, onRowClick, emptyText = 'Sin datos', loading = false }) {
+    const id = 'dt' + (++instances);
+    mount.innerHTML = `
+      <div class="table-wrap">
+        <table class="data">
+          <thead><tr>${columns.map(c => `<th data-sort="${c.key}" style="${c.align === 'right' ? 'text-align:right' : ''}">${c.label}${c.sort !== false ? ' <span class="ms" style="font-size:14px;opacity:.5">unfold_more</span>' : ''}</th>`).join('')}</tr></thead>
+          <tbody id="${id}-body"></tbody>
+        </table>
+      </div>
+      <div class="flex-between mt-md" id="${id}-footer"></div>`;
+
+    const body = mount.querySelector(`#${id}-body`);
+    const footer = mount.querySelector(`#${id}-footer`);
+
+    const state = { rows, sort: null, asc: true, page: 1, search: '' };
+
+    function renderRows() {
+      let data = state.rows;
+      if (state.search) {
+        const q = state.search.toLowerCase();
+        data = data.filter(r =>
+          columns.some(c => String(c.get ? c.get(r) : r[c.key] ?? '').toLowerCase().includes(q))
+        );
+      }
+      if (state.sort) data = Utils.sortBy(data, state.sort, state.asc);
+      const page = Utils.paginate(data, state.page, pageSize);
+      if (!page.data.length) {
+        body.innerHTML = `<tr><td colspan="${columns.length}" class="empty">${loading ? '<div class="skeleton"></div>' : emptyText}</td></tr>`;
+      } else {
+        body.innerHTML = page.data.map(r => `<tr ${onRowClick ? `data-id="${r.id ?? ''}" style="cursor:pointer"` : ''}>${columns.map(c => {
+          const v = c.get ? c.get(r) : r[c.key];
+          const cls = c.align === 'right' ? ' class="num"' : '';
+          return `<td${cls}>${c.render ? c.render(v, r) : (v ?? '')}</td>`;
+        }).join('')}</tr>`).join('');
+      }
+      footer.innerHTML = `<span class="muted">Mostrando ${page.data.length} de ${page.total} registros</span>` +
+        `<div>${[1, page.pages].map(p => `<button class="chip ${page.page === p ? 'is-active' : ''}" data-page="${p}">${p}</button>`).join(' · ')}</div>`;
+    }
+
+    mount.querySelector('thead').addEventListener('click', (e) => {
+      const th = e.target.closest('th[data-sort]');
+      if (!th) return;
+      const k = th.dataset.sort;
+      if (state.sort === k) state.asc = !state.asc; else { state.sort = k; state.asc = true; }
+      renderRows();
+    });
+    footer.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-page]'); if (!b) return;
+      state.page = +b.dataset.page; renderRows();
+    });
+    if (onRowClick) body.addEventListener('click', (e) => { const tr = e.target.closest('tr[data-id]'); if (tr) onRowClick(tr.dataset.id); });
+
+    const api = {
+      setRows(newRows) { state.rows = newRows; state.page = 1; renderRows(); },
+      setSearch(q) { state.search = q; state.page = 1; renderRows(); },
+      reload() { renderRows(); },
+      setLoading(v) { loading = v; renderRows(); },
+    };
+    renderRows();
+    return api;
+  }
+
+  return { build };
+})();
+// ===== js\components\Sidebar.js =====
+/**
+ * Sidebar.js — layout lateral replicando el diseño stitch.
+ * Items filtrados por permisos del rol del usuario activo.
+ */
+const Sidebar = (() => {
+  const NAV = [
+    { route: 'dashboard',    label: 'Dashboard',     icon: 'dashboard' },
+    { route: 'clientes',     label: 'Clientes',      icon: 'group' },
+    { route: 'pedidos',      label: 'Pedidos',       icon: 'shopping_basket' },
+    { route: 'produccion',   label: 'Producción',    icon: 'bakery_dining' },
+    { route: 'inventario',   label: 'Inventario',    icon: 'inventory_2' },
+    { route: 'compras',      label: 'Compras',       icon: 'shopping_cart' },
+    { route: 'recaudos',     label: 'Recaudos',      icon: 'payments' },
+    { route: 'caja',         label: 'Caja',          icon: 'point_of_sale' },
+    { route: 'cuentas',      label: 'Cuentas',       icon: 'account_balance' },
+    { route: 'gastos',       label: 'Gastos',        icon: 'receipt_long' },
+    { route: 'reportes',     label: 'Reportes',      icon: 'analytics' },
+    { route: 'logistica',    label: 'Logística',     icon: 'local_shipping' },
+    { route: 'configuracion',label: 'Configuración', icon: 'settings' },
+    { route: 'auditoria',    label: 'Auditoría',     icon: 'shield' },
+  ];
+
+  function render() {
+    const role = Auth.getRole();
+    const items = NAV.filter(n => PERMISSIONS.canModule(n.route === 'logistica' ? 'pedidos' : n.route, role));
+    const name = Auth.getName() || 'Administrador';
+    const initial = name.trim().charAt(0).toUpperCase();
+
+    return `
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar__brand">
+        <div class="sidebar__brand-icon"><span class="ms">bakery_dining</span></div>
+        <div>
+          <div class="sidebar__brand-title">${CONFIG.APP_NAME}</div>
+          <div class="sidebar__brand-sub">${role ? role.charAt(0).toUpperCase() + role.slice(1) : 'Invitado'}</div>
+        </div>
+      </div>
+      <button class="sidebar__cta" data-action="new-pedido"><span class="ms">add</span> Nuevo Pedido</button>
+      <nav class="nav" id="nav">
+        ${items.map(n => `
+          <div class="nav__item" data-route="${n.route}">
+            <span class="ms">${n.icon}</span><span>${n.label}</span>
+          </div>`).join('')}
+      </nav>
+      <div class="sidebar__footer">
+        <div class="nav__item" data-action="support"><span class="ms">help</span><span>Soporte</span></div>
+        <div class="nav__item" data-action="logout"><span class="ms" style="color:var(--error)">logout</span><span style="color:var(--error)">Cerrar Sesión</span></div>
+      </div>
+    </aside>`;
+  }
+
+  function mount(host) {
+    host.insertAdjacentHTML('afterbegin', render());
+    host.querySelector('#sidebar').addEventListener('click', (e) => {
+      const item = e.target.closest('.nav__item');
+      if (!item) return;
+      if (item.dataset.route) { Router.navigate(item.dataset.route); toggleMobile(false); }
+      else if (item.dataset.action === 'logout') Auth.logout('manual');
+      else if (item.dataset.action === 'new-pedido') Router.navigate('pedidos', { new: 1 });
+      else if (item.dataset.action === 'support') Toast.info('Soporte: escribe a soporte@erppanaderia.com');
+    });
+    EventBus.on('auth:change', () => { host.querySelector('#sidebar')?.remove(); mount(host); });
+  }
+
+  function toggleMobile(open) {
+    const sb = document.getElementById('sidebar');
+    if (!sb) return;
+    if (open === undefined) sb.classList.toggle('is-open');
+    else sb.classList.toggle('is-open', open);
+  }
+
+  return { render, mount, toggleMobile };
+})();
+// ===== js\components\Header.js =====
+/**
+ * Header.js — barra superior replicando stitch.
+ */
+const Header = (() => {
+  const TITLES = {
+    dashboard: 'Resumen Ejecutivo', clientes: 'Clientes', pedidos: 'Centro de Pedidos',
+    produccion: 'Producción', inventario: 'Gestión de Inventario', compras: 'Compras y Proveedores',
+    recaudos: 'Recaudo Diario', caja: 'Caja', cuentas: 'Cuentas Bancarias',
+    gastos: 'Gastos', reportes: 'Reportes y Analítica', logistica: 'Logística y Reparto',
+    configuracion: 'Configuración', auditoria: 'Auditoría',
+  };
+
+  function render(module) {
+    const title = TITLES[module] || 'ERP Panadería';
+    const name = Auth.getName() || 'Usuario';
+    const initial = (name.trim().charAt(0) || 'U').toUpperCase();
+    return `
+      <header class="header" id="app-header">
+        <button class="icon-btn" id="btn-burger" style="display:none"><span class="ms">menu</span></button>
+        <h1 class="header__title" id="header-title">${title}</h1>
+        <div class="header__spacer"></div>
+        <div class="search" id="header-search">
+          <span class="ms">search</span>
+          <input type="search" id="header-search-input" placeholder="Buscar…" autocomplete="off" aria-label="Buscar"/>
+        </div>
+        <button class="icon-btn" id="btn-notif" aria-label="Notificaciones"><span class="ms">notifications</span><span class="dot" id="notif-dot" style="display:none"></span></button>
+        <button class="icon-btn" id="btn-settings" aria-label="Ajustes"><span class="ms">settings</span></button>
+        <div class="divider-v"></div>
+        <div class="avatar" title="${name}">${initial}</div>
+        <button class="btn btn--primary" id="btn-new-sale"><span class="ms" style="font-size:18px">add</span> Nueva Venta</button>
+      </header>`;
+  }
+
+  function mount(host) {
+    host.insertAdjacentHTML('afterbegin', render(StateManager.get('ui.currentModule') || 'dashboard'));
+    const burger = host.querySelector('#btn-burger');
+    const updateBurger = () => burger.style.display = window.innerWidth < 768 ? 'grid' : 'none';
+    updateBurger();
+    window.addEventListener('resize', Utils.debounce(updateBurger, 150));
+    burger.addEventListener('click', () => Sidebar.toggleMobile());
+
+    host.querySelector('#btn-new-sale').addEventListener('click', () => Router.navigate('pedidos', { new: 1 }));
+    host.querySelector('#btn-settings').addEventListener('click', () => Router.navigate('configuracion'));
+    host.querySelector('#btn-notif').addEventListener('click', () => { Notifier.show(); });
+
+    const input = host.querySelector('#header-search-input');
+    input.addEventListener('input', Utils.debounce(e => EventBus.emit('global:search', e.target.value), CONFIG.DEBOUNCE_SEARCH));
+
+    EventBus.on('route:after', ({ path }) => {
+      const t = host.querySelector('#header-title');
+      if (t) t.textContent = TITLES[path] || t.textContent;
+    });
+
+    EventBus.on('auth:change', () => {
+      const av = host.querySelector('.avatar');
+      if (av) { const n = Auth.getName() || 'U'; av.textContent = (n.trim().charAt(0) || 'U').toUpperCase(); av.title = n; }
+    });
+  }
+
+  return { render, mount };
+})();
+// ===== js\components\Notifier.js =====
+/**
+ * Notifier.js — panel simple de alertas (notificaciones del sistema).
+ */
+const Notifier = (() => {
+  const items = [];
+  function refresh() { document.querySelector('#notif-dot')?.style.setProperty('display', items.length ? 'block' : 'none'); }
+  EventBus.on('audit', (e) => { if (e.accion.includes('error') || e.modulo === 'alert') { items.unshift({ ...e, id: Utils.uid() }); if (items.length > 50) items.pop(); refresh(); } });
+  return {
+    push(n) { items.unshift({ ...n, id: Utils.uid(), fecha: Utils.iso() }); refresh(); },
+    show() {
+      const body = items.length
+        ? items.slice(0, 20).map(i => `<div class="flex-between" style="padding:8px 0;border-bottom:1px solid var(--outline-variant)"><div><b>${i.modulo}</b> · <span class="muted">${i.accion}</span><br/><small class="muted">${Utils.dateTime(i.fecha)}</small></div><span class="badge badge--info">${i.modulo}</span></div>`).join('')
+        : `<p class="empty">Sin notificaciones</p>`;
+      Modal.open({ title: 'Notificaciones', body, footer: `<button class="btn btn--ghost" data-close>Cerrar</button><button class="btn btn--danger" id="clr-notif">Limpiar</button>` });
+      document.querySelector('#clr-notif')?.addEventListener('click', () => { items.length = 0; refresh(); Modal.close(); });
+    },
+  };
+})();
+// ===== js\modules\crudPage.js =====
+/**
+ * crudPage.js — fábrica de página CRUD genérica (lista + modal crear/editar).
+ * Reduce duplicación; los módulos específicos (pedidos, caja, etc.) no la usan.
+ */
+const CrudPage = (() => {
+  function build(opts) {
+    const {
+      repo,
+      title,
+      columns,
+      schema,
+      newButton = 'Nuevo',
+      searchPlaceholder = 'Buscar…',
+      rowToValues,
+      canCreate = () => true,
+      canEdit = () => true,
+      canDelete = () => true,
+      mapInput = (v) => v,
+      mapOutput = (v) => v,
+      afterSave = () => {},
+      extraActions = () => '',
+      onRowClick = null,
+      kpis,
+    } = opts;
+
+    let table;
+
+    async function load() {
+      try {
+        const rows = await repo.list();
+        table.setRows(rows);
+        table.setLoading(false);
+        if (kpis) await renderKpis(rows);
+      } catch (e) {
+        Toast.error('No se pudo cargar: ' + e.message);
+        table.setLoading(false);
+      }
+    }
+
+    async function renderKpis(rows) {
+      const host = document.getElementById('module-kpis');
+      if (!host) return;
+      host.innerHTML = kpis(rows);
+    }
+
+    function openForm(values = {}) {
+      const body = Form.build(schema, values);
+      Modal.open({
+        title: values.id ? `Editar ${title}` : `Nuevo ${title}`,
+        body,
+        footer: `<button class="btn btn--ghost" data-close>Cancelar</button><button class="btn btn--primary" id="crud-save">Guardar</button>`,
+      });
+      document.querySelector('#crud-save').addEventListener('click', saveForm);
+    }
+
+    async function saveForm() {
+      const raw = Form.collect(document.querySelector('.modal__body'));
+      const payload = mapOutput(raw);
+      try {
+        const btn = document.querySelector('#crud-save');
+        btn.disabled = true;
+        if (raw.id) await repo.update(raw.id, payload);
+        else await repo.create(payload);
+        Modal.close();
+        Toast.success('Guardado correctamente');
+        Audit.log(repo.resource, raw.id ? 'update' : 'create', { id: raw.id });
+        afterSave();
+        load();
+      } catch (e) {
+        Toast.error('Error al guardar: ' + e.message);
+        btn.disabled = false;
+      }
+    }
+
+    async function remove(row) {
+      const ok = await Modal.confirm({ title: 'Eliminar', message: `¿Eliminar el registro "${row.nombre || row.id}"?`, confirmText: 'Eliminar', danger: true });
+      if (!ok) return;
+      try { await repo.remove(row.id); Toast.success('Eliminado'); load(); }
+      catch (e) { Toast.error('No se pudo eliminar: ' + e.message); }
+    }
+
+    function render(container, params) {
+      container.innerHTML = `
+        <div class="page-head">
+          <div><h1>${title}</h1><div class="subtitle">${searchPlaceholder}</div></div>
+          <div class="header__spacer" style="flex:1;margin-left:0"></div>
+          ${canCreate(Auth.getRole()) ? `<button class="btn btn--primary" id="crud-new"><span class="ms" style="font-size:18px">add</span> ${newButton}</button>` : ''}
+        </div>
+        ${kpis ? `<div class="grid grid--4" id="module-kpis"></div>` : ''}
+        <div class="card mt-lg" style="padding:var(--s-md)">
+          <div class="search" style="margin-bottom:var(--s-md)">
+            <span class="ms">search</span>
+            <input type="search" id="crud-search" placeholder="${searchPlaceholder}" />
+          </div>
+          <div id="crud-table"></div>
+          ${extraActions()}
+        </div>`;
+
+      table = DataTable.build({
+        mount: container.querySelector('#crud-table'),
+        columns,
+        rows: [],
+        pageSize: 50,
+        loading: true,
+        onRowClick: onRowClick,
+      });
+      container.querySelector('#crud-search').addEventListener('input', Utils.debounce(e => table.setSearch(e.target.value), CONFIG.DEBOUNCE_SEARCH));
+      container.querySelector('#crud-new')?.addEventListener('click', () => openForm({}));
+      // Row actions via delegation handled by onRowClick; aquí añadimos botones por columna si la columna los renderiz
+      container.querySelector('#crud-table').addEventListener('click', async (e) => {
+        const btn = e.target.closest('[data-act]');
+        if (!btn) return;
+        const id = btn.closest('tr')?.dataset.id;
+        if (!id) return;
+        const rows = await repo.list({ useCache: false });
+        const row = rows.find(r => String(r.id) === String(id));
+        if (!row) return;
+        const act = btn.dataset.act;
+        if (act === 'edit' && canEdit(Auth.getRole())) openForm(mapInput(row));
+        else if (act === 'del' && canDelete(Auth.getRole())) remove(row);
+        else if (opts.onAction && !['edit', 'del'].includes(act)) opts.onAction(act, row);
+      });
+
+      load();
+    }
+
+    return { render, reload: load };
+  }
+  return { build };
+})();
+// ===== js\modules\dashboard.js =====
+/**
+ * dashboard.js — KPIs + actividad + alertas de inventario.
+ */
+const DashboardModule = (() => {
+  let unsub = [];
+  async function render(container) {
+    container.innerHTML = `
+      <div class="page-head"><div><h1>Resumen Ejecutivo</h1><div class="subtitle">Hoy ${Utils.date(new Date())}</div></div>
+        <div class="header__spacer"></div>
+        <button class="btn btn--ghost" id="dash-export"><span class="ms" style="font-size:18px">download</span> Exportar</button>
+      </div>
+      <div class="grid grid--4" id="dash-kpis"></div>
+      <div class="grid grid--2 mt-lg">
+        <div class="card"><div class="card__header"><div class="card__title">Tendencia Semanal: Ventas vs Gastos</div></div>
+          <div class="card__body"><canvas id="dash-chart" height="220"></canvas></div></div>
+        <div class="card"><div class="card__header"><div class="card__title">Alertas de Inventario Bajo</div><a class="card__header-link" href="#/inventario">Ver inventario</a></div>
+          <div class="card__body" id="dash-alerts"></div></div>
+      </div>
+      <div class="card mt-lg"><div class="card__header"><div class="card__title">Actividad Reciente del Sistema</div></div>
+        <div class="card__body"><div id="dash-activity"></div></div></div>`;
+
+    document.querySelector('#dash-export').addEventListener('click', () => Router.navigate('reportes'));
+
+    try {
+      const [kpis, alerts, activity] = await Promise.allSettled([
+        Services.call('dashboard.kpis', { fecha: Utils.todayKey() }),
+        Services.call('dashboard.alerts', {}),
+        Services.call('dashboard.activity', {}) ]);
+      const val = (r) => r.status === 'fulfilled' ? r.value : null;
+      renderKpis(val(kpis)?.data || mockKpis());
+      const al = val(alerts)?.data;
+      renderAlerts(al && al.length ? al : mockAlerts());
+      renderActivity(val(activity)?.data || mockActivity());
+      renderChart();
+    } catch (e) {
+      Toast.error('Cargando dashboard (modo demo): ' + e.message);
+      renderKpis(mockKpis()); renderAlerts(mockAlerts()); renderActivity(mockActivity()); renderChart();
+    }
+  }
+
+  function renderKpis(k) {
+    document.querySelector('#dash-kpis').innerHTML = [
+      KpiCard.build({ icon: 'monetization_on', label: 'Ventas del Día', value: Utils.money(k.ventas_dia), delta: '+12.5%', variant: 'primary' }),
+      KpiCard.build({ icon: 'shopping_basket', label: 'Pedidos Activos', value: k.pedidos_activos, delta: `${k.pendientes || 0} pendientes`, variant: 'secondary', sub: 'Pedidos del día' }),
+      KpiCard.build({ icon: 'group', label: 'Clientes Activos', value: k.clientes_activos, delta: `+${k.clientes_nuevos || 0} hoy`, variant: 'tertiary' }),
+      KpiCard.build({ icon: 'account_balance', label: 'Flujo de Caja', value: Utils.money(k.flujo_caja), sub: 'Saldo actual', variant: 'filled' }),
+    ].join('');
+  }
+  function renderAlerts(list) {
+    document.querySelector('#dash-alerts').innerHTML = list.length
+      ? list.map(a => `<div class="flex-between" style="padding:8px 0;border-bottom:1px solid var(--outline-variant)">
+          <div><b>${a.producto}</b><div class="muted">Stock: ${a.stock} · umbral ${a.umbral}</div></div>
+          <button class="btn btn--danger btn--sm" data-restock="${a.producto}">Reordenar</button></div>`).join('')
+      : '<p class="empty">Sin alertas</p>';
+  }
+  function renderActivity(list) {
+    document.querySelector('#dash-activity').innerHTML = `<table class="data"><thead><tr><th>Evento</th><th>Usuario</th><th>Estado</th><th>Hora</th><th class="right">Monto</th></tr></thead>
+      <tbody>${list.map(a => `<tr><td>${a.evento}</td><td>${a.usuario}</td><td><span class="badge badge--${a.estado_cls}">${a.estado}</span></td><td class="muted">${a.hora}</td><td class="num">${a.monto ? Utils.money(a.monto) : ''}</td></tr>`).join('')}</tbody></table>`;
+  }
+  function renderChart() {
+    if (typeof Chart === 'undefined') { document.querySelector('#dash-chart').parentElement.innerHTML = '<p class="empty">Chart.js no disponible</p>'; return; }
+    const ctx = document.querySelector('#dash-chart');
+    new Chart(ctx, {
+      type: 'bar',
+      data: { labels: ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'],
+        datasets: [
+          { label: 'Ventas', data: [320,410,380,460,520,610,250], backgroundColor: '#3525cd', borderRadius: 4 },
+          { label: 'Gastos', data: [120,140,90,170,210,180,80], backgroundColor: '#ba1a1a', borderRadius: 4 },
+        ] },
+      options: { responsive: true, plugins: { legend: { position: 'bottom' } } },
+    });
+  }
+  function mockKpis() { return { ventas_dia: 4250000, pedidos_activos: 142, pendientes: 24, clientes_activos: 1204, clientes_nuevos: 5, flujo_caja: 18420000 }; }
+  function mockAlerts() { return [{ producto: 'Harina de Trigo', stock: 2, umbral: 20 }, { producto: 'Huevos Grado A', stock: 5, umbral: 30 }, { producto: 'Aceite de Canola', stock: 4, umbral: 5 }]; }
+  function mockActivity() { return [
+    { evento: 'POS #10542', usuario: 'Caja 1', estado: 'Completado', estado_cls: 'success', hora: 'Hace 5 min', monto: 85000 },
+    { evento: 'Ruta #892', usuario: 'Reparto Norte', estado: 'En Tránsito', estado_cls: 'warn', hora: 'Hace 12 min' },
+    { evento: 'Factura FE-452', usuario: 'Admin', estado: 'Emitida', estado_cls: 'info', hora: 'Hace 25 min', monto: 2_100_000 },
+    { evento: 'Pedido Cancelado', usuario: 'Vendedor', estado: 'Cancelado', estado_cls: 'error', hora: 'Hace 40 min' },
+  ]; }
+
+  return { render, destroy() { unsub.forEach(u => u && u()); unsub = []; } };
+})();
+// ===== js\modules\clientes.js =====
+/**
+ * clientes.js — CRUD de clientes con segmentación / historial.
+ */
+const ClientesModule = (() => {
+  const repo = Services.repos.clientes;
+  const SCHEMA = {
+    grid: 2,
+    fields: [
+      { name: 'id', type: 'hidden' },
+      { name: 'nombre', label: 'Nombre / Razón Social', required: true, span: 2 },
+      { name: 'documento', label: 'NIT / Cédula' },
+      { name: 'telefono', label: 'Teléfono', type: 'tel' },
+      { name: 'email', label: 'Email', type: 'email' },
+      { name: 'direccion', label: 'Dirección', span: 2 },
+      { name: 'ruta', label: 'Ruta' },
+      { name: 'tipo', label: 'Tipo de cliente', type: 'select', options: [
+        { value: 'frecuente', label: 'Frecuente' }, { value: 'corriente', label: 'Corriente' }, { value: 'mayorista', label: 'Mayorista' }
+      ] },
+      { name: 'cupocredito', label: 'Cupo de crédito (COP)', type: 'number' },
+      { name: 'estado', label: 'Estado', type: 'select', options: [{ value: 'activo', label: 'Activo' }, { value: 'inactivo', label: 'Inactivo' }] },
+    ],
+  };
+
+  async function showHistory(clienteId) {
+    try {
+      const [pedidos, recaudos] = await Promise.allSettled([
+        Services.repos.pedidos.list({ cliente: clienteId }),
+        Services.repos.recaudos.list({ cliente: clienteId }),
+      ]);
+      const ps = pedidos.value?.slice(0, 20) || [];
+      const rs = recaudos.value?.slice(0, 20) || [];
+      Modal.open({
+        title: 'Historial del cliente',
+        body: `<div class="card__title">Pedidos recientes</div>${table(pedidosCol, ps)}<div class="card__title mt-lg">Recaudos</div>${table(recaudosCol, rs)}`,
+        footer: `<button class="btn btn--ghost" data-close>Cerrar</button>`,
+      });
+    } catch (e) { Toast.error('No se pudo cargar el historial: ' + e.message); }
+  }
+
+  const pedidosCol = [
+    { key: 'fecha', label: 'Fecha', get: r => Utils.date(r.fecha) },
+    { key: 'total', label: 'Total', align: 'right', get: r => Utils.money(r.total) },
+    { key: 'estado', label: 'Estado', render: v => badge(v) },
+  ];
+  const recaudosCol = [
+    { key: 'fecha', label: 'Fecha', get: r => Utils.date(r.fecha) },
+    { key: 'metodo', label: 'Método', get: r => r.metodo },
+    { key: 'valor', label: 'Valor', align: 'right', get: r => Utils.money(r.valor) },
+    { key: 'estado', label: 'Estado', render: v => badge(v) },
+  ];
+  const table = (cols, rows) => `<table class="data mt-md"><thead><tr>${cols.map(c => `<th>${c.label}</th>`).join('')}</tr></thead><tbody>${rows.map(r => `<tr>${cols.map(c => `<td>${c.render ? c.render(c.get(r)) : c.get(r)}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+  const badge = v => `<span class="badge badge--${v === 'pagado' || v === 'entregado' ? 'success' : v === 'pendiente' ? 'warn' : 'muted'}">${v || ''}</span>`;
+
+  const columns = [
+    { key: 'nombre', label: 'Cliente', render: (v, r) => `<div><b>${v}</b><div class="muted">${r.documento || ''}</div></div>` },
+    { key: 'telefono', label: 'Teléfono' },
+    { key: 'ruta', label: 'Ruta', render: v => `<span class="chip">${v || '—'}</span>` },
+    { key: 'tipo', label: 'Tipo', render: v => `<span class="badge badge--info">${v || ''}</span>` },
+    { key: 'cupocredito', label: 'Cupo', align: 'right', get: r => Utils.money(r.cupocredito), render: v => `<span class="num">${v}</span>` },
+    { key: 'estado', label: 'Estado', render: v => `<span class="badge badge--${v === 'activo' ? 'success' : 'muted'}">${v}</span>` },
+    { key: '_actions', label: 'Acciones', render: (v, r) => `<button class="btn btn--ghost btn--sm" data-act="edit">Editar</button> <button class="btn btn--ghost btn--sm" data-act="history">Historial</button> <button class="btn btn--danger btn--sm" data-act="del">Eliminar</button>` },
+  ];
+
+  return CrudPage.build({
+    repo, title: 'Clientes', schema: SCHEMA, columns,
+    newButton: 'Nuevo Cliente', searchPlaceholder: 'Buscar clientes por nombre, NIT, ruta…',
+    kpis: rows => [
+      KpiCard.build({ icon: 'group', label: 'Total clientes', value: rows.length, variant: 'primary' }),
+      KpiCard.build({ icon: 'trending_up', label: 'Frecuentes', value: rows.filter(r => r.tipo === 'frecuente').length, variant: 'tertiary' }),
+      KpiCard.build({ icon: 'warning', label: 'Con deuda', value: rows.filter(r => r.saldo > 0).length, variant: 'secondary' }),
+      KpiCard.build({ icon: 'person_add', label: 'Activos', value: rows.filter(r => r.estado === 'activo').length, variant: 'filled' }),
+    ],
+    onAction: (act, row) => { if (act === 'history') showHistory(row.id); },
+  });
+})();
+// ===== js\modules\catalogos.js =====
+/**
+ * catalogos.js — módulos CRUD de catálogos: productos, categorías, proveedores.
+ */
+const ProductosModule = (() => {
+  const repo = Services.repos.productos;
+  const SCHEMA = {
+    grid: 3, fields: [
+      { name: 'id', type: 'hidden' },
+      { name: 'nombre', label: 'Nombre', required: true, span: 2 },
+      { name: 'sku', label: 'SKU' },
+      { name: 'categoria_id', label: 'Categoría', type: 'select', options: [] },
+      { name: 'unidad', label: 'Unidad', type: 'select', options: 'unidad,kg,g,lt,ml'.split(',').map(u => ({ value: u, label: u })) },
+      { name: 'precio_venta', label: 'Precio venta (COP)', type: 'number', required: true },
+      { name: 'costo', label: 'Costo (COP)', type: 'number' },
+      { name: 'iva', label: 'IVA (%)', type: 'number' },
+      { name: 'stock_minimo', label: 'Stock mínimo', type: 'number' },
+      { name: 'descripcion', label: 'Descripción', span: 3, type: 'textarea' },
+      { name: 'estado', label: 'Estado', type: 'select', options: [{ value: 'activo', label: 'Activo' }, { value: 'inactivo', label: 'Inactivo' }] },
+    ],
+  };
+  const columns = [
+    { key: 'nombre', label: 'Producto', render: (v, r) => `<div><b>${v}</b><div class="muted font-code-mono">${r.sku || ''}</div></div>` },
+    { key: 'categoria_id', label: 'Categoría', render: v => `<span class="badge badge--info">${v || '—'}</span>` },
+    { key: 'precio_venta', label: 'Precio', align: 'right', get: r => Utils.money(r.precio_venta) },
+    { key: 'costo', label: 'Costo', align: 'right', get: r => Utils.money(r.costo) },
+    { key: 'stock_minimo', label: 'Stock mín.', align: 'right' },
+    { key: 'estado', label: 'Estado', render: v => `<span class="badge badge--${v === 'activo' ? 'success' : 'muted'}">${v}</span>` },
+    { key: '_a', label: 'Acciones', render: () => `<button class="btn btn--ghost btn--sm" data-act="edit">Editar</button> <button class="btn btn--danger btn--sm" data-act="del">Eliminar</button>` },
+  ];
+  const mod = CrudPage.build({
+    repo, title: 'Productos', schema: SCHEMA, columns,
+    newButton: 'Agregar Producto', searchPlaceholder: 'Buscar productos por nombre o SKU…',
+    kpis: rows => [
+      KpiCard.build({ icon: 'inventory_2', label: 'Total productos', value: rows.length, variant: 'primary', delta: '+12%', deltaDir: 'up' }),
+      KpiCard.build({ icon: 'warning', label: 'Stock bajo', value: rows.filter(r => (r.stock_act ?? 0) <= (r.stock_minimo ?? 0)).length, variant: 'secondary' }),
+      KpiCard.build({ icon: 'trending_down', label: 'Sin stock', value: rows.filter(r => (r.stock_act ?? 0) <= 0).length, variant: 'error' }),
+      KpiCard.build({ icon: 'monetization_on', label: 'Valor inventario', value: Utils.money(rows.reduce((s, r) => s + (r.costo || 0) * (r.stock_act || 0), 0)), variant: 'filled' }),
+    ],
+  });
+  // Carga categorías para el select al abrir el modal
+  const origRender = mod.render;
+  Services.repos.categorias.list().then(cats => {
+    const f = SCHEMA.fields.find(f => f.name === 'categoria_id');
+    f.options = [{ value: '', label: '— Sin categoría —' }, ...cats.map(c => ({ value: c.id || c.nombre, label: c.nombre }))];
+  }).catch(() => {});
+  return mod;
+})();
+
+const CategoriasModule = (() => {
+  const repo = Services.repos.categorias;
+  const SCHEMA = { grid: 2, fields: [
+    { name: 'id', type: 'hidden' },
+    { name: 'nombre', label: 'Nombre', required: true, span: 2 },
+    { name: 'tipo', label: 'Tipo', type: 'select', options: [{ value: 'producto', label: 'Producto' }, { value: 'gasto', label: 'Gasto' }, { value: 'insumo', label: 'Insumo' }] },
+    { name: 'estado', label: 'Estado', type: 'select', options: [{ value: 'activo', label: 'Activo' }, { value: 'inactivo', label: 'Inactivo' }] },
+  ]};
+  const columns = [
+    { key: 'nombre', label: 'Categoría' },
+    { key: 'tipo', label: 'Tipo', render: v => `<span class="badge badge--info">${v}</span>` },
+    { key: 'estado', label: 'Estado', render: v => `<span class="badge badge--${v === 'activo' ? 'success' : 'muted'}">${v}</span>` },
+    { key: '_a', label: 'Acciones', render: () => `<button class="btn btn--ghost btn--sm" data-act="edit">Editar</button> <button class="btn btn--danger btn--sm" data-act="del">Eliminar</button>` },
+  ];
+  return CrudPage.build({ repo, title: 'Categorías', schema: SCHEMA, columns, newButton: 'Nueva Categoría', searchPlaceholder: 'Buscar categorías…' });
+})();
+
+const ProveedoresModule = (() => {
+  const repo = Services.repos.proveedores;
+  const SCHEMA = { grid: 2, fields: [
+    { name: 'id', type: 'hidden' },
+    { name: 'nombre', label: 'Nombre / Razón social', required: true, span: 2 },
+    { name: 'documento', label: 'NIT' },
+    { name: 'telefono', label: 'Teléfono', type: 'tel' },
+    { name: 'email', label: 'Email', type: 'email' },
+    { name: 'direccion', label: 'Dirección', span: 2 },
+    { name: 'estado', label: 'Estado', type: 'select', options: [{ value: 'activo', label: 'Activo' }, { value: 'inactivo', label: 'Inactivo' }] },
+  ]};
+  const columns = [
+    { key: 'nombre', label: 'Proveedor', render: (v, r) => `<div><b>${v}</b><div class="muted">${r.documento || ''}</div></div>` },
+    { key: 'telefono', label: 'Teléfono' },
+    { key: 'email', label: 'Email' },
+    { key: 'estado', label: 'Estado', render: v => `<span class="badge badge--${v === 'activo' ? 'success' : 'muted'}">${v}</span>` },
+    { key: '_a', label: 'Acciones', render: () => `<button class="btn btn--ghost btn--sm" data-act="edit">Editar</button> <button class="btn btn--danger btn--sm" data-act="del">Eliminar</button>` },
+  ];
+  return CrudPage.build({ repo, title: 'Proveedores', schema: SCHEMA, columns, newButton: 'Nuevo Proveedor', searchPlaceholder: 'Buscar proveedores…' });
+})();
+// ===== js\modules\pedidos.js =====
+/**
+ * pedidos.js — Centro de pedidos + constructor de pedido (réplica stitch).
+ * Layout: catálogo a la izquierda, resumen a la derecha.
+ */
+const PedidosModule = (() => {
+  let state = { cliente_id: '', items: [], categorias: [], cat: '', descuento_pct: 0, iva_pct: 19 };
+  let productos = [], clientes = [];
+
+  async function render(container, params) {
+    container.innerHTML = `
+      <div class="page-head"><div><h1>Centro de Pedidos</h1><div class="subtitle">Constructor de pedido</div></div>
+        <div class="header__spacer"></div>
+        <button class="btn btn--ghost" id="ped-hist"><span class="ms" style="font-size:18px">history</span> Historial</button>
+      </div>
+      <div class="flex" style="gap:var(--s-lg); align-items:stretch" id="ped-layout">
+        <div style="flex:1.5; min-width:0">
+          <div class="card" style="padding:var(--s-md)">
+            <div class="flex" style="align-items:center;gap:var(--s-sm);margin-bottom:var(--s-md)">
+              <div class="search" style="flex:1"><span class="ms">search</span><input type="search" id="ped-search" placeholder="Buscar productos…"/></div>
+              <select id="ped-cliente" style="background:var(--primary-fixed);color:var(--primary);border:none;padding:6px 12px;border-radius:var(--r-full);font-weight:600"><option value="">Cliente…</option></select>
+            </div>
+            <div class="flex" style="flex-wrap:wrap;gap:8px;margin-bottom:var(--s-md)" id="ped-cats"></div>
+            <div class="grid grid--3" id="ped-catalog"></div>
+          </div>
+        </div>
+        <div style="flex:1; min-width:300px">
+          <div class="card" style="padding:var(--s-md); position:sticky; top:80px">
+            <div class="flex-between"><div><div class="card__title">Resumen de Pedido</div><div class="muted font-code-mono">Folio: <span id="ped-folio">ORD-—</span></div></div></div>
+            <button class="btn btn--ghost btn--sm mt-md" id="ped-clear"><span class="ms">delete_sweep</span> Vaciar</button>
+            <div id="ped-cart" class="mt-md"></div>
+            <div class="mt-md" id="ped-totals"></div>
+            <div class="flex gap mt-md">
+              <button class="btn btn--ghost btn--block" id="ped-facturar"><span class="ms">description</span> Facturar</button>
+              <button class="btn btn--secondary btn--block" id="ped-confirm"><span class="ms">check_circle</span> Confirmar</button>
+            </div>
+          </div>
+        </div>
+      </div>`;
+
+    bind(container);
+    try {
+      [clientes, productos] = await Promise.all([Services.repos.clientes.list({}), Services.repos.productos.list({})]);
+      fillClientes(container);
+      fillCats();
+      state.folio = 'ORD-' + Utils.iso().slice(11).replace(/[:.]/g, '').slice(-6);
+      renderCatalog();
+      renderCart();
+      if (params.new) Toast.info('Listo para registrar nuevo pedido');
+    } catch (e) { Toast.error('Constructor: ' + e.message); }
+  }
+
+  function fillClientes(c) {
+    const sel = c.querySelector('#ped-cliente');
+    sel.innerHTML = '<option value="">Cliente…</option>' + clientes.map(cl => `<option value="${cl.id}">${cl.nombre}</option>`).join('');
+  }
+  function fillCats() {
+    const set = new Set(productos.map(p => p.categoria_id).filter(Boolean));
+    state.categorias = [...set];
+    const host = document.querySelector('#ped-cats');
+    host.innerHTML = `<button class="chip is-active" data-cat="">Todos</button>` + state.categorias.map(cat => `<button class="chip" data-cat="${cat}">${cat}</button>`).join('');
+    host.querySelectorAll('.chip').forEach(b => b.addEventListener('click', () => {
+      host.querySelectorAll('.chip').forEach(x => x.classList.remove('is-active'));
+      b.classList.add('is-active'); state.cat = b.dataset.cat; renderCatalog();
+    }));
+  }
+  function renderCatalog() {
+    const q = (document.querySelector('#ped-search').value || '').toLowerCase();
+    const list = productos.filter(p =>
+      (!state.cat || p.categoria_id === state.cat) &&
+      (!q || String(p.nombre).toLowerCase().includes(q) || String(p.sku || '').toLowerCase().includes(q))
+    );
+    document.querySelector('#ped-catalog').innerHTML = list.length ? list.map(p => `
+      <div class="card" style="cursor:pointer" data-add="${p.id}">
+        <div style="height:96px;background:var(--surface-container-high);display:grid;place-items:center"><span class="ms" style="font-size:40px;color:var(--on-surface-variant)">bakery_dining</span></div>
+        <div style="padding:var(--s-sm) var(--s-md)">
+          <div class="muted" style="font-size:11px;letter-spacing:.04em;text-transform:uppercase">${p.categoria_id || ''}</div>
+          <div class="bold">${p.nombre}</div>
+          <div class="flex-between mt-md"><span class="bold" style="color:var(--primary)">${Utils.money(p.precio_venta)}</span>
+            <button class="btn btn--ghost btn--sm" data-add="${p.id}"><span class="ms">add</span></button></div>
+        </div>
+      </div>`).join('') : '<p class="empty">Sin productos</p>';
+    document.querySelector('#ped-catalog').querySelectorAll('[data-add]').forEach(el => el.addEventListener('click', () => addItem(el.dataset.add)));
+  }
+  function addItem(id) {
+    const p = productos.find(x => String(x.id) === String(id));
+    if (!p) return;
+    const it = state.items.find(i => i.producto_id === id);
+    if (it) it.cantidad++; else state.items.push({ producto_id: id, nombre: p.nombre, precio: +p.precio_venta, cantidad: 1 });
+    renderCart();
+  }
+  function renderCart() {
+    const host = document.querySelector('#ped-cart');
+    if (!state.items.length) { host.innerHTML = `<div class="empty" style="border:2px dashed var(--outline-variant);border-radius:var(--r-lg);padding:var(--s-lg)"><span class="ms">add_shopping_cart</span><div>Arrastra más ítems aquí</div></div>`; }
+    else host.innerHTML = state.items.map((it, i) => `
+      <div class="flex-between" style="padding:8px 0;border-bottom:1px solid var(--outline-variant)">
+        <div style="flex:1"><div class="bold">${it.nombre}</div>
+          <div class="flex" style="gap:4px;align-items:center"><button class="btn btn--ghost btn--sm" data-dec="${i}">−</button><span class="num" style="min-width:32px;display:inline-block;text-align:center">${it.cantidad}</span><button class="btn btn--ghost btn--sm" data-inc="${i}">+</button>
+          <input class="num" data-price="${i}" type="number" value="${it.precio}" style="width:90px;margin-left:8px"/></div></div>
+        <div class="num bold">${Utils.money(it.precio * it.cantidad)}</div>
+        <button class="btn btn--ghost btn--sm" data-rm="${i}"><span class="ms">close</span></button>
+      </div>`).join('');
+    host.querySelectorAll('[data-inc]').forEach(b => b.addEventListener('click', () => { state.items[+b.dataset.inc].cantidad++; renderCart(); }));
+    host.querySelectorAll('[data-dec]').forEach(b => b.addEventListener('click', () => { const it = state.items[+b.dataset.dec]; if (--it.cantidad <= 0) state.items.splice(+b.dataset.dec, 1); renderCart(); }));
+    host.querySelectorAll('[data-rm]').forEach(b => b.addEventListener('click', () => { state.items.splice(+b.dataset.rm, 1); renderCart(); }));
+    host.querySelectorAll('[data-price]').forEach(b => b.addEventListener('change', () => { state.items[+b.dataset.price].precio = +b.value || 0; renderCart(); }));
+    document.querySelector('#ped-folio').textContent = state.folio;
+    renderTotals();
+  }
+  function renderTotals() {
+    const sub = state.items.reduce((s, i) => s + i.precio * i.cantidad, 0);
+    const desc = sub * (state.descuento_pct / 100);
+    const iva = (sub - desc) * (state.iva_pct / 100);
+    const total = sub - desc + iva;
+    document.querySelector('#ped-totals').innerHTML = `
+      <div class="flex-between"><span>Subtotal</span><span class="num">${Utils.money(sub)}</span></div>
+      <div class="flex-between"><span>Descuento (${state.descuento_pct}%)</span><span class="num" style="color:var(--tertiary)">−${Utils.money(desc)}</span></div>
+      <div class="flex-between"><span>IVA (${state.iva_pct}%)</span><span class="num">${Utils.money(iva)}</span></div>
+      <div class="flex-between mt-md"><span class="bold">Total ${CONFIG.CURRENCY}</span><span class="num bold" style="color:var(--primary);font-size:18px">${Utils.money(total)}</span></div>`;
+  }
+  async function confirmar() {
+    if (!state.cliente_id) return Toast.error('Selecciona un cliente');
+    if (!state.items.length) return Toast.error('Carrito vacío');
+    const sub = state.items.reduce((s, i) => s + i.precio * i.cantidad, 0);
+    const desc = sub * (state.descuento_pct / 100);
+    const iva = (sub - desc) * (state.iva_pct / 100);
+    const total = sub - desc + iva;
+    try {
+      await Services.call('pedidos.crear', {
+        cliente_id: state.cliente_id, folio: state.folio, fecha: Utils.todayKey(),
+        detalle: state.items, subtotal: sub, descuento: desc, iva, total, estado: 'pendiente',
+        usuario_creacion: Auth.getCurrentUser(),
+      });
+      Toast.success('Pedido confirmado');
+      state.items = []; renderCart();
+    } catch (e) { Toast.error('Confirmar: ' + e.message); }
+  }
+  async function verHistorial() {
+    try {
+      const rows = await Services.repos.pedidos.list({ fecha: Utils.todayKey() });
+      Modal.open({
+        title: 'Historial de pedidos',
+        body: `<table class="data"><thead><tr><th>Folio</th><th>Cliente</th><th class="right">Total</th><th>Estado</th></tr></thead><tbody>${(rows||[]).map(r=>`<tr><td class="font-code-mono">${r.folio||''}</td><td>${r.cliente_id||r.cliente||''}</td><td class="num">${Utils.money(r.total)}</td><td><span class="badge badge--${r.estado==='entregado'?'success':r.estado==='cancelado'?'error':'warn'}">${r.estado}</span></td></tr>`).join('')}</tbody></table>`,
+        footer: `<button class="btn btn--ghost" data-close>Cerrar</button>`,
+      });
+    } catch (e) { Toast.error('Historial: ' + e.message); }
+  }
+
+  function bind(c) {
+    c.querySelector('#ped-search').addEventListener('input', Utils.debounce(renderCatalog, 250));
+    c.querySelector('#ped-cliente').addEventListener('change', e => state.cliente_id = e.target.value);
+    c.querySelector('#ped-clear').addEventListener('click', () => { state.items = []; renderCart(); });
+    c.querySelector('#ped-confirm').addEventListener('click', confirmar);
+    c.querySelector('#ped-facturar').addEventListener('click', () => Toast.info('Facturación: pendiente configuración DIAN'));
+    c.querySelector('#ped-hist').addEventListener('click', verHistorial);
+  }
+
+  return { render, destroy() { state = { items: [], categorias: [], cat: '', descuento_pct: 0, iva_pct: 19 }; } };
+})();
+// ===== js\modules\produccion.js =====
+/**
+ * produccion.js — registro de producción diaria por producto (cantidades, costos, rendimiento).
+ */
+const ProduccionModule = (() => {
+  const repo = Services.repos.produccion;
+  const SCHEMA = {
+    grid: 3, fields: [
+      { name: 'id', type: 'hidden' },
+      { name: 'fecha', label: 'Fecha', type: 'date', required: true },
+      { name: 'producto_id', label: 'Producto', type: 'select', options: [], required: true },
+      { name: 'cantidad_producida', label: 'Cantidad producida', type: 'number', required: true },
+      { name: 'cantidad_merma', label: 'Merma', type: 'number' },
+      { name: 'costo_insumos', label: 'Costo insumos (COP)', type: 'number' },
+      { name: 'responsable', label: 'Responsable' },
+      { name: 'turno', label: 'Turno', type: 'select', options: [{ value: 'manana', label: 'Mañana' }, { value: 'tarde', label: 'Tarde' }, { value: 'noche', label: 'Noche' }] },
+      { name: 'observaciones', label: 'Observaciones', span: 3, type: 'textarea' },
+    ],
+  };
+  const columns = [
+    { key: 'fecha', label: 'Fecha', get: r => Utils.date(r.fecha) },
+    { key: 'producto', label: 'Producto', render: (v, r) => v || r.producto_id },
+    { key: 'cantidad_producida', label: 'Producido', align: 'right', get: r => Utils.num(r.cantidad_producida) },
+    { key: 'cantidad_merma', label: 'Merma', align: 'right', get: r => Utils.num(r.cantidad_merma) },
+    { key: 'costo_insumos', label: 'Costo insumos', align: 'right', get: r => Utils.money(r.costo_insumos) },
+    { key: 'rendimiento', label: 'Rendimiento', align: 'right', get: r => {
+      const p = +r.cantidad_producida || 0, m = +r.cantidad_merma || 0;
+      return p ? Utils.num((p - m) / p * 100, 1) + '%' : '—';
+    } },
+    { key: '_a', label: 'Acciones', render: () => `<button class="btn btn--ghost btn--sm" data-act="edit">Editar</button> <button class="btn btn--danger btn--sm" data-act="del">Eliminar</button>` },
+  ];
+  const mod = CrudPage.build({
+    repo, title: 'Producción', schema: SCHEMA, columns,
+    newButton: 'Registrar Producción', searchPlaceholder: 'Buscar producción por fecha o producto…',
+    kpis: rows => [
+      KpiCard.build({ icon: 'bakery_dining', label: 'Lotes del día', value: rows.filter(r => r.fecha === Utils.todayKey()).length, variant: 'primary' }),
+      KpiCard.build({ icon: 'scale', label: 'Producido', value: rows.filter(r => r.fecha === Utils.todayKey()).reduce((s, r) => s + (+r.cantidad_producida || 0), 0), variant: 'tertiary' }),
+      KpiCard.build({ icon: 'trending_down', label: 'Merma', value: Utils.num(rows.filter(r => r.fecha === Utils.todayKey()).reduce((s, r) => s + (+r.cantidad_merma || 0), 0), 1), variant: 'secondary' }),
+      KpiCard.build({ icon: 'monetization_on', label: 'Costo del día', value: Utils.money(rows.filter(r => r.fecha === Utils.todayKey()).reduce((s, r) => s + (+r.costo_insumos || 0), 0)), variant: 'filled' }),
+    ],
+  });
+  Services.repos.productos.list().then(ps => {
+    const f = SCHEMA.fields.find(f => f.name === 'producto_id');
+    f.options = [{ value: '', label: '—' }, ...ps.map(p => ({ value: p.id || p.nombre, label: p.nombre }))];
+  }).catch(() => {});
+  return mod;
+})();
+// ===== js\modules\inventario.js =====
+/**
+ * inventario.js — gestión de inventario + kardex + ajustes + alertas.
+ */
+const InventarioModule = (() => {
+  const repo = Services.repos.inventario;
+  const movRepo = Services.repos.movimientos;
+
+  const SCHEMA = {
+    grid: 3, fields: [
+      { name: 'id', type: 'hidden' },
+      { name: 'producto_id', label: 'Producto', required: true, type: 'select', options: [] },
+      { name: 'lote', label: 'Lote' },
+      { name: 'cantidad', label: 'Cantidad', type: 'number', required: true },
+      { name: 'stock_minimo', label: 'Stock mínimo', type: 'number' },
+      { name: 'ubicacion', label: 'Ubicación' },
+      { name: 'fecha_vencimiento', label: 'Vencimiento', type: 'date' },
+      { name: 'estado', label: 'Estado', type: 'select', options: [{ value: 'disponible', label: 'Disponible' }, { value: 'agotado', label: 'Agotado' }, { value: 'bloqueado', label: 'Bloqueado' }] },
+    ],
+  };
+
+  const columns = [
+    { key: 'producto', label: 'Producto', render: (v, r) => `<div><b>${v || r.producto_id}</b><div class="muted">${r.lote || ''}</div></div>` },
+    { key: 'cantidad', label: 'Stock actual', align: 'right', render: (v, r) => `<span class="num ${v <= (r.stock_minimo || 0) ? '' : ''}" style="${v <= (r.stock_minimo || 0) ? 'color:var(--error)' : ''}">${Utils.num(v)}</span>` },
+    { key: 'stock_minimo', label: 'Stock mínimo', align: 'right' },
+    { key: 'ubicacion', label: 'Ubicación' },
+    { key: 'estado', label: 'Estado', render: v => {
+      const cls = v === 'disponible' ? 'success' : v === 'agotado' ? 'error' : 'muted';
+      return `<span class="badge badge--${cls}">${v}</span>`;
+    } },
+    { key: '_a', label: 'Acciones', render: () => `<button class="btn btn--ghost btn--sm" data-act="edit">Editar</button> <button class="btn btn--ghost btn--sm" data-act="ajuste">Ajuste</button> <button class="btn btn--ghost btn--sm" data-act="kardex">Kardex</button> <button class="btn btn--danger btn--sm" data-act="del">Eliminar</button>` },
+  ];
+
+  async function showKardex(invId) {
+    try {
+      const list = await movRepo.list({ inventario_id: invId });
+      Modal.open({
+        title: 'Kardex del producto',
+        body: `<table class="data"><thead><tr><th>Fecha</th><th>Tipo</th><th>Detalle</th><th class="right">Entrada</th><th class="right">Salida</th><th class="right">Saldo</th></tr></thead>
+          <tbody>${(list || []).map(m => `<tr><td>${Utils.date(m.fecha)}</td><td><span class="badge badge--${m.tipo === 'entrada' ? 'success' : m.tipo === 'salida' ? 'error' : 'info'}">${m.tipo}</span></td><td>${m.descripcion || ''}</td><td class="num">${m.tipo === 'entrada' ? Utils.num(m.cantidad) : ''}</td><td class="num">${m.tipo === 'salida' ? Utils.num(m.cantidad) : ''}</td><td class="num">${Utils.num(m.saldo)}</td></tr>`).join('')}</tbody></table>`,
+        footer: `<button class="btn btn--ghost" data-close>Cerrar</button>`,
+      });
+    } catch (e) { Toast.error('Kardex: ' + e.message); }
+  }
+
+  function showAjuste(invId) {
+    if (!Auth.can('inventario', 'ajuste')) return Toast.error('Sin permisos para ajustar inventario');
+    const body = `<div class="field"><label>Tipo de ajuste</label><select name="tipo"><option value="entrada">Entrada (+)</option><option value="salida">Salida (-)</option><option value="ajuste">Ajuste (=)</option></select></div>
+      <div class="field"><label>Cantidad</label><input type="number" name="cantidad" min="0" required/></div>
+      <div class="field"><label>Motivo</label><input type="text" name="motivo"/></div>`;
+    Modal.open({ title: 'Ajuste de inventario', body, footer: `<button class="btn btn--ghost" data-close>Cancelar</button><button class="btn btn--primary" id="aj-ok">Aplicar</button>` });
+    document.querySelector('#aj-ok').addEventListener('click', async () => {
+      const raw = Form.collect(document.querySelector('.modal__body'));
+      try {
+        await Services.call('inventario.ajuste', { inventario_id: invId, ...raw, usuario: Auth.getCurrentUser() });
+        Modal.close();
+        Toast.success('Ajuste aplicado');
+        mod.reload();
+      } catch (e) { Toast.error('Ajuste: ' + e.message); }
+    });
+  }
+
+  const mod = CrudPage.build({
+    repo, title: 'Gestión de Inventario', schema: SCHEMA, columns,
+    newButton: 'Agregar Producto', searchPlaceholder: 'Buscar productos o SKU…',
+    kpis: rows => [
+      KpiCard.build({ icon: 'inventory_2', label: 'Total referencias', value: rows.length, variant: 'primary', delta: '+12%', deltaDir: 'up' }),
+      KpiCard.build({ icon: 'warning', label: 'Stock crítico', value: rows.filter(r => (r.cantidad ?? 0) <= (r.stock_minimo ?? 0)).length, variant: 'error' }),
+      KpiCard.build({ icon: 'event', label: 'Próximos a vencer', value: rows.filter(r => r.fecha_vencimiento && (new Date(r.fecha_vencimiento) - Date.now()) < 7 * 86400000).length, variant: 'secondary' }),
+      KpiCard.build({ icon: 'monetization_on', label: 'Valor inventario', value: Utils.money(rows.reduce((s, r) => s + (r.valor ?? 0), 0)), variant: 'filled' }),
+    ],
+    onAction: (act, row) => {
+      if (act === 'kardex') showKardex(row.id);
+      else if (act === 'ajuste') showAjuste(row.id);
+    },
+    canCreate: r => Auth.can('inventario', 'create'),
+    canEdit: r => Auth.can('inventario', 'update'),
+    canDelete: r => Auth.can('inventario', 'delete'),
+  });
+
+  Services.repos.productos.list().then(ps => {
+    const f = SCHEMA.fields.find(f => f.name === 'producto_id');
+    f.options = [{ value: '', label: '— selecciona —' }, ...ps.map(p => ({ value: p.id || p.nombre, label: p.nombre }))];
+  }).catch(() => {});
+
+  return mod;
+})();
+// ===== js\modules\compras.js =====
+/**
+ * compras.js — órdenes de compra a proveedores + recepción + detalle.
+ * Usa una hoja maestra `compras` + `detalle_compras`.
+ */
+const ComprasModule = (() => {
+  const repo = Services.repos.compras;
+  const detRepo = Services.repos.detalleCompras;
+
+  let table;
+  async function load() {
+    try {
+      const rows = await repo.list();
+      table.setRows(rows);
+      table.setLoading(false);
+    } catch (e) { Toast.error('No se pudo cargar compras: ' + e.message); table.setLoading(false); }
+  }
+
+  function render(container) {
+    container.innerHTML = `
+      <div class="page-head"><div><h1>Compras y Proveedores</h1><div class="subtitle">Órdenes de compra</div></div>
+        <div class="header__spacer"></div>
+        <button class="btn btn--primary" id="comp-new"><span class="ms" style="font-size:18px">add</span> Nueva Orden</button>
+      </div>
+      <div class="card" style="padding:var(--s-md)">
+        <div id="comp-table"></div>
+      </div>`;
+    table = DataTable.build({
+      mount: container.querySelector('#comp-table'), loading: true,
+      columns: [
+        { key: 'folio', label: 'Folio', render: (v, r) => `<span class="font-code-mono">${v || 'OC-' + (r.id || '').slice(-5)}</span>` },
+        { key: 'fecha', label: 'Fecha', get: r => Utils.date(r.fecha) },
+        { key: 'proveedor_id', label: 'Proveedor' },
+        { key: 'total', label: 'Total', align: 'right', get: r => Utils.money(r.total) },
+        { key: 'estado', label: 'Estado', render: v => `<span class="badge badge--${v === 'recibida' ? 'success' : v === 'anulada' ? 'error' : 'warn'}">${v}</span>` },
+        { key: '_a', label: 'Acciones', render: () => `<button class="btn btn--ghost btn--sm" data-act="ver">Ver</button> <button class="btn btn--ghost btn--sm" data-act="recibir" data-test>Recibir</button>` },
+      ],
+    });
+    container.querySelector('#comp-table').addEventListener('click', async (e) => {
+      const b = e.target.closest('[data-act]'); if (!b) return;
+      const id = b.closest('tr')?.dataset.id; if (!id) return;
+      if (b.dataset.act === 'ver') ver(id);
+      else if (b.dataset.act === 'recibir') recibir(id);
+    });
+    container.querySelector('#comp-new').addEventListener('click', () => nueva());
+    load();
+  }
+
+  function nueva() {
+    if (!Auth.can('compras', 'create')) return Toast.error('Sin permisos');
+    const body = `
+      <div class="grid-form grid-form--3">
+        <div class="field" style="grid-column:span 3"><label>Proveedor</label><select id="oc-prov" required></select></div>
+        <div class="field"><label>Fecha</label><input type="date" id="oc-fecha" value="${Utils.todayKey()}"/></div>
+        <div class="field" style="grid-column:span 2"><label>Observaciones</label><input type="text" id="oc-obs"/></div>
+      </div>
+      <div class="card__title mt-md">Productos</div>
+      <table class="data mt-md" id="oc-items"><thead><tr><th>Producto</th><th class="right">Cant.</th><th class="right">Costo unit.</th><th class="right">Subtotal</th><th></th></tr></thead><tbody></tbody></table>
+      <button class="btn btn--ghost btn--sm mt-md" id="oc-add"><span class="ms" style="font-size:16px">add</span> Agregar</button>`;
+    Modal.open({ title: 'Nueva orden de compra', body, footer: `<button class="btn btn--ghost" data-close>Cancelar</button><button class="btn btn--primary" id="oc-save">Guardar</button>`, size: 'lg' });
+
+    const provSel = document.querySelector('#oc-prov');
+    Services.repos.proveedores.list().then(ps => provSel.innerHTML = ps.map(p => `<option value="${p.id}">${p.nombre}</option>`).join('')).catch(()=>{});
+
+    let productos = [];
+    Services.repos.productos.list().then(ps => productos = ps).catch(()=>{});
+    document.querySelector('#oc-add').addEventListener('click', () => addRow(productos));
+    document.querySelector('#oc-save').addEventListener('click', async () => {
+      const payload = {
+        proveedor_id: provSel.value,
+        fecha: document.querySelector('#oc-fecha').value,
+        observaciones: document.querySelector('#oc-obs').value,
+        detalle: collectItems(),
+        estado: 'pendiente',
+      };
+      payload.total = payload.detalle.reduce((s, d) => s + d.subtotal, 0);
+      if (!payload.detalle.length) return Toast.error('Agrega al menos un producto');
+      try {
+        await Services.call('compras.crear', payload);
+        Modal.close(); Toast.success('Orden creada'); load();
+      } catch (e) { Toast.error('Crear orden: ' + e.message); }
+    });
+  }
+  function addRow(productos) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td><select class="ci-prod">${productos.map(p => `<option value="${p.id}" data-costo="${p.costo || 0}">${p.nombre}</option>`).join('')}</select></td>
+      <td><input class="ci-cant num" type="number" min="1" value="1" style="width:80px"/></td>
+      <td><input class="ci-costo num" type="number" value="${productos[0]?.costo || 0}" style="width:110px"/></td>
+      <td class="ci-sub num"></td>
+      <td><button class="btn btn--ghost btn--sm" data-rm>✕</button></td>`;
+    document.querySelector('#oc-items tbody').appendChild(tr);
+    tr.querySelector('[data-rm]').addEventListener('click', () => tr.remove());
+    const calc = () => { tr.querySelector('.ci-sub').textContent = Utils.money((+tr.querySelector('.ci-cant').value || 0) * (+tr.querySelector('.ci-costo').value || 0)); };
+    tr.querySelector('.ci-prod').addEventListener('change', e => tr.querySelector('.ci-costo').value = e.target.selectedOptions[0].dataset.costo);
+    tr.querySelector('.ci-cant').addEventListener('input', calc);
+    tr.querySelector('.ci-costo').addEventListener('input', calc); calc();
+  }
+  function collectItems() {
+    return [...document.querySelectorAll('#oc-items tbody tr')].map(tr => ({
+      producto_id: tr.querySelector('.ci-prod').value,
+      cantidad: +tr.querySelector('.ci-cant').value || 0,
+      costo: +tr.querySelector('.ci-costo').value || 0,
+      subtotal: (+tr.querySelector('.ci-cant').value || 0) * (+tr.querySelector('.ci-costo').value || 0),
+    }));
+  }
+  async function ver(id) {
+    try {
+      const oc = await repo.get(id);
+      const detalle = await detRepo.list({ compra_id: id });
+      Modal.open({
+        title: `Orden ${oc.folio || id}`,
+        body: `<div class="muted">Proveedor: ${oc.proveedor_id}</div><div class="muted">Fecha: ${Utils.date(oc.fecha)}</div><div class="muted">Total: ${Utils.money(oc.total)}</div>
+          <table class="data mt-md"><thead><tr><th>Producto</th><th class="right">Cant.</th><th class="right">Costo</th><th class="right">Subtotal</th></tr></thead><tbody>${(detalle||[]).map(d=>`<tr><td>${d.producto_id}</td><td class="num">${d.cantidad}</td><td class="num">${Utils.money(d.costo)}</td><td class="num">${Utils.money(d.subtotal)}</td></tr>`).join('')}</tbody></table>`,
+        footer: `<button class="btn btn--ghost" data-close>Cerrar</button>`,
+      });
+    } catch (e) { Toast.error('Ver orden: ' + e.message); }
+  }
+  async function recibir(id) {
+    if (!Auth.can('compras', 'recibir')) return Toast.error('Sin permisos para recibir');
+    const ok = await Modal.confirm({ title: 'Recepción', message: '¿Confirmar recepción y actualización de inventario?', confirmText: 'Recibir' });
+    if (!ok) return;
+    try { await Services.call('compras.recibir', { compra_id: id, usuario: Auth.getCurrentUser() }); Toast.success('Recibida · inventario actualizado'); load(); }
+    catch (e) { Toast.error('Recibir: ' + e.message); }
+  }
+
+  return { render };
+})();
+// ===== js\modules\recaudos.js =====
+/**
+ * recaudos.js — recaudo diario + conciliación (Nequi/Bancolombia/Efectivo).
+ */
+const RecaudosModule = (() => {
+  let table;
+  async function load() {
+    try {
+      const rows = await Services.repos.recaudos.list({ fecha: Utils.todayKey() });
+      table.setRows(rows || []);
+      table.setLoading(false);
+      renderTotalBar(rows || []);
+    } catch (e) { Toast.error('Recaudos: ' + e.message); table.setLoading(false); }
+  }
+  function renderTotalBar(rows) {
+    const sum = (f) => rows.reduce((s, r) => s + (+r[f] || 0), 0);
+    document.querySelector('#rec-totals').innerHTML = [
+      ['Bruto Ventas','bruto','error'], ['Efectivo','efectivo','info'], ['Nequi','nequi','info'], ['Bancolombia','bancolombia','info'],
+      ['Pagos Deuda','pago_deuda','info'], ['Faltantes','faltante','error'], ['Salidas','salida','error'], ['TOTAL','total','info'],
+    ].map(([l, k, cls], i) => `<div class="kpi" style="text-align:center"><div class="muted" style="font-size:11px">${l}</div><div class="bold num" style="color:var(--${cls === 'info' ? 'primary' : cls === 'error' ? 'error' : 'primary'})">${i === 7 ? Utils.money(sum('efectivo')+sum('nequi')+sum('bancolombia')+sum('pago_deuda')) : Utils.money(sum(k))}</div></div>`).join('');
+  }
+  function render(container) {
+    container.innerHTML = `
+      <div class="page-head"><div><h1>Recaudo Diario</h1><div class="subtitle">Cierre de caja del día</div></div>
+        <div class="header__spacer"></div>
+        <button class="btn btn--ghost" id="rec-print"><span class="ms" style="font-size:18px">print</span> Imprimir</button>
+        <button class="btn btn--primary" id="rec-new"><span class="ms" style="font-size:18px">add</span> Registrar pago</button>
+      </div>
+      <div class="grid grid--4" id="rec-kpis"></div>
+      <div class="card mt-lg" style="padding:var(--s-md)">
+        <div id="rec-table"></div>
+        <div class="grid grid--4 mt-lg" id="rec-totals"></div>
+        <div class="card mt-lg" style="background:var(--tertiary-fixed);padding:var(--s-md);display:none" id="rec-ok"><span class="ms">verified</span> Caja Cuadrada · Ver detalles del inventario</div>
+      </div>`;
+    document.querySelector('#rec-kpis').innerHTML = [
+      KpiCard.build({ icon: 'payments', label: 'Efectivo en caja', value: '$0', variant: 'primary', delta: '+12%', deltaDir: 'up' }),
+      KpiCard.build({ icon: 'smartphone', label: 'Recaudo Nequi', value: '$0', variant: 'secondary' }),
+      KpiCard.build({ icon: 'account_balance', label: 'Bancolombia', value: '$0', variant: 'filled' }),
+      KpiCard.build({ icon: 'monetization_on', label: 'Total recaudado', value: '$0', variant: 'filled' }),
+    ].join('');
+    table = DataTable.build({
+      mount: container.querySelector('#rec-table'), loading: true, pageSize: 100,
+      columns: [
+        { key: 'tipo', label: 'Tipo', render: v => `<span class="chip" style="text-transform:uppercase">${v || ''}</span>` },
+        { key: 'cliente', label: 'Cliente' },
+        { key: 'subtotal', label: 'Subtotal', align: 'right', get: r => Utils.money(r.subtotal) },
+        { key: 'deuda', label: 'Deuda', align: 'right', get: r => Utils.money(r.deuda), render: v => `<span class="num" style="color:var(--error)">${v === '$0' ? '' : v}</span>` },
+        { key: 'efectivo', label: 'Recibido', align: 'right', get: r => Utils.money(r.efectivo), render: v => `<span class="num bold">${v === '$0' ? '' : v}</span>` },
+        { key: 'nequi', label: 'Nequi', align: 'right', get: r => Utils.money(r.nequi), render: v => `<span class="num bold" style="color:var(--nequi)">${v === '$0' ? '' : v}</span>` },
+        { key: 'bancolombia', label: 'Bancol.', align: 'right', get: r => Utils.money(r.bancolombia), render: v => `<span class="num bold" style="color:var(--bancolombia-blue)">${v === '$0' ? '' : v}</span>` },
+        { key: 'estado', label: 'Estado', render: v => `<span class="badge badge--${v === 'Al Día' ? 'success' : 'error'}">${v || ''}</span>` },
+        { key: 'observacion', label: 'Obs.' },
+      ],
+    });
+    container.querySelector('#rec-new').addEventListener('click', registrarPago);
+    container.querySelector('#rec-print').addEventListener('click', () => window.print());
+    load();
+    kpisLive();
+  }
+  async function kpisLive() {
+    try {
+      const rows = await Services.repos.recaudos.list({ fecha: Utils.todayKey() });
+      const sum = (f) => rows.reduce((s, r) => s + (+r[f] || 0), 0);
+      document.querySelector('#rec-kpis').innerHTML = [
+        KpiCard.build({ icon: 'payments', label: 'Efectivo en caja', value: Utils.money(sum('efectivo')), variant: 'primary', delta: '+12%', deltaDir: 'up' }),
+        KpiCard.build({ icon: 'smartphone', label: 'Recaudo Nequi', value: Utils.money(sum('nequi')), variant: 'secondary' }),
+        KpiCard.build({ icon: 'account_balance', label: 'Bancolombia', value: Utils.money(sum('bancolombia')), variant: 'filled' }),
+        KpiCard.build({ icon: 'monetization_on', label: 'Total recaudado', value: Utils.money(sum('efectivo')+sum('nequi')+sum('bancolombia')+sum('pago_deuda')), variant: 'filled' }),
+      ].join('');
+      document.querySelector('#rec-ok').style.display = Math.abs(sum('faltante')) < 1 ? 'block' : 'none';
+    } catch (_) {}
+  }
+  async function registrarPago() {
+    if (!Auth.can('recaudos', 'create')) return Toast.error('Sin permisos');
+    let clientes = [];
+    try { clientes = await Services.repos.clientes.list({ useCache: false }); } catch (e) { Toast.error('Clientes: ' + e.message); return; }
+    const body = `<div class="field"><label>Cliente</label><select name="cliente_id">${clientes.map(c => `<option value="${c.id}">${c.nombre}</option>`).join('')}</select></div>
+      <div class="grid-form grid-form--3">
+        <div class="field"><label>Efectivo</label><input type="number" name="efectivo" value="0"/></div>
+        <div class="field"><label>Nequi</label><input type="number" name="nequi" value="0"/></div>
+        <div class="field"><label>Bancolombia</label><input type="number" name="bancolombia" value="0"/></div>
+      </div>
+      <div class="field"><label>Observación</label><input type="text" name="observacion"/></div>`;
+    Modal.open({ title: 'Registrar pago de recaudo', body, footer: `<button class="btn btn--ghost" data-close>Cancelar</button><button class="btn btn--primary" id="rp-ok">Guardar</button>` });
+    document.querySelector('#rp-ok').addEventListener('click', async () => {
+      const raw = Form.collect(document.querySelector('.modal__body'));
+      try {
+        await Services.repos.recaudos.create({ ...raw, fecha: Utils.todayKey(), subtotal: (+raw.efectivo||0)+(+raw.nequi||0)+(+raw.bancolombia||0), estado: 'Al Día', usuario_creacion: Auth.getCurrentUser() });
+        Modal.close(); Toast.success('Recaudo registrado'); load(); kpisLive();
+      } catch (e) { Toast.error('Guardar: ' + e.message); }
+    });
+  }
+  return { render };
+})();
+// ===== js\modules\caja.js =====
+/**
+ * caja.js — sesión de caja: apertura, ingresos, egresos, cierre + arqueo.
+ */
+const CajaModule = (() => {
+  let table;
+  async function refresh() {
+    try {
+      const sesion = await Services.call('caja.sesion', { fecha: Utils.todayKey() });
+      renderSesion(sesion?.data || null);
+      const movs = await Services.repos.caja.list({ fecha: Utils.todayKey() });
+      table?.setRows(movs || []);
+      table?.setLoading(false);
+    } catch (e) { Toast.error('Caja: ' + e.message); table.setLoading(false); }
+  }
+  function renderSesion(s) {
+    const host = document.querySelector('#caja-sesion');
+    if (!s) { host.innerHTML = `<div class="card" style="padding:var(--s-md); text-align:center"><p class="muted">No hay caja abierta</p><button class="btn btn--primary" id="caja-abrir"><span class="ms">lock_open</span> Abrir Caja</button></div>`; document.querySelector('#caja-abrir').addEventListener('click', abrir); return; }
+    host.innerHTML = `<div class="grid grid--4">
+      ${KpiCard.build({ icon: 'point_of_sale', label: 'Estado', value: s.estado || 'abierta', variant: 'filled' })}
+      ${KpiCard.build({ icon: 'login', label: 'Apertura', value: Utils.money(s.apertura_monto), variant: 'primary' })}
+      ${KpiCard.build({ icon: 'payments', label: 'Ventas', value: Utils.money(s.total_ventas), variant: 'tertiary' })}
+      ${KpiCard.build({ icon: 'account_balance_wallet', label: 'Esperado', value: Utils.money(s.cierre_monto_esperado), variant: 'secondary' })}
+    </div>`;
+  }
+  function render(container) {
+    container.innerHTML = `
+      <div class="page-head"><div><h1>Caja</h1><div class="subtitle">Sesión del día</div></div>
+        <div class="header__spacer"></div>
+        <button class="btn btn--ghost" id="caja-ingreso"><span class="ms">add</span> Ingreso</button>
+        <button class="btn btn--ghost" id="caja-egreso"><span class="ms">remove</span> Egreso</button>
+        <button class="btn btn--primary" id="caja-cerrar"><span class="ms">lock</span> Cerrar Caja</button>
+      </div>
+      <div id="caja-sesion"></div>
+      <div class="card mt-lg" style="padding:var(--s-md)"><div class="card__title">Movimientos del día</div><div id="caja-table" class="mt-md"></div></div>`;
+    table = DataTable.build({ mount: container.querySelector('#caja-table'), loading: true, pageSize: 100,
+      columns: [
+        { key: 'fecha', label: 'Hora', get: r => Utils.dateTime(r.fecha) },
+        { key: 'tipo', label: 'Tipo', render: v => `<span class="badge badge--${v==='ingreso'?'success':v==='egreso'?'error':'info'}">${v}</span>` },
+        { key: 'subtipo', label: 'Subtipo' },
+        { key: 'descripcion', label: 'Descripción' },
+        { key: 'metodo_pago', label: 'Método' },
+        { key: 'valor', label: 'Valor', align: 'right', get: r => Utils.money(r.valor), render: (v, r) => `<span class="num bold" style="color:var(--${r.tipo==='egreso'?'error':'tertiary'})">${r.tipo==='egreso'?'−':''}${v}</span>` },
+      ] });
+    container.querySelector('#caja-abrir-open')?.addEventListener;
+    container.querySelector('#caja-ingreso').addEventListener('click', () => MovModal('ingreso'));
+    container.querySelector('#caja-egreso').addEventListener('click', () => MovModal('egreso'));
+    container.querySelector('#caja-cerrar').addEventListener('click', cerrar);
+    refresh();
+  }
+  function abrir() {
+    const body = `<div class="field"><label>Fondo inicial (COP)</label><input type="number" name="apertura_monto" value="0" required/></div>`;
+    Modal.open({ title: 'Apertura de caja', body, footer: `<button class="btn btn--ghost" data-close>Cancelar</button><button class="btn btn--primary" id="ab-ok">Abrir</button>` });
+    document.querySelector('#ab-ok').addEventListener('click', async () => {
+      const raw = Form.collect(document.querySelector('.modal__body'));
+      try { await Services.call('caja.abrir', { ...raw, fecha: Utils.todayKey(), usuario: Auth.getCurrentUser() }); Modal.close(); Toast.success('Caja abierta'); refresh(); }
+      catch (e) { Toast.error('Abrir caja: ' + e.message); }
+    });
+  }
+  function MovModal(tipo) {
+    if (!Auth.can('caja', 'movimiento')) return Toast.error('Sin permisos');
+    const body = `<div class="grid-form grid-form--3">
+      <div class="field"><label>Concepto</label><input type="text" name="subtipo" required/></div>
+      <div class="field"><label>Método</label><select name="metodo_pago"><option>Efectivo</option><option>Nequi</option><option>Bancolombia</option></select></div>
+      <div class="field"><label>Valor</label><input type="number" name="valor" required/></div>
+      <div class="field" style="grid-column:span 3"><label>Descripción</label><input type="text" name="descripcion"/></div>
+    </div>`;
+    Modal.open({ title: tipo === 'ingreso' ? 'Nuevo ingreso' : 'Nuevo egreso', body, footer: `<button class="btn btn--ghost" data-close>Cancelar</button><button class="btn btn--primary" id="mv-ok">Registrar</button>` });
+    document.querySelector('#mv-ok').addEventListener('click', async () => {
+      const raw = Form.collect(document.querySelector('.modal__body'));
+      try { await Services.call('caja.movimiento', { ...raw, tipo, fecha: Utils.iso(), usuario: Auth.getCurrentUser() }); Modal.close(); Toast.success('Movimiento registrado'); refresh(); }
+      catch (e) { Toast.error('Movimiento: ' + e.message); }
+    });
+  }
+  async function cerrar() {
+    if (!Auth.can('caja', 'cerrar')) return Toast.error('Sin permisos para cerrar');
+    const body = `<div class="field"><label>Monto contado (COP)</label><input type="number" name="cierre_monto_contado" required/></div>
+      <div class="field"><label>Observación</label><input type="text" name="observacion"/></div>`;
+    Modal.open({ title: 'Cierre y arqueo de caja', body, footer: `<button class="btn btn--ghost" data-close>Cancelar</button><button class="btn btn--primary" id="ce-ok">Cerrar</button>` });
+    document.querySelector('#ce-ok').addEventListener('click', async () => {
+      const raw = Form.collect(document.querySelector('.modal__body'));
+      try { const r = await Services.call('caja.cerrar', { ...raw, fecha: Utils.todayKey(), usuario: Auth.getCurrentUser() }); Modal.close(); Toast.success('Caja cerrada · Diferencia: ' + Utils.money(r?.data?.diferencia || 0)); refresh(); }
+      catch (e) { Toast.error('Cerrar: ' + e.message); }
+    });
+  }
+  return { render };
+})();
+// ===== js\modules\cuentas.js =====
+/**
+ * cuentas.js — cuentas bancarias + transferencias + conciliación.
+ */
+const CuentasModule = (() => {
+  const repo = Services.repos.cuentas;
+  const trRepo = Services.repos.transferencias;
+  const SCHEMA = {
+    grid: 2, fields: [
+      { name: 'id', type: 'hidden' },
+      { name: 'nombre', label: 'Nombre de cuenta', required: true, span: 2 },
+      { name: 'banco', label: 'Banco' },
+      { name: 'tipo', label: 'Tipo', type: 'select', options: ['Ahorros','Corriente','Nequi','Daviplata'].map(t => ({ value: t, label: t })) },
+      { name: 'numero', label: 'Número de cuenta' },
+      { name: 'saldo_inicial', label: 'Saldo inicial (COP)', type: 'number' },
+      { name: 'estado', label: 'Estado', type: 'select', options: [{ value: 'activa', label: 'Activa' }, { value: 'inactiva', label: 'Inactiva' }] },
+    ],
+  };
+  const columns = [
+    { key: 'nombre', label: 'Cuenta', render: (v, r) => `<div><b>${v}</b><div class="muted">${r.banco || ''} · ${r.numero || ''}</div></div>` },
+    { key: 'banco', label: 'Banco' },
+    { key: 'tipo', label: 'Tipo', render: v => `<span class="badge badge--info">${v}</span>` },
+    { key: 'saldo', label: 'Saldo', align: 'right', get: r => Utils.money(r.saldo ?? r.saldo_inicial), render: v => `<span class="num bold">${v}</span>` },
+    { key: 'estado', label: 'Estado', render: v => `<span class="badge badge--${v === 'activa' ? 'success' : 'muted'}">${v}</span>` },
+    { key: '_a', label: 'Acciones', render: () => `<button class="btn btn--ghost btn--sm" data-act="edit">Editar</button> <button class="btn btn--ghost btn--sm" data-act="transfer">Transferir</button> <button class="btn btn--ghost btn--sm" data-act="hist">Historial</button> <button class="btn btn--danger btn--sm" data-act="del">Eliminar</button>` },
+  ];
+  return CrudPage.build({
+    repo, title: 'Cuentas Bancarias', schema: SCHEMA, columns,
+    newButton: 'Nueva Cuenta', searchPlaceholder: 'Buscar cuentas…',
+    kpis: rows => [
+      KpiCard.build({ icon: 'account_balance', label: 'Total cuentas', value: rows.length, variant: 'primary' }),
+      KpiCard.build({ icon: 'monetization_on', label: 'Saldo total', value: Utils.money(rows.reduce((s, r) => s + (+r.saldo || 0), 0)), variant: 'filled' }),
+      KpiCard.build({ icon: 'check_circle', label: 'Activas', value: rows.filter(r => r.estado === 'activa').length, variant: 'tertiary' }),
+      KpiCard.build({ icon: 'sync_alt', label: 'Transferencias', value: rows.length, variant: 'secondary', sub: 'Cuenta/s' }),
+    ],
+    onAction: async (act, row) => {
+      if (act === 'transfer') return transfer(row);
+      if (act === 'hist') return historial(row);
+    },
+  });
+
+  function transfer(cuenta) {
+    if (!Auth.can('cuentas', 'transferir')) return Toast.error('Sin permisos');
+    const body = `<div class="field"><label>Cuenta destino</label><select name="destino_id" id="tr-dest"></select></div>
+      <div class="field"><label>Valor</label><input type="number" name="valor" min="1" required/></div>
+      <div class="field"><label>Descripción</label><input type="text" name="descripcion"/></div>`;
+    Modal.open({ title: `Transferir desde ${cuenta.nombre}`, body, footer: `<button class="btn btn--ghost" data-close>Cancelar</button><button class="btn btn--primary" id="tr-ok">Transferir</button>` });
+    Services.repos.cuentas.list().then(cs => {
+      const sel = document.querySelector('#tr-dest');
+      sel.innerHTML = cs.filter(c => c.id !== cuenta.id).map(c => `<option value="${c.id}">${c.nombre}</option>`).join('');
+    });
+    document.querySelector('#tr-ok').addEventListener('click', async () => {
+      const raw = Form.collect(document.querySelector('.modal__body'));
+      try {
+        await Services.call('cuentas.transferir', { origen_id: cuenta.id, ...raw, usuario: Auth.getCurrentUser() });
+        Modal.close(); Toast.success('Transferencia realizada');
+        EventBus.emit('repo:cuentas_bancarias:invalidate');
+      } catch (e) { Toast.error('Transferencia: ' + e.message); }
+    });
+  }
+  async function historial(cuenta) {
+    try {
+      const list = await trRepo.list({ cuenta_id: cuenta.id });
+      Modal.open({
+        title: `Historial de transferencias — ${cuenta.nombre}`,
+        body: `<table class="data"><thead><tr><th>Fecha</th><th>Destino</th><th class="right">Valor</th><th class="right">Saldo</th></tr></thead>
+          <tbody>${(list || []).map(t => `<tr><td>${Utils.date(t.fecha)}</td><td>${t.destino || ''}</td><td class="num">${Utils.money(t.valor)}</td><td class="num">${Utils.money(t.saldo)}</td></tr>`).join('') || '<tr><td colspan="4" class="empty">Sin transferencias</td></tr>'}</tbody></table>`,
+        footer: `<button class="btn btn--ghost" data-close>Cerrar</button>`,
+      });
+    } catch (e) { Toast.error('Historial: ' + e.message); }
+  }
+})();
+// ===== js\modules\gastos.js =====
+/**
+ * gastos.js — registro de gastos con categorías + reporte simple.
+ */
+const GastosModule = (() => {
+  const repo = Services.repos.gastos;
+  const SCHEMA = {
+    grid: 3, fields: [
+      { name: 'id', type: 'hidden' },
+      { name: 'fecha', label: 'Fecha', type: 'date', required: true },
+      { name: 'categoria', label: 'Categoría', type: 'select', options: ['Servicios','Arriendo','Nómina','Insumos','Mantenimiento','Transporte','Impuestos','Otros'].map(c => ({ value: c, label: c })) },
+      { name: 'descripcion', label: 'Descripción', span: 2 },
+      { name: 'valor', label: 'Valor (COP)', type: 'number', required: true },
+      { name: 'metodo_pago', label: 'Método', type: 'select', options: ['Efectivo','Transferencia','Tarjeta','Cheque'].map(c => ({ value: c, label: c })) },
+      { name: 'cuenta_id', label: 'Cuenta origen', type: 'select', options: [{ value: '', label: '— Caja —' }] },
+      { name: 'estado', label: 'Estado', type: 'select', options: [{ value: 'pagado', label: 'Pagado' }, { value: 'pendiente', label: 'Pendiente' }] },
+    ],
+  };
+  const columns = [
+    { key: 'fecha', label: 'Fecha', get: r => Utils.date(r.fecha) },
+    { key: 'categoria', label: 'Categoría', render: v => `<span class="badge badge--info">${v || ''}</span>` },
+    { key: 'descripcion', label: 'Descripción' },
+    { key: 'metodo_pago', label: 'Método' },
+    { key: 'valor', label: 'Valor', align: 'right', get: r => Utils.money(r.valor) },
+    { key: 'estado', label: 'Estado', render: v => `<span class="badge badge--${v === 'pagado' ? 'success' : 'warn'}">${v}</span>` },
+    { key: '_a', label: 'Acciones', render: () => `<button class="btn btn--ghost btn--sm" data-act="edit">Editar</button> <button class="btn btn--danger btn--sm" data-act="del">Eliminar</button>` },
+  ];
+  const mod = CrudPage.build({
+    repo, title: 'Gastos', schema: SCHEMA, columns,
+    newButton: 'Registrar Gasto', searchPlaceholder: 'Buscar gastos…',
+    kpis: rows => {
+      const hoy = rows.filter(r => r.fecha === Utils.todayKey());
+      return [
+        KpiCard.build({ icon: 'receipt_long', label: 'Gastos del día', value: Utils.money(hoy.reduce((s, r) => s + (+r.valor || 0), 0)), variant: 'error' }),
+        KpiCard.build({ icon: 'account_balance', label: 'Total mes', value: Utils.money(rows.filter(r => (r.fecha || '').slice(0, 7) === Utils.todayKey().slice(0, 7)).reduce((s, r) => s + (+r.valor || 0), 0)), variant: 'primary' }),
+        KpiCard.build({ icon: 'pending', label: 'Pendientes', value: rows.filter(r => r.estado === 'pendiente').length, variant: 'secondary' }),
+        KpiCard.build({ icon: 'category', label: 'Categorías', value: new Set(rows.map(r => r.categoria)).size, variant: 'filled' }),
+      ];
+    },
+  });
+  Services.repos.cuentas.list().then(cs => {
+    const f = SCHEMA.fields.find(f => f.name === 'cuenta_id');
+    f.options = [{ value: '', label: '— Caja —' }, ...cs.map(c => ({ value: c.id || c.nombre, label: c.nombre }))];
+  }).catch(() => {});
+  return mod;
+})();
+// ===== js\modules\reportes.js =====
+/**
+ * reportes.js — analítica: ventas, producción, inventario, utilidades, flujo de caja + exportación.
+ */
+const ReportesModule = (() => {
+  const TIPOS = [
+    { key: 'ventas', label: 'Ventas', color: 'primary', icon: 'sales' },
+    { key: 'produccion', label: 'Producción', color: 'tertiary', icon: 'bakery_dining' },
+    { key: 'inventario', label: 'Inventario', color: 'secondary', icon: 'inventory_2' },
+    { key: 'utilidades', label: 'Utilidades', color: 'filled', icon: 'monetization_on' },
+    { key: 'flujo_caja', label: 'Flujo de caja', color: 'primary', icon: 'account_balance' },
+    { key: 'gastos', label: 'Gastos', color: 'error', icon: 'receipt_long' },
+  ];
+  function render(container) {
+    container.innerHTML = `
+      <div class="page-head"><div><h1>Reportes y Analítica</h1><div class="subtitle">Consolidado por periodo</div></div>
+        <div class="header__spacer"></div>
+        <input type="date" id="rep-from" value="" style="padding:6px 10px;border-radius:var(--r-lg);border:1px solid var(--outline-variant)"/>
+        <input type="date" id="rep-to" value="" style="padding:6px 10px;border-radius:var(--r-lg);border:1px solid var(--outline-variant)"/>
+        <button class="btn btn--primary" id="rep-gen"><span class="ms" style="font-size:18px">analytics</span> Generar</button>
+        <button class="btn btn--ghost" id="rep-excel"><span class="ms" style="font-size:18px">sim_card_download</span> Excel</button>
+      </div>
+      <div class="flex" style="gap:8px;flex-wrap:wrap;margin-bottom:var(--s-md)">${TIPOS.map((t, i) => `<button class="chip ${i === 0 ? 'is-active' : ''}" data-rep="${t.key}">${t.label}</button>`).join('')}</div>
+      <div class="card" style="padding:var(--s-md)"><div id="rep-kpis" class="grid grid--4"></div><div id="rep-table" class="mt-lg"></div></div>`;
+    document.querySelectorAll('[data-rep]').forEach(b => b.addEventListener('click', () => {
+      document.querySelectorAll('[data-rep]').forEach(x => x.classList.remove('is-active')); b.classList.add('is-active');
+      generar(b.dataset.rep);
+    }));
+    container.querySelector('#rep-gen').addEventListener('click', () => generar(document.querySelector('[data-rep].is-active').dataset.rep));
+    container.querySelector('#rep-excel').addEventListener('click', exportExcel);
+    const now = new Date();
+    document.querySelector('#rep-from').value = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
+    document.querySelector('#rep-to').value = Utils.todayKey();
+    generar('ventas');
+  }
+  async function generar(tipo) {
+    const host = document.querySelector('#rep-table'); host.innerHTML = '<div class="skeleton" style="height:80px"></div>';
+    try {
+      const r = await Services.call('reportes.generar', { tipo, desde: document.querySelector('#rep-from').value, hasta: document.querySelector('#rep-to').value });
+      renderK(r?.data || {});
+      host.innerHTML = `<table class="data"><thead><tr><th>Periodo</th><th>Métrica</th><th class="right">Valor</th></tr></thead><tbody>${(r?.data?.rows||[]).map(x => `<tr><td>${x.periodo}</td><td>${x.metrica}</td><td class="num">${Utils.money(x.valor)}</td></tr>`).join('') || '<tr><td colspan="3" class="empty">Sin datos</td></tr>'}</tbody></table>`;
+    } catch (e) { Toast.error('Reporte: ' + e.message); host.innerHTML = ''; }
+  }
+  function renderK(d) {
+    const k = d.kpis || {};
+    document.querySelector('#rep-kpis').innerHTML = Object.entries(k).map(([l, v]) => KpiCard.build({ icon: 'analytics', label: l, value: typeof v === 'number' ? Utils.money(v) : v, variant: 'primary' })).join('') || '<div class="muted">Sin KPIs</div>';
+  }
+  async function exportExcel() {
+    try {
+      const rows = document.querySelectorAll('#rep-table tbody tr');
+      if (!rows.length) return Toast.info('Genera primero un reporte');
+      const csv = Utils.toCSV([...rows].map(tr => ({ periodo: tr.children[0].textContent, metrica: tr.children[1].textContent, valor: tr.children[2].textContent })),
+        [{ key: 'periodo', label: 'Periodo' }, { key: 'metrica', label: 'Métrica' }, { key: 'valor', label: 'Valor' }]);
+      Utils.download('reporte_' + Utils.todayKey() + '.csv', csv, 'text/csv');
+      Toast.success('Exportado a CSV (excel compatible)');
+    } catch (e) { Toast.error('Exportar: ' + e.message); }
+  }
+  return { render };
+})();
+// ===== js\modules\logistica.js =====
+/**
+ * logistica.js — rutas y reparto (mapa placeholder, repartidores, pedidos en ruta).
+ */
+const LogisticaModule = (() => {
+  let table;
+  async function load() {
+    try {
+      const rows = await Services.repos.pedidos.list({ estado: 'en_ruta' });
+      table.setRows(rows || []);
+      table.setLoading(false);
+    } catch (e) { Toast.error('Logística: ' + e.message); table.setLoading(false); }
+  }
+  function render(container) {
+    container.innerHTML = `
+      <div class="page-head"><div><h1>Logística y Reparto</h1><div class="subtitle">Gestión de rutas en tiempo real</div></div>
+        <div class="header__spacer"></div>
+        <button class="btn btn--ghost" id="log-filtrar"><span class="ms" style="font-size:18px">filter_list</span> Filtrar</button>
+        <button class="btn btn--primary" id="log-asignar"><span class="ms" style="font-size:18px">add_road</span> Asignar Ruta</button>
+      </div>
+      <div class="grid grid--4">
+        ${KpiCard.build({ icon: 'groups', label: 'Repartidores activos', value: '14/18', variant: 'tertiary', delta:'+3 hoy', deltaDir:'up' })}
+        ${KpiCard.build({ icon: 'check_circle', label: 'Pedidos entregados', value: '128 / 150', variant: 'primary', delta:'85%', deltaDir:'up' })}
+        ${KpiCard.build({ icon: 'timer', label: 'Tiempo promedio', value: '42 min', variant: 'secondary', delta:'+4 min', deltaDir:'down' })}
+        ${KpiCard.build({ icon: 'star', label: 'Satisfacción', value: '4.82', variant: 'filled', sub:'Feedback excelente' })}
+      </div>
+      <div class="grid grid--2 mt-lg">
+        <div class="card" style="height:480px; background:var(--surface-container); display:grid; place-items:center">
+          <div style="text-align:center"><span class="ms" style="font-size:60px;color:var(--on-surface-variant)">map</span><div class="muted mt-md">Visualización de rutas (integración de mapa pendiente)</div></div>
+        </div>
+        <div class="card" style="padding:var(--s-md)">
+          <div class="card__title">Repartidores</div>
+          <div class="muted mt-md">Lista de repartidores en línea</div>
+          <div class="mt-md" id="log-rep"><div class="empty">Cargando…</div></div>
+        </div>
+      </div>
+      <div class="card mt-lg" style="padding:var(--s-md)"><div class="card__title">Pedidos en ruta</div><div id="log-table" class="mt-md"></div></div>`;
+    table = DataTable.build({ mount: container.querySelector('#log-table'), loading: true, pageSize: 50,
+      columns: [
+        { key: 'folio', label: 'Pedido #', render: v => `<span class="font-code-mono">${v || ''}</span>` },
+        { key: 'cliente_id', label: 'Cliente' },
+        { key: 'direccion', label: 'Dirección' },
+        { key: 'total', label: 'Valor', align: 'right', get: r => Utils.money(r.total) },
+        { key: 'estado', label: 'Estado', render: v => `<span class="badge badge--${v==='entregado'?'success':v==='en_ruta'?'info':'warn'}">${v}</span>` },
+        { key: '_a', label: 'Acción', render: () => `<button class="icon-btn"><span class="ms">more_vert</span></button>` },
+      ] });
+    container.querySelector('#log-asignar').addEventListener('click', () => Toast.info('Asignar ruta: selecciona pedidos en el listado'));
+    container.querySelector('#log-filtrar').addEventListener('click', () => Toast.info('Filtros de ruta pendientes'));
+    load();
+  }
+  return { render };
+})();
+// ===== js\modules\configuracion.js =====
+/**
+ * configuracion.js — Usuarios, Roles, Permisos, Preferencias + Datos fiscales de facturación.
+ */
+const ConfiguracionModule = (() => {
+  function render(container) {
+    container.innerHTML = `
+      <div class="page-head"><div><h1>Configuración</h1><div class="subtitle">Usuarios · Roles · Preferencias</div></div></div>
+      <div class="flex" style="gap:8px;margin-bottom:var(--s-lg)">${['usuarios','roles','permisos','preferencias','facturacion'].map((t,i)=>`<button class="chip ${i===0?'is-active':''}" data-tab="${t}">${t.charAt(0).toUpperCase()+t.slice(1)}</button>`).join('')}</div>
+      <div id="config-body"></div>`;
+    container.querySelectorAll('[data-tab]').forEach(b => b.addEventListener('click', () => {
+      container.querySelectorAll('[data-tab]').forEach(x => x.classList.remove('is-active')); b.classList.add('is-active');
+      TABS[b.dataset.tab]();
+    }));
+    TABS.usuarios();
+  }
+  let table;
+  const TABS = {
+    async usuarios() {
+      const body = document.querySelector('#config-body');
+      body.innerHTML = `<div class="flex-between mb"><button class="btn btn--primary" id="cfg-new-user"><span class="ms">add</span> Nuevo usuario</button></div><div id="cfg-users-table"></div>`;
+      table = DataTable.build({ mount: body.querySelector('#cfg-users-table'), loading: true, columns: [
+        { key: 'nombre', label: 'Nombre' },
+        { key: 'usuario', label: 'Usuario', render: v => `<span class="font-code-mono">${v}</span>` },
+        { key: 'email', label: 'Email' },
+        { key: 'rol', label: 'Rol', render: v => `<span class="badge badge--info">${v}</span>` },
+        { key: 'estado', label: 'Estado', render: v => `<span class="badge badge--${v==='activo'?'success':'muted'}">${v}</span>` },
+        { key: '_a', label: '', render: () => `<button class="btn btn--ghost btn--sm" data-act="edit">Editar</button> <button class="btn btn--danger btn--sm" data-act="del">Eliminar</button>` },
+      ], onRowClick: () => {} });
+      try { const rows = await Services.repos.usuarios.list(); table.setRows(rows); table.setLoading(false); }
+      catch (e) { Toast.error('Usuarios: ' + e.message); table.setLoading(false); }
+      body.querySelector('#cfg-new-user').addEventListener('click', () => userForm());
+      body.querySelector('#cfg-users-table').addEventListener('click', async (e) => {
+        const b = e.target.closest('[data-act]'); if (!b) return; const id = b.closest('tr')?.dataset.id; if (!id) return;
+        if (b.dataset.act === 'edit') { try { const all = await Services.repos.usuarios.list({ useCache:false }); const u = all.find(x=>String(x.id)===String(id)); if (u) userForm(u); } catch (_) {} }
+        else if (b.dataset.act === 'del') { const ok = await Modal.confirm({ title:'Eliminar usuario', message:'¿Eliminar este usuario?', danger:true, confirmText:'Eliminar' }); if (!ok) return; try { await Services.repos.usuarios.remove(id); Toast.success('Eliminado'); TABS.usuarios(); } catch (e) { Toast.error(e.message); } }
+      });
+    },
+    roles() {
+      const body = document.querySelector('#config-body');
+      const rows = Object.entries(PERMISSIONS.ROLES).map(([r, perms]) => `<tr>
+        <td><b>${r}</b></td><td>${Object.keys(perms).length} módulos</td>
+        <td>${Object.entries(perms).filter(([,a])=>a.includes('create')||a.includes('update')||a.includes('delete')).map(([m])=>m).join(', ')||'—'}</td>
+        <td><button class="btn btn--ghost btn--sm" data-role="${r}">Ver</button></td></tr>`).join('');
+      body.innerHTML = `<table class="data"><thead><tr><th>Rol</th><th>Alcance</th><th>Permisos de escritura</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
+      body.querySelectorAll('[data-role]').forEach(b => b.addEventListener('click', () => {
+        const p = PERMISSIONS.ROLES[b.dataset.role];
+        const body2 = Object.entries(p).map(([m, acts]) => `<div class="flex-between" style="padding:6px 0;border-bottom:1px solid var(--outline-variant)"><b>${m}</b><span>${acts.join(', ')}</span></div>`).join('');
+        Modal.open({ title: `Permisos rol: ${b.dataset.role}`, body: body2, footer: `<button class="btn btn--ghost" data-close>Cerrar</button>` });
+      }));
+    },
+    permisos() { TABS.roles(); },
+    preferencias() {
+      const body = document.querySelector('#config-body');
+      const c = CONFIG.COMPANY_DEFAULTS;
+      body.innerHTML = `<div class="card" style="padding:var(--s-lg)"><div class="card__title">Preferencias de la empresa</div>
+        <div class="grid-form mt-md">
+          <div class="field"><label>Nombre de la empresa</label><input id="pf-nombre" value="${c.razon_social}"/></div>
+          <div class="field"><label>NIT</label><input id="pf-nit" value="${c.nit}"/></div>
+          <div class="field"><label>Teléfono</label><input id="pf-tel" value="${c.telefono}"/></div>
+          <div class="field"><label>Dirección</label><input id="pf-dir" value="${c.direccion}"/></div>
+        </div><button class="btn btn--primary mt-md" id="pf-save">Guardar</button></div>`;
+      body.querySelector('#pf-save').addEventListener('click', async () => {
+        const data = { nombre: body.querySelector('#pf-nombre').value, nit: body.querySelector('#pf-nit').value, telefono: body.querySelector('#pf-tel').value, direccion: body.querySelector('#pf-dir').value };
+        try { await Services.repos.config.update('empresa', data); Toast.success('Preferencias guardadas'); }
+        catch (e) { Toast.error('Guardar: ' + e.message); }
+      });
+    },
+    facturacion() {
+      const body = document.querySelector('#config-body');
+      body.innerHTML = `<div class="card" style="padding:var(--s-lg)"><div class="card__title">Datos fiscales de facturación</div>
+        <div class="grid-form mt-md">
+          <div class="field"><label>Razón Social</label><input id="fc-razon"/></div>
+          <div class="field"><label>NIT/RUT</label><input id="fc-nit"/></div>
+          <div class="field" style="grid-column:span 2"><label>Resolución DIAN</label><textarea id="fc-res"></textarea></div>
+          <div class="field"><label>Dirección</label><input id="fc-dir"/></div>
+          <div class="field"><label>Teléfono</label><input id="fc-tel"/></div>
+        </div><div class="bg-surface-container-low" style="font-family:var(--font-mono);padding:16px;border-radius:var(--r-md);margin-top:var(--s-lg);max-width:320px"><b id="pv-razon"></b><br/>NIT: <span id="pv-nit"></span><br/>Tel: <span id="pv-tel"></span></div>
+        <button class="btn btn--primary mt-md" id="fc-save">Guardar</button></div>`;
+      ['razon','nit','tel','dir'].forEach(k => { const el = body.querySelector('#fc-' + (k==='tel'?'tel':k)); el?.addEventListener('input', () => body.querySelector('#pv-' + (k==='razon'?'razon':k==='dir'?'dir':k)).textContent = el.value); });
+      body.querySelector('#fc-save').addEventListener('click', async () => {
+        const data = { razon_social: body.querySelector('#fc-razon').value, nit: body.querySelector('#fc-nit').value, resolucion: body.querySelector('#fc-res').value, direccion: body.querySelector('#fc-dir').value, telefono: body.querySelector('#fc-tel').value };
+        try { await Services.repos.config.update('facturacion', data); Toast.success('Datos guardados'); } catch (e) { Toast.error(e.message); }
+      });
+    },
+  };
+  function userForm(u = {}) {
+    const body = Form.build({ grid: 2, fields: [
+      { name: 'id', type: 'hidden' },
+      { name: 'nombre', label: 'Nombre', required: true, span: 2 },
+      { name: 'usuario', label: 'Usuario', required: true },
+      { name: 'email', label: 'Email', type: 'email' },
+      { name: 'password', label: u.id ? 'Nueva contraseña (opcional)' : 'Contraseña', type: 'password' },
+      { name: 'rol', label: 'Rol', type: 'select', options: Object.keys(PERMISSIONS.ROLES).map(r => ({ value: r, label: r })) },
+      { name: 'estado', label: 'Estado', type: 'select', options: [{ value: 'activo', label: 'Activo' }, { value: 'inactivo', label: 'Inactivo' }] },
+    ]}, u);
+    Modal.open({ title: u.id ? 'Editar usuario' : 'Nuevo usuario', body, footer: `<button class="btn btn--ghost" data-close>Cancelar</button><button class="btn btn--primary" id="us-ok">Guardar</button>` });
+    document.querySelector('#us-ok').addEventListener('click', async () => {
+      const raw = Form.collect(document.querySelector('.modal__body'));
+      try { if (raw.id) { await Services.repos.usuarios.update(raw.id, raw); } else { await Services.repos.usuarios.create(raw); } Modal.close(); Toast.success('Guardado'); TABS.usuarios(); }
+      catch (e) { Toast.error('Guardar: ' + e.message); }
+    });
+  }
+  return { render };
+})();
+// ===== js\modules\auditoria.js =====
+/**
+ * auditoria.js — registro completo de cambios.
+ */
+const AuditoriaModule = (() => {
+  let table;
+  async function load() {
+    try {
+      const rows = await Services.repos.auditoria.list({});
+      table.setRows(rows || []);
+      table.setLoading(false);
+    } catch (e) { Toast.error('Auditoría: ' + e.message); table.setLoading(false); }
+  }
+  function render(container) {
+    container.innerHTML = `
+      <div class="page-head"><div><h1>Auditoría</h1><div class="subtitle">Trazabilidad de cambios</div></div></div>
+      <div class="card" style="padding:var(--s-md)">
+        <div class="search" style="margin-bottom:var(--s-md)"><span class="ms">search</span><input type="search" id="aud-search" placeholder="Buscar por usuario, módulo o acción…"/></div>
+        <div id="aud-table"></div>
+      </div>`;
+    table = DataTable.build({ mount: container.querySelector('#aud-table'), loading: true, pageSize: 100,
+      columns: [
+        { key: 'fecha', label: 'Fecha', get: r => Utils.dateTime(r.fecha) },
+        { key: 'usuario', label: 'Usuario' },
+        { key: 'modulo', label: 'Módulo', render: v => `<span class="badge badge--info">${v}</span>` },
+        { key: 'accion', label: 'Acción' },
+        { key: 'detalle', label: 'Detalle', render: v => `<code style="font-family:var(--font-mono);font-size:11px;color:var(--on-surface-variant)">${typeof v === 'object' ? JSON.stringify(v) : v || ''}</code>` },
+      ] });
+    container.querySelector('#aud-search').addEventListener('input', Utils.debounce(e => table.setSearch(e.target.value), CONFIG.DEBOUNCE_SEARCH));
+    load();
+  }
+  return { render };
+})();
+// ===== js\app.js =====
+/**
+ * app.js — bootstrap: registro de rutas (lazy loading), montaje de shell, arranque.
+ */
+(function bootstrap() {
+  'use strict';
+
+  document.addEventListener('DOMContentLoaded', init);
+
+  async function init() {
+    Auth.init();
+    Sidebar.mount(document.querySelector('.app-shell'));
+    Header.mount(document.querySelector('.main'));
+    const view = document.getElementById('app-view');
+    Router.init(view, guard);
+
+    Router.register('login', () => Promise.resolve(LoginModule));
+    Router.register('logout', () => Promise.resolve({ async render() { await Auth.logout('manual'); } }));
+    Router.register('dashboard', () => promiseModule(() => DashboardModule));
+    Router.register('clientes', () => promiseModule(() => ClientesModule));
+    Router.register('pedidos', () => promiseModule(() => PedidosModule));
+    Router.register('produccion', () => promiseModule(() => ProduccionModule));
+    Router.register('inventario', () => promiseModule(() => InventarioModule));
+    Router.register('compras', () => promiseModule(() => ComprasModule));
+    Router.register('recaudos', () => promiseModule(() => RecaudosModule));
+    Router.register('caja', () => promiseModule(() => CajaModule));
+    Router.register('cuentas', () => promiseModule(() => CuentasModule));
+    Router.register('gastos', () => promiseModule(() => GastosModule));
+    Router.register('reportes', () => promiseModule(() => ReportesModule));
+    Router.register('logistica', () => promiseModule(() => LogisticaModule));
+    Router.register('configuracion', () => promiseModule(() => ConfiguracionModule));
+    Router.register('auditoria', () => promiseModule(() => AuditoriaModule));
+
+    const unsubSearch = EventBus.on('global:search', (q) => EventBus.emit('route:global-search', q));
+
+    EventBus.on('route:before', ({ path }) => Audit.log('nav', 'view', { path }));
+
+    // Sincronización inteligente (polling selectivo, no invasivo)
+    startPolling();
+
+    if (!Auth.isAuthenticated()) Router.navigate('login');
+    else if (!location.hash) Router.navigate('dashboard');
+    else Router.render();
+  }
+
+  function guard(path) {
+    const open = ['login'];
+    if (open.includes(path)) return true;
+    return Auth.isAuthenticated();
+  }
+
+  function promiseModule(resolve) {
+    // Lazy: aquí se podrían hacer imports dinámicos si los módulos se separan en archivos.
+    return Promise.resolve(resolve()).then(m => m || { render() {} });
+  }
+
+  function startPolling() {
+    let t;
+    const tick = async () => {
+      if (!Auth.isAuthenticated()) return;
+      try { const m = await Services.meta().catch(() => null); if (m && m.data) EventBus.emit('sync:tick', m.data); }
+      catch (_) {}
+      t = setTimeout(tick, CONFIG.POLLING_INTERVAL);
+    };
+    t = setTimeout(tick, CONFIG.POLLING_INTERVAL);
+    window.addEventListener('beforeunload', () => clearTimeout(t));
+  }
+})();
+
+/**
+ * LoginModule — pantalla de login (entrada pública).
+ */
+const LoginModule = (() => {
+  let failed = 0, lockUntil = 0;
+  function render(container) {
+    document.querySelector('.sidebar')?.classList.add('is-hidden');
+    document.querySelector('.header')?.classList.add('is-hidden');
+    container.innerHTML = `
+      <div style="min-height:100vh; display:grid; place-items:center; background:linear-gradient(135deg, var(--primary), var(--primary-container))">
+        <div class="card" style="width:min(420px,100%); padding:var(--s-xl)">
+          <div style="text-align:center;margin-bottom:var(--s-lg)">
+            <div class="sidebar__brand-icon" style="margin:0 auto var(--s-md)"><span class="ms">bakery_dining</span></div>
+            <h1 style="font-size:24px">${CONFIG.APP_NAME}</h1>
+            <div class="muted">Versión ${CONFIG.VERSION}</div>
+          </div>
+          <form id="login-form">
+            <div class="field"><label>Usuario</label><input name="username" required autofocus/></div>
+            <div class="field"><label>Contraseña</label><input name="password" type="password" required/></div>
+            <button class="btn btn--primary btn--block" type="submit"><span class="ms">login</span> Ingresar</button>
+            <div class="center muted mt-md" id="login-msg"></div>
+          </form>
+        </div>
+      </div>`;
+    document.querySelector('#login-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (Date.now() < lockUntil) { document.querySelector('#login-msg').textContent = 'Bloqueado. Espera unos segundos.'; return; }
+      const fd = new FormData(e.target);
+      try {
+        await Auth.login(fd.get('username'), fd.get('password'));
+        failed = 0;
+        ContainerRestore();
+        Router.navigate('dashboard');
+      } catch (err) {
+        failed++;
+        if (failed >= 5) { lockUntil = Date.now() + 30000; document.querySelector('#login-msg').textContent = 'Demasiados intentos. Bloqueado 30s.'; }
+        else document.querySelector('#login-msg').textContent = 'Credenciales inválidas (' + err.message + ')';
+        Toast.error('Acceso denegado');
+      }
+    });
+  }
+  function ContainerRestore() {
+    document.querySelector('.sidebar')?.classList.remove('is-hidden');
+    document.querySelector('.header')?.classList.remove('is-hidden');
+  }
+  return { render, destroy() { ContainerRestore(); } };
+})();
+  </script>
+</body>
+</html>
