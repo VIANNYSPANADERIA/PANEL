@@ -434,7 +434,7 @@ const CONFIG = Object.freeze({
   TOKEN_KEY: "erp_token",
   CURRENCY: "COP",
   LOCALE: "es-CO",
-  REQUEST_TIMEOUT: 30000,
+  REQUEST_TIMEOUT: 12000,
   CACHE_TTL: 60000,
   DEBOUNCE_SEARCH: 300,
   THROTTLE_SAVE: 800,
@@ -718,14 +718,14 @@ const Api = (() => {
       if (ct.includes('application/json')) payload = await res.json();
       else { const txt = await res.text(); try { payload = JSON.parse(txt); } catch (_) { payload = { ok: false, raw: txt, code: res.status }; } }
 
-      if (res.status === 401) { Auth?.logout?.('Sesión expirada'); throw new ApiError('No autorizado: ' + (payload.message || res.status), 401, payload); }
-      if (res.status === 403) throw new ApiError('Sin permisos: ' + (payload.message || ''), 403, payload);
+      if (res.status === 401) { throw new ApiError('No autorizado', 401, payload); }
+      if (res.status === 403) throw new ApiError('Sin permisos', 403, payload);
       if (!res.ok) throw new ApiError(payload.message || ('HTTP ' + res.status), res.status, payload);
       return payload;
     } catch (e) {
       if (e instanceof ApiError) throw e;
       if (e.name === 'AbortError') throw new ApiError('Tiempo de espera agotado', 'TIMEOUT');
-      throw new ApiError('Error de red: ' + e.message, 'NETWORK', { cause: e });
+      throw new ApiError('Error de red', 'NETWORK', { cause: e });
     } finally {
       clearTimeout(t);
     }
@@ -936,19 +936,29 @@ class Repository {
   async list({ useCache = true, ...q } = {}) {
     const key = this.cacheKey + ':list' + (Object.keys(q).length ? ':' + Utils.hash(JSON.stringify(q)) : '');
     if (useCache) { const c = CacheManager.get(key); if (c) return c; }
-    const res = await this.api.list(q);
-    const data = res.data ?? res.items ?? res ?? [];
-    if (useCache) CacheManager.set(key, data, this.cacheTtl);
-    return data;
+    try {
+      const res = await this.api.list(q);
+      const data = Array.isArray(res) ? res : (res.data ?? res.items ?? []);
+      if (useCache) CacheManager.set(key, data, this.cacheTtl);
+      return data;
+    } catch (e) {
+      console.warn('Repository.list falló (' + this.resource + '):', e.message);
+      return [];
+    }
   }
 
   async get(id, { useCache = true } = {}) {
     const key = this.cacheKey + ':' + id;
     if (useCache) { const c = CacheManager.get(key); if (c) return c; }
-    const res = await this.api.get(id);
-    const data = res.data ?? res;
-    if (useCache) CacheManager.set(key, data, this.cacheTtl);
-    return data;
+    try {
+      const res = await this.api.get(id);
+      const data = res.data ?? res;
+      if (useCache) CacheManager.set(key, data, this.cacheTtl);
+      return data;
+    } catch (e) {
+      console.warn('Repository.get falló (' + this.resource + '):', e.message);
+      return null;
+    }
   }
 
   async create(payload) {
@@ -1030,13 +1040,15 @@ const Services = (() => {
     auditoria:    new Repository('auditoria'),
     reportes:     new Repository('reportes_cache'),
   };
-
-  /** Helpers de servicios compartidos. */
-  function call(action, payload) {
-    return Api.post('/action/' + action, payload);
+/** Helpers de servicios compartidos. */
+  async function call(action, payload) {
+    try { return await Api.post('/action/' + action, payload); }
+    catch (e) { console.warn('Services.call(' + action + ') falló:', e.message); return { ok: false, data: null, error: e.message }; }
   }
-  function meta() { return Api.get('/meta'); }
-
+  async function meta() {
+    try { return await Api.get('/meta'); }
+    catch (e) { return { ok: false, data: null }; }
+  }
   return { repos, call, meta };
 })();
 // ===== js\core\router.js =====
@@ -1253,6 +1265,7 @@ const DataTable = (() => {
 
   function build({ mount, columns, rows, pageSize = 50, searchable = true, onRowClick, emptyText = 'Sin datos', loading = false }) {
     const id = 'dt' + (++instances);
+    rows = Array.isArray(rows) ? rows : [];
     mount.innerHTML = `
       <div class="table-wrap">
         <table class="data">
@@ -1268,7 +1281,7 @@ const DataTable = (() => {
     const state = { rows, sort: null, asc: true, page: 1, search: '' };
 
     function renderRows() {
-      let data = state.rows;
+      let data = Array.isArray(state.rows) ? state.rows : [];
       if (state.search) {
         const q = state.search.toLowerCase();
         data = data.filter(r =>
@@ -1804,8 +1817,9 @@ const ProductosModule = (() => {
   // Carga categorías para el select al abrir el modal
   const origRender = mod.render;
   Services.repos.categorias.list().then(cats => {
+    const arr = Array.isArray(cats) ? cats : [];
     const f = SCHEMA.fields.find(f => f.name === 'categoria_id');
-    f.options = [{ value: '', label: '— Sin categoría —' }, ...cats.map(c => ({ value: c.id || c.nombre, label: c.nombre }))];
+    f.options = [{ value: '', label: '— Sin categoría —' }, ...arr.map(c => ({ value: c.id || c.nombre, label: c.nombre }))];
   }).catch(() => {});
   return mod;
 })();
@@ -1890,6 +1904,8 @@ const PedidosModule = (() => {
     bind(container);
     try {
       [clientes, productos] = await Promise.all([Services.repos.clientes.list({}), Services.repos.productos.list({})]);
+      clientes = Array.isArray(clientes) ? clientes : [];
+      productos = Array.isArray(productos) ? productos : [];
       fillClientes(container);
       fillCats();
       state.folio = 'ORD-' + Utils.iso().slice(11).replace(/[:.]/g, '').slice(-6);
@@ -2048,8 +2064,9 @@ const ProduccionModule = (() => {
     ],
   });
   Services.repos.productos.list().then(ps => {
+    const arr = Array.isArray(ps) ? ps : [];
     const f = SCHEMA.fields.find(f => f.name === 'producto_id');
-    f.options = [{ value: '', label: '—' }, ...ps.map(p => ({ value: p.id || p.nombre, label: p.nombre }))];
+    f.options = [{ value: '', label: '—' }, ...arr.map(p => ({ value: p.id || p.nombre, label: p.nombre }))];
   }).catch(() => {});
   return mod;
 })();
@@ -2134,8 +2151,9 @@ const InventarioModule = (() => {
   });
 
   Services.repos.productos.list().then(ps => {
+    const arr = Array.isArray(ps) ? ps : [];
     const f = SCHEMA.fields.find(f => f.name === 'producto_id');
-    f.options = [{ value: '', label: '— selecciona —' }, ...ps.map(p => ({ value: p.id || p.nombre, label: p.nombre }))];
+    f.options = [{ value: '', label: '— selecciona —' }, ...arr.map(p => ({ value: p.id || p.nombre, label: p.nombre }))];
   }).catch(() => {});
 
   return mod;
@@ -2202,10 +2220,10 @@ const ComprasModule = (() => {
     Modal.open({ title: 'Nueva orden de compra', body, footer: `<button class="btn btn--ghost" data-close>Cancelar</button><button class="btn btn--primary" id="oc-save">Guardar</button>`, size: 'lg' });
 
     const provSel = document.querySelector('#oc-prov');
-    Services.repos.proveedores.list().then(ps => provSel.innerHTML = ps.map(p => `<option value="${p.id}">${p.nombre}</option>`).join('')).catch(()=>{});
+    Services.repos.proveedores.list().then(ps => { const arr = Array.isArray(ps) ? ps : []; provSel.innerHTML = arr.map(p => `<option value="${p.id}">${p.nombre}</option>`).join(''); }).catch(()=>{});
 
     let productos = [];
-    Services.repos.productos.list().then(ps => productos = ps).catch(()=>{});
+    Services.repos.productos.list().then(ps => productos = Array.isArray(ps) ? ps : []).catch(()=>{});
     document.querySelector('#oc-add').addEventListener('click', () => addRow(productos));
     document.querySelector('#oc-save').addEventListener('click', async () => {
       const payload = {
@@ -2216,7 +2234,7 @@ const ComprasModule = (() => {
         estado: 'pendiente',
       };
       payload.total = payload.detalle.reduce((s, d) => s + d.subtotal, 0);
-      if (!payload.detalle.length) return Toast.error('Agrega al menos un producto');
+      if (!payload.detalle || !payload.detalle.length) return Toast.error('Agrega al menos un producto');
       try {
         await Services.call('compras.crear', payload);
         Modal.close(); Toast.success('Orden creada'); load();
@@ -2247,12 +2265,12 @@ const ComprasModule = (() => {
   }
   async function ver(id) {
     try {
-      const oc = await repo.get(id);
-      const detalle = await detRepo.list({ compra_id: id });
+      const oc = await repo.get(id) || {};
+      const detalle = await detRepo.list({ compra_id: id }) || [];
       Modal.open({
         title: `Orden ${oc.folio || id}`,
-        body: `<div class="muted">Proveedor: ${oc.proveedor_id}</div><div class="muted">Fecha: ${Utils.date(oc.fecha)}</div><div class="muted">Total: ${Utils.money(oc.total)}</div>
-          <table class="data mt-md"><thead><tr><th>Producto</th><th class="right">Cant.</th><th class="right">Costo</th><th class="right">Subtotal</th></tr></thead><tbody>${(detalle||[]).map(d=>`<tr><td>${d.producto_id}</td><td class="num">${d.cantidad}</td><td class="num">${Utils.money(d.costo)}</td><td class="num">${Utils.money(d.subtotal)}</td></tr>`).join('')}</tbody></table>`,
+        body: `<div class="muted">Proveedor: ${oc.proveedor_id || ''}</div><div class="muted">Fecha: ${Utils.date(oc.fecha)}</div><div class="muted">Total: ${Utils.money(oc.total)}</div>
+          <table class="data mt-md"><thead><tr><th>Producto</th><th class="right">Cant.</th><th class="right">Costo</th><th class="right">Subtotal</th></tr></thead><tbody>${(Array.isArray(detalle)?detalle:[]).map(d=>`<tr><td>${d.producto_id || ''}</td><td class="num">${d.cantidad||0}</td><td class="num">${Utils.money(d.costo)}</td><td class="num">${Utils.money(d.subtotal)}</td></tr>`).join('') || '<tr><td colspan="4" class="empty">Sin detalle</td></tr>'}</tbody></table>`,
         footer: `<button class="btn btn--ghost" data-close>Cerrar</button>`,
       });
     } catch (e) { Toast.error('Ver orden: ' + e.message); }
@@ -2496,8 +2514,9 @@ const CuentasModule = (() => {
       <div class="field"><label>Descripción</label><input type="text" name="descripcion"/></div>`;
     Modal.open({ title: `Transferir desde ${cuenta.nombre}`, body, footer: `<button class="btn btn--ghost" data-close>Cancelar</button><button class="btn btn--primary" id="tr-ok">Transferir</button>` });
     Services.repos.cuentas.list().then(cs => {
+      const arr = Array.isArray(cs) ? cs : [];
       const sel = document.querySelector('#tr-dest');
-      sel.innerHTML = cs.filter(c => c.id !== cuenta.id).map(c => `<option value="${c.id}">${c.nombre}</option>`).join('');
+      sel.innerHTML = arr.filter(c => c.id !== cuenta.id).map(c => `<option value="${c.id}">${c.nombre}</option>`).join('');
     });
     document.querySelector('#tr-ok').addEventListener('click', async () => {
       const raw = Form.collect(document.querySelector('.modal__body'));
@@ -2510,11 +2529,11 @@ const CuentasModule = (() => {
   }
   async function historial(cuenta) {
     try {
-      const list = await trRepo.list({ cuenta_id: cuenta.id });
+      const list = await trRepo.list({ cuenta_id: cuenta.id }) || [];
       Modal.open({
         title: `Historial de transferencias — ${cuenta.nombre}`,
         body: `<table class="data"><thead><tr><th>Fecha</th><th>Destino</th><th class="right">Valor</th><th class="right">Saldo</th></tr></thead>
-          <tbody>${(list || []).map(t => `<tr><td>${Utils.date(t.fecha)}</td><td>${t.destino || ''}</td><td class="num">${Utils.money(t.valor)}</td><td class="num">${Utils.money(t.saldo)}</td></tr>`).join('') || '<tr><td colspan="4" class="empty">Sin transferencias</td></tr>'}</tbody></table>`,
+          <tbody>${(Array.isArray(list)?list:[]).map(t => `<tr><td>${Utils.date(t.fecha)}</td><td>${t.destino || ''}</td><td class="num">${Utils.money(t.valor)}</td><td class="num">${Utils.money(t.saldo)}</td></tr>`).join('') || '<tr><td colspan="4" class="empty">Sin transferencias</td></tr>'}</tbody></table>`,
         footer: `<button class="btn btn--ghost" data-close>Cerrar</button>`,
       });
     } catch (e) { Toast.error('Historial: ' + e.message); }
@@ -2561,8 +2580,9 @@ const GastosModule = (() => {
     },
   });
   Services.repos.cuentas.list().then(cs => {
+    const arr = Array.isArray(cs) ? cs : [];
     const f = SCHEMA.fields.find(f => f.name === 'cuenta_id');
-    f.options = [{ value: '', label: '— Caja —' }, ...cs.map(c => ({ value: c.id || c.nombre, label: c.nombre }))];
+    f.options = [{ value: '', label: '— Caja —' }, ...arr.map(c => ({ value: c.id || c.nombre, label: c.nombre }))];
   }).catch(() => {});
   return mod;
 })();
@@ -2634,7 +2654,7 @@ const LogisticaModule = (() => {
   async function load() {
     try {
       const rows = await Services.repos.pedidos.list({ estado: 'en_ruta' });
-      table.setRows(rows || []);
+      table.setRows(Array.isArray(rows)?rows:[]);
       table.setLoading(false);
     } catch (e) { Toast.error('Logística: ' + e.message); table.setLoading(false); }
   }
@@ -2706,8 +2726,8 @@ const ConfiguracionModule = (() => {
         { key: 'estado', label: 'Estado', render: v => `<span class="badge badge--${v==='activo'?'success':'muted'}">${v}</span>` },
         { key: '_a', label: '', render: () => `<button class="btn btn--ghost btn--sm" data-act="edit">Editar</button> <button class="btn btn--danger btn--sm" data-act="del">Eliminar</button>` },
       ], onRowClick: () => {} });
-      try { const rows = await Services.repos.usuarios.list(); table.setRows(rows); table.setLoading(false); }
-      catch (e) { Toast.error('Usuarios: ' + e.message); table.setLoading(false); }
+      try { const rows = await Services.repos.usuarios.list(); table.setRows(Array.isArray(rows)?rows:[]); table.setLoading(false); }
+      catch (e) { Toast.error('Usuarios: ' + e.message); table.setRows([]); table.setLoading(false); }
       body.querySelector('#cfg-new-user').addEventListener('click', () => userForm());
       body.querySelector('#cfg-users-table').addEventListener('click', async (e) => {
         const b = e.target.closest('[data-act]'); if (!b) return; const id = b.closest('tr')?.dataset.id; if (!id) return;
@@ -2791,7 +2811,7 @@ const AuditoriaModule = (() => {
   async function load() {
     try {
       const rows = await Services.repos.auditoria.list({});
-      table.setRows(rows || []);
+      table.setRows(Array.isArray(rows)?rows:[]);
       table.setLoading(false);
     } catch (e) { Toast.error('Auditoría: ' + e.message); table.setLoading(false); }
   }
