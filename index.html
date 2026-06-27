@@ -434,7 +434,7 @@ const CONFIG = Object.freeze({
   TOKEN_KEY: "erp_token",
   CURRENCY: "COP",
   LOCALE: "es-CO",
-  REQUEST_TIMEOUT: 12000,
+  REQUEST_TIMEOUT: 8000,
   CACHE_TTL: 60000,
   DEBOUNCE_SEARCH: 300,
   THROTTLE_SAVE: 800,
@@ -692,40 +692,35 @@ const Api = (() => {
 
   async function request(method, route, body = null, { signal } = {}) {
     if (!CONFIG.API_URL || CONFIG.API_URL === 'PENDIENTE') {
-      throw new ApiError('CONFIG.API_URL no configurada. Despliega el Apps Script y pega la URL.', 'CONFIG');
+      throw new ApiError('API no configurada', 'CONFIG');
     }
     const ctrl = new AbortController();
     const t = setTimeout(() => ctrl.abort(), CONFIG.REQUEST_TIMEOUT);
     if (signal) signal.addEventListener('abort', () => ctrl.abort());
 
-    const url = method === 'GET' || method === 'DELETE'
-      ? buildUrl(route)
-      : buildUrl(route); // path via query para todos los métodos
-
+    const url = buildUrl(route);
     const headers = { 'Accept': 'application/json' };
-    const opts = { method, headers, signal: ctrl.signal, redirect: 'follow' };
+    const opts = { method, headers, signal: ctrl.signal, redirect: 'follow', mode: 'cors' };
     if (body && method !== 'GET') {
       headers['Content-Type'] = 'text/plain;charset=utf-8';
-      // Apps Script a veces rechaza POST con application/json por CORS preflight;
-      // mandamos el JSON como texto plano. ContentService lo parsea igual.
       opts.body = JSON.stringify(body);
     }
 
     try {
       const res = await fetch(url, opts);
-      const ct = res.headers.get('content-type') || '';
+      const txt = await res.text();
       let payload;
-      if (ct.includes('application/json')) payload = await res.json();
-      else { const txt = await res.text(); try { payload = JSON.parse(txt); } catch (_) { payload = { ok: false, raw: txt, code: res.status }; } }
+      try { payload = JSON.parse(txt); } catch (_) { payload = { ok: false, raw: txt, code: res.status }; }
 
-      if (res.status === 401) { throw new ApiError('No autorizado', 401, payload); }
+      if (res.status === 401) throw new ApiError('No autorizado', 401, payload);
       if (res.status === 403) throw new ApiError('Sin permisos', 403, payload);
       if (!res.ok) throw new ApiError(payload.message || ('HTTP ' + res.status), res.status, payload);
+      if (payload.ok === false && payload.message) throw new ApiError(payload.message, payload.code || 'ERR', payload);
       return payload;
     } catch (e) {
       if (e instanceof ApiError) throw e;
       if (e.name === 'AbortError') throw new ApiError('Tiempo de espera agotado', 'TIMEOUT');
-      throw new ApiError('Error de red', 'NETWORK', { cause: e });
+      throw new ApiError('Error de red: ' + (e.message || ''), 'NETWORK', { cause: e });
     } finally {
       clearTimeout(t);
     }
@@ -1281,6 +1276,7 @@ const DataTable = (() => {
     const state = { rows, sort: null, asc: true, page: 1, search: '' };
 
     function renderRows() {
+      if (!body || !document.body.contains(mount)) return;
       let data = Array.isArray(state.rows) ? state.rows : [];
       if (state.search) {
         const q = state.search.toLowerCase();
@@ -1491,42 +1487,29 @@ const Notifier = (() => {
 const CrudPage = (() => {
   function build(opts) {
     const {
-      repo,
-      title,
-      columns,
-      schema,
-      newButton = 'Nuevo',
-      searchPlaceholder = 'Buscar…',
-      rowToValues,
-      canCreate = () => true,
-      canEdit = () => true,
-      canDelete = () => true,
-      mapInput = (v) => v,
-      mapOutput = (v) => v,
-      afterSave = () => {},
-      extraActions = () => '',
-      onRowClick = null,
-      kpis,
+      repo, title, columns, schema,
+      newButton = 'Nuevo', searchPlaceholder = 'Buscar…',
+      canCreate = () => true, canEdit = () => true, canDelete = () => true,
+      mapInput = (v) => v, mapOutput = (v) => v,
+      afterSave = () => {}, onRowClick = null, kpis,
+      onAction, extraActions = () => '',
     } = opts;
 
     let table;
+    let _container;
 
     async function load() {
-      try {
-        const rows = await repo.list();
-        table.setRows(rows);
-        table.setLoading(false);
-        if (kpis) await renderKpis(rows);
-      } catch (e) {
-        Toast.error('No se pudo cargar: ' + e.message);
-        table.setLoading(false);
-      }
+      const rows = await repo.list();
+      if (!table || !_container || !document.body.contains(_container)) return;
+      table.setRows(Array.isArray(rows) ? rows : []);
+      if (table) table.setLoading(false);
+      if (kpis) renderKpis(rows);
     }
 
-    async function renderKpis(rows) {
+    function renderKpis(rows) {
       const host = document.getElementById('module-kpis');
       if (!host) return;
-      host.innerHTML = kpis(rows);
+      try { host.innerHTML = kpis(Array.isArray(rows) ? rows : []); } catch (e) {}
     }
 
     function openForm(values = {}) {
@@ -1536,36 +1519,35 @@ const CrudPage = (() => {
         body,
         footer: `<button class="btn btn--ghost" data-close>Cancelar</button><button class="btn btn--primary" id="crud-save">Guardar</button>`,
       });
-      document.querySelector('#crud-save').addEventListener('click', saveForm);
+      document.querySelector('#crud-save')?.addEventListener('click', saveForm);
     }
 
     async function saveForm() {
       const raw = Form.collect(document.querySelector('.modal__body'));
       const payload = mapOutput(raw);
+      const btn = document.querySelector('#crud-save');
+      if (btn) btn.disabled = true;
       try {
-        const btn = document.querySelector('#crud-save');
-        btn.disabled = true;
         if (raw.id) await repo.update(raw.id, payload);
         else await repo.create(payload);
         Modal.close();
         Toast.success('Guardado correctamente');
-        Audit.log(repo.resource, raw.id ? 'update' : 'create', { id: raw.id });
-        afterSave();
         load();
       } catch (e) {
         Toast.error('Error al guardar: ' + e.message);
-        btn.disabled = false;
+        if (btn) btn.disabled = false;
       }
     }
 
     async function remove(row) {
-      const ok = await Modal.confirm({ title: 'Eliminar', message: `¿Eliminar el registro "${row.nombre || row.id}"?`, confirmText: 'Eliminar', danger: true });
+      const ok = await Modal.confirm({ title: 'Eliminar', message: `¿Eliminar "${row.nombre || row.id}"?`, confirmText: 'Eliminar', danger: true });
       if (!ok) return;
       try { await repo.remove(row.id); Toast.success('Eliminado'); load(); }
       catch (e) { Toast.error('No se pudo eliminar: ' + e.message); }
     }
 
     function render(container, params) {
+      _container = container;
       container.innerHTML = `
         <div class="page-head">
           <div><h1>${title}</h1><div class="subtitle">${searchPlaceholder}</div></div>
@@ -1584,27 +1566,22 @@ const CrudPage = (() => {
 
       table = DataTable.build({
         mount: container.querySelector('#crud-table'),
-        columns,
-        rows: [],
-        pageSize: 50,
-        loading: true,
-        onRowClick: onRowClick,
+        columns, rows: [], pageSize: 50, loading: true, onRowClick,
       });
-      container.querySelector('#crud-search').addEventListener('input', Utils.debounce(e => table.setSearch(e.target.value), CONFIG.DEBOUNCE_SEARCH));
+      container.querySelector('#crud-search').addEventListener('input', Utils.debounce(e => table?.setSearch(e.target.value), CONFIG.DEBOUNCE_SEARCH));
       container.querySelector('#crud-new')?.addEventListener('click', () => openForm({}));
-      // Row actions via delegation handled by onRowClick; aquí añadimos botones por columna si la columna los renderiz
       container.querySelector('#crud-table').addEventListener('click', async (e) => {
         const btn = e.target.closest('[data-act]');
         if (!btn) return;
         const id = btn.closest('tr')?.dataset.id;
         if (!id) return;
         const rows = await repo.list({ useCache: false });
-        const row = rows.find(r => String(r.id) === String(id));
+        const row = (rows || []).find(r => String(r.id) === String(id));
         if (!row) return;
         const act = btn.dataset.act;
         if (act === 'edit' && canEdit(Auth.getRole())) openForm(mapInput(row));
         else if (act === 'del' && canDelete(Auth.getRole())) remove(row);
-        else if (opts.onAction && !['edit', 'del'].includes(act)) opts.onAction(act, row);
+        else if (onAction && !['edit', 'del'].includes(act)) onAction(act, row);
       });
 
       load();
@@ -2169,11 +2146,8 @@ const ComprasModule = (() => {
 
   let table;
   async function load() {
-    try {
-      const rows = await repo.list();
-      table.setRows(rows);
-      table.setLoading(false);
-    } catch (e) { Toast.error('No se pudo cargar compras: ' + e.message); table.setLoading(false); }
+    const rows = await repo.list();
+    if (table) { table.setRows(Array.isArray(rows) ? rows : []); table.setLoading(false); }
   }
 
   function render(container) {
@@ -2292,16 +2266,15 @@ const ComprasModule = (() => {
 const RecaudosModule = (() => {
   let table;
   async function load() {
-    try {
-      const rows = await Services.repos.recaudos.list({ fecha: Utils.todayKey() });
-      table.setRows(rows || []);
-      table.setLoading(false);
-      renderTotalBar(rows || []);
-    } catch (e) { Toast.error('Recaudos: ' + e.message); table.setLoading(false); }
+    const rows = await Services.repos.recaudos.list({ fecha: Utils.todayKey() });
+    if (table) { table.setRows(Array.isArray(rows) ? rows : []); table.setLoading(false); }
+    renderTotalBar(Array.isArray(rows) ? rows : []);
   }
   function renderTotalBar(rows) {
+    const host = document.querySelector('#rec-totals');
+    if (!host) return;
     const sum = (f) => rows.reduce((s, r) => s + (+r[f] || 0), 0);
-    document.querySelector('#rec-totals').innerHTML = [
+    host.innerHTML = [
       ['Bruto Ventas','bruto','error'], ['Efectivo','efectivo','info'], ['Nequi','nequi','info'], ['Bancolombia','bancolombia','info'],
       ['Pagos Deuda','pago_deuda','info'], ['Faltantes','faltante','error'], ['Salidas','salida','error'], ['TOTAL','total','info'],
     ].map(([l, k, cls], i) => `<div class="kpi" style="text-align:center"><div class="muted" style="font-size:11px">${l}</div><div class="bold num" style="color:var(--${cls === 'info' ? 'primary' : cls === 'error' ? 'error' : 'primary'})">${i === 7 ? Utils.money(sum('efectivo')+sum('nequi')+sum('bancolombia')+sum('pago_deuda')) : Utils.money(sum(k))}</div></div>`).join('');
@@ -2386,13 +2359,10 @@ const RecaudosModule = (() => {
 const CajaModule = (() => {
   let table;
   async function refresh() {
-    try {
-      const sesion = await Services.call('caja.sesion', { fecha: Utils.todayKey() });
-      renderSesion(sesion?.data || null);
-      const movs = await Services.repos.caja.list({ fecha: Utils.todayKey() });
-      table?.setRows(movs || []);
-      table?.setLoading(false);
-    } catch (e) { Toast.error('Caja: ' + e.message); table.setLoading(false); }
+    const sesion = await Services.call('caja.sesion', { fecha: Utils.todayKey() });
+    renderSesion(sesion?.data || null);
+    const movs = await Services.repos.caja.list({ fecha: Utils.todayKey() });
+    if (table) { table.setRows(Array.isArray(movs) ? movs : []); table.setLoading(false); }
   }
   function renderSesion(s) {
     const host = document.querySelector('#caja-sesion');
@@ -2652,11 +2622,8 @@ const ReportesModule = (() => {
 const LogisticaModule = (() => {
   let table;
   async function load() {
-    try {
-      const rows = await Services.repos.pedidos.list({ estado: 'en_ruta' });
-      table.setRows(Array.isArray(rows)?rows:[]);
-      table.setLoading(false);
-    } catch (e) { Toast.error('Logística: ' + e.message); table.setLoading(false); }
+    const rows = await Services.repos.pedidos.list({ estado: 'en_ruta' });
+    if (table) { table.setRows(Array.isArray(rows) ? rows : []); table.setLoading(false); }
   }
   function render(container) {
     container.innerHTML = `
@@ -2726,8 +2693,8 @@ const ConfiguracionModule = (() => {
         { key: 'estado', label: 'Estado', render: v => `<span class="badge badge--${v==='activo'?'success':'muted'}">${v}</span>` },
         { key: '_a', label: '', render: () => `<button class="btn btn--ghost btn--sm" data-act="edit">Editar</button> <button class="btn btn--danger btn--sm" data-act="del">Eliminar</button>` },
       ], onRowClick: () => {} });
-      try { const rows = await Services.repos.usuarios.list(); table.setRows(Array.isArray(rows)?rows:[]); table.setLoading(false); }
-      catch (e) { Toast.error('Usuarios: ' + e.message); table.setRows([]); table.setLoading(false); }
+      try { const rows = await Services.repos.usuarios.list(); if (table) { table.setRows(Array.isArray(rows)?rows:[]); table.setLoading(false); } }
+      catch (e) { Toast.error('Usuarios: ' + e.message); if (table) { table.setRows([]); table.setLoading(false); } }
       body.querySelector('#cfg-new-user').addEventListener('click', () => userForm());
       body.querySelector('#cfg-users-table').addEventListener('click', async (e) => {
         const b = e.target.closest('[data-act]'); if (!b) return; const id = b.closest('tr')?.dataset.id; if (!id) return;
@@ -2809,11 +2776,8 @@ const ConfiguracionModule = (() => {
 const AuditoriaModule = (() => {
   let table;
   async function load() {
-    try {
-      const rows = await Services.repos.auditoria.list({});
-      table.setRows(Array.isArray(rows)?rows:[]);
-      table.setLoading(false);
-    } catch (e) { Toast.error('Auditoría: ' + e.message); table.setLoading(false); }
+    const rows = await Services.repos.auditoria.list({});
+    if (table) { table.setRows(Array.isArray(rows) ? rows : []); table.setLoading(false); }
   }
   function render(container) {
     container.innerHTML = `
