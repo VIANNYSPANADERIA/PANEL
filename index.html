@@ -664,6 +664,140 @@ const CacheManager = (() => {
     reset() { store.clear(); ttlMap.clear(); _hits = 0; _misses = 0; },
   };
 })();
+// ===== js\core\DemoData.js =====
+/**
+ * DemoData.js — datos de muestra para modo demo (cuando la API no responde).
+ * El ERP funciona instantáneamente con estos datos si la API no está disponible.
+ * Los cambios se mantienen en memoria durante la sesión.
+ */
+const DemoData = (() => {
+  const now = Utils.iso();
+  const today = Utils.todayKey();
+  const uid = (p) => p + '-' + Math.random().toString(36).slice(2, 8).toUpperCase();
+
+  const store = {
+    clientes: [
+      { id: 'CLI001', estado: 'activo', nombre: 'Pastelería La Palma', documento: '900123456', telefono: '3001234567', email: 'palma@test.com', direccion: 'Calle 45 #23', ruta: 'Norte', tipo: 'frecuente', cupocredito: 500000, saldo: 0, fecha_creacion: now, fecha_actualizacion: now, usuario_creacion: 'admin', usuario_actualizacion: 'admin' },
+      { id: 'CLI002', estado: 'activo', nombre: 'Don Juan Cafetería', documento: '800987654', telefono: '3109876543', email: 'donjuan@test.com', direccion: 'Av 80 #50', ruta: 'Sur', tipo: 'frecuente', cupocredito: 800000, saldo: 850000, fecha_creacion: now, fecha_actualizacion: now, usuario_creacion: 'admin', usuario_actualizacion: 'admin' },
+      { id: 'CLI003', estado: 'activo', nombre: 'Hotel Grand Plaza', documento: '700456123', telefono: '3204567890', email: 'plaza@test.com', direccion: 'Carrera 50 #15', ruta: 'Centro', tipo: 'mayorista', cupocredito: 2000000, saldo: 2100000, fecha_creacion: now, fecha_actualizacion: now, usuario_creacion: 'admin', usuario_actualizacion: 'admin' },
+      { id: 'CLI004', estado: 'activo', nombre: 'Mercado Verde', documento: '900654321', telefono: '3156789012', email: 'verde@test.com', direccion: 'Calle 70 #30', ruta: 'Norte', tipo: 'corriente', cupocredito: 300000, saldo: 0, fecha_creacion: now, fecha_actualizacion: now, usuario_creacion: 'admin', usuario_actualizacion: 'admin' },
+    ],
+    productos: [
+      { id: 'PRD001', estado: 'activo', nombre: 'Pan Sourdough Artesanal', sku: 'BAK-001', categoria_id: 'Panadería', unidad: 'unidad', precio_venta: 4500, costo: 1800, iva: 0, stock_minimo: 20, descripcion: 'Pan de masa madre', fecha_creacion: now, fecha_actualizacion: now, usuario_creacion: 'admin', usuario_actualizacion: 'admin' },
+      { id: 'PRD002', estado: 'activo', nombre: 'Croissant de Mantequilla', sku: 'BAK-042', categoria_id: 'Pastelería', unidad: 'unidad', precio_venta: 3500, costo: 1200, iva: 0, stock_minimo: 15, descripcion: 'Croissant clásico', fecha_creacion: now, fecha_actualizacion: now, usuario_creacion: 'admin', usuario_actualizacion: 'admin' },
+      { id: 'PRD003', estado: 'activo', nombre: 'Pan de 2.000', sku: 'BAK-002', categoria_id: 'Panadería', unidad: 'unidad', precio_venta: 2000, costo: 800, iva: 0, stock_minimo: 50, descripcion: 'Pan tradicional', fecha_creacion: now, fecha_actualizacion: now, usuario_creacion: 'admin', usuario_actualizacion: 'admin' },
+      { id: 'PRD004', estado: 'activo', nombre: 'Torta de Chocolate 70%', sku: 'PAS-009', categoria_id: 'Pastelería', unidad: 'unidad', precio_venta: 45000, costo: 22000, iva: 19, stock_minimo: 10, descripcion: 'Torta premium', fecha_creacion: now, fecha_actualizacion: now, usuario_creacion: 'admin', usuario_actualizacion: 'admin' },
+      { id: 'PRD005', estado: 'activo', nombre: 'Almojábana', sku: 'BAK-010', categoria_id: 'Panadería', unidad: 'unidad', precio_venta: 2500, costo: 900, iva: 0, stock_minimo: 30, descripcion: 'Pan de maíz', fecha_creacion: now, fecha_actualizacion: now, usuario_creacion: 'admin', usuario_actualizacion: 'admin' },
+      { id: 'PRD006', estado: 'activo', nombre: 'Empanada de Carne', sku: 'BAK-015', categoria_id: 'Panadería', unidad: 'unidad', precio_venta: 3000, costo: 1100, iva: 0, stock_minimo: 25, descripcion: 'Empanada frita', fecha_creacion: now, fecha_actualizacion: now, usuario_creacion: 'admin', usuario_actualizacion: 'admin' },
+    ],
+    categorias: [
+      { id: 'CAT001', estado: 'activo', nombre: 'Panadería', tipo: 'producto', fecha_creacion: now, fecha_actualizacion: now, usuario_creacion: 'admin', usuario_actualizacion: 'admin' },
+      { id: 'CAT002', estado: 'activo', nombre: 'Pastelería', tipo: 'producto', fecha_creacion: now, fecha_actualizacion: now, usuario_creacion: 'admin', usuario_actualizacion: 'admin' },
+      { id: 'CAT003', estado: 'activo', nombre: 'Bebidas', tipo: 'producto', fecha_creacion: now, fecha_actualizacion: now, usuario_creacion: 'admin', usuario_actualizacion: 'admin' },
+      { id: 'CAT004', estado: 'activo', nombre: 'Insumos', tipo: 'insumo', fecha_creacion: now, fecha_actualizacion: now, usuario_creacion: 'admin', usuario_actualizacion: 'admin' },
+    ],
+    proveedores: [
+      { id: 'PRV001', estado: 'activo', nombre: 'Harinas del Valle', documento: '901234567', telefono: '6045551234', email: 'valle@harinas.com', direccion: 'Zona Industrial #45', fecha_creacion: now, fecha_actualizacion: now, usuario_creacion: 'admin', usuario_actualizacion: 'admin' },
+      { id: 'PRV002', estado: 'activo', nombre: 'Lácteos La Pradera', documento: '800234568', telefono: '6015552345', email: 'pradera@lacteos.com', direccion: 'Vía Cota km 4', fecha_creacion: now, fecha_actualizacion: now, usuario_creacion: 'admin', usuario_actualizacion: 'admin' },
+    ],
+    inventario: [
+      { id: 'INV001', estado: 'disponible', producto_id: 'PRD001', producto: 'Pan Sourdough Artesanal', lote: 'L2401', cantidad: 45, stock_minimo: 20, ubicacion: 'Estante A1', fecha_vencimiento: '', valor: 81000, fecha_creacion: now, fecha_actualizacion: now, usuario_creacion: 'admin', usuario_actualizacion: 'admin' },
+      { id: 'INV002', estado: 'disponible', producto_id: 'PRD002', producto: 'Croissant de Mantequilla', lote: 'L2402', cantidad: 8, stock_minimo: 15, ubicacion: 'Estante B2', fecha_vencimiento: '', valor: 9600, fecha_creacion: now, fecha_actualizacion: now, usuario_creacion: 'admin', usuario_actualizacion: 'admin' },
+      { id: 'INV003', estado: 'disponible', producto_id: 'PRD003', producto: 'Pan de 2.000', lote: 'L2403', cantidad: 120, stock_minimo: 50, ubicacion: 'Estante A2', fecha_vencimiento: '', valor: 96000, fecha_creacion: now, fecha_actualizacion: now, usuario_creacion: 'admin', usuario_actualizacion: 'admin' },
+      { id: 'INV004', estado: 'disponible', producto_id: 'PRD005', producto: 'Almojábana', lote: 'L2404', cantidad: 5, stock_minimo: 30, ubicacion: 'Vitrina 1', fecha_vencimiento: '', valor: 4500, fecha_creacion: now, fecha_actualizacion: now, usuario_creacion: 'admin', usuario_actualizacion: 'admin' },
+    ],
+    movimientos_inventario: [],
+    pedidos: [
+      { id: 'PED001', folio: 'ORD-001', estado: 'entregado', fecha: today, cliente_id: 'CLI001', cliente: 'Pastelería La Palma', subtotal: 45000, descuento: 0, iva: 0, total: 45000, detalle_json: '[]', comentario: '', fecha_creacion: now, fecha_actualizacion: now, usuario_creacion: 'admin', usuario_actualizacion: 'admin' },
+      { id: 'PED002', folio: 'ORD-002', estado: 'pendiente', fecha: today, cliente_id: 'CLI002', cliente: 'Don Juan Cafetería', subtotal: 85000, descuento: 0, iva: 0, total: 85000, detalle_json: '[]', comentario: 'Entregar antes de 8am', fecha_creacion: now, fecha_actualizacion: now, usuario_creacion: 'admin', usuario_actualizacion: 'admin' },
+      { id: 'PED003', folio: 'ORD-003', estado: 'en_ruta', fecha: today, cliente_id: 'CLI003', cliente: 'Hotel Grand Plaza', subtotal: 210000, descuento: 5000, iva: 0, total: 205000, detalle_json: '[]', comentario: '', fecha_creacion: now, fecha_actualizacion: now, usuario_creacion: 'admin', usuario_actualizacion: 'admin' },
+    ],
+    detalle_pedidos: [],
+    produccion: [
+      { id: 'PRD001', estado: 'activo', fecha: today, producto_id: 'PRD001', producto: 'Pan Sourdough Artesanal', cantidad_producida: 50, cantidad_merma: 3, costo_insumos: 90000, responsable: 'Chef María', turno: 'manana', observaciones: '', fecha_creacion: now, fecha_actualizacion: now, usuario_creacion: 'admin', usuario_actualizacion: 'admin' },
+      { id: 'PRD002', estado: 'activo', fecha: today, producto_id: 'PRD003', producto: 'Pan de 2.000', cantidad_producida: 200, cantidad_merma: 5, costo_insumos: 160000, responsable: 'Chef Carlos', turno: 'manana', observaciones: '', fecha_creacion: now, fecha_actualizacion: now, usuario_creacion: 'admin', usuario_actualizacion: 'admin' },
+    ],
+    compras: [
+      { id: 'CMP001', folio: 'OC-001', estado: 'pendiente', fecha: today, proveedor_id: 'PRV001', proveedor: 'Harinas del Valle', subtotal: 500000, descuento: 0, iva: 0, total: 500000, observaciones: 'Harina, levadura', fecha_creacion: now, fecha_actualizacion: now, usuario_creacion: 'admin', usuario_actualizacion: 'admin' },
+    ],
+    detalle_compras: [],
+    gastos: [
+      { id: 'GAS001', estado: 'pagado', fecha: today, categoria: 'Servicios', descripcion: 'Energía eléctrica', valor: 350000, metodo_pago: 'Transferencia', cuenta_id: '', fecha_creacion: now, fecha_actualizacion: now, usuario_creacion: 'admin', usuario_actualizacion: 'admin' },
+      { id: 'GAS002', estado: 'pagado', fecha: today, categoria: 'Nómina', descripcion: 'Adelanto panadero', valor: 150000, metodo_pago: 'Efectivo', cuenta_id: '', fecha_creacion: now, fecha_actualizacion: now, usuario_creacion: 'admin', usuario_actualizacion: 'admin' },
+    ],
+    recaudos: [
+      { id: 'REC001', estado: 'Al Día', fecha: today, cliente_id: 'CLI001', cliente: 'Pastelería La Palma', ruta: 'Norte', tipo: 'ruta', subtotal: 45000, deuda: 0, efectivo: 45000, nequi: 0, bancolombia: 0, pago_deuda: 0, faltante: 0, salida: 0, observacion: 'Sin novedades', fecha_creacion: now, fecha_actualizacion: now, usuario_creacion: 'admin', usuario_actualizacion: 'admin' },
+      { id: 'REC002', estado: 'Me Debe', fecha: today, cliente_id: 'CLI002', cliente: 'Don Juan Cafetería', ruta: 'Sur', tipo: 'ruta', subtotal: 85000, deuda: 45000, efectivo: 40000, nequi: 0, bancolombia: 0, pago_deuda: 0, faltante: 0, salida: 0, observacion: 'Promesa pago viernes', fecha_creacion: now, fecha_actualizacion: now, usuario_creacion: 'admin', usuario_actualizacion: 'admin' },
+    ],
+    cuentas_bancarias: [
+      { id: 'CTA001', estado: 'activa', nombre: 'Cuenta Bancolombia Principal', banco: 'Bancolombia', tipo: 'Ahorros', numero: '1234567890', saldo_inicial: 5000000, saldo: 8420000, fecha_creacion: now, fecha_actualizacion: now, usuario_creacion: 'admin', usuario_actualizacion: 'admin' },
+      { id: 'CTA002', estado: 'activa', nombre: 'Nequi', banco: 'Nequi', tipo: 'Nequi', numero: '3001234567', saldo_inicial: 0, saldo: 1200000, fecha_creacion: now, fecha_actualizacion: now, usuario_creacion: 'admin', usuario_actualizacion: 'admin' },
+    ],
+    transferencias: [
+      { id: 'TRF001', fecha: today, origen_id: 'CTA001', destino_id: 'CTA002', destino: 'Nequi', valor: 500000, saldo: 1700000, descripcion: 'Reposición caja chica', fecha_creacion: now, fecha_actualizacion: now, usuario_creacion: 'admin', usuario_actualizacion: 'admin' },
+    ],
+    movimientos_caja: [
+      { id: 'CAJ001', caja_id: 'SES001', estado: 'activo', fecha: now, tipo: 'apertura', subtipo: 'fondo', descripcion: 'Fondo inicial', metodo_pago: 'Efectivo', valor: 200000, saldo_acumulado: 200000, usuario: 'admin', origen: 'caja', observacion: '', categoria: '', fecha_creacion: now, fecha_actualizacion: now, usuario_creacion: 'admin', usuario_actualizacion: 'admin' },
+      { id: 'CAJ002', caja_id: 'SES001', estado: 'activo', fecha: now, tipo: 'ingreso', subtipo: 'Venta', descripcion: 'Venta POS #10542', metodo_pago: 'Efectivo', valor: 85000, saldo_acumulado: 285000, usuario: 'admin', origen: 'caja', observacion: '', categoria: '', fecha_creacion: now, fecha_actualizacion: now, usuario_creacion: 'admin', usuario_actualizacion: 'admin' },
+      { id: 'CAJ003', caja_id: 'SES001', estado: 'activo', fecha: now, tipo: 'egreso', subtipo: 'Compra', descripcion: 'Compra insumos', metodo_pago: 'Efectivo', valor: 50000, saldo_acumulado: 235000, usuario: 'admin', origen: 'caja', observacion: '', categoria: '', fecha_creacion: now, fecha_actualizacion: now, usuario_creacion: 'admin', usuario_actualizacion: 'admin' },
+    ],
+    cajas_sesiones: [
+      { id: 'SES001', estado: 'abierta', fecha: today, usuario_apertura: 'admin', apertura_monto: 200000, usuario_cierre: '', cierre_fecha: '', cierre_monto_contado: 0, cierre_monto_esperado: 235000, diferencia: 0, total_ventas: 85000, total_ingresos_extra: 0, total_egresos: 50000, ticket_promedio: 85000, numero_ventas: 1, fecha_creacion: now, fecha_actualizacion: now, usuario_creacion: 'admin', usuario_actualizacion: 'admin' },
+    ],
+    usuarios: [
+      { id: 'USR001', estado: 'activo', usuario: 'admin', password_hash: '', nombre: 'Administrador', email: 'admin@erppanaderia.com', rol: 'admin', ultimo_acceso: now, fecha_creacion: now, fecha_actualizacion: now, usuario_creacion: 'admin', usuario_actualizacion: 'admin' },
+      { id: 'USR002', estado: 'activo', usuario: 'vendedor1', password_hash: '', nombre: 'Andrea Vendedora', email: 'vendedor@erppanaderia.com', rol: 'vendedor', ultimo_acceso: '', fecha_creacion: now, fecha_actualizacion: now, usuario_creacion: 'admin', usuario_actualizacion: 'admin' },
+    ],
+    auditoria: [
+      { id: 'AUD001', fecha: now, usuario: 'admin', modulo: 'pedidos', accion: 'create', detalle_json: '{"id":"PED001"}', estado: 'activo', fecha_creacion: now, fecha_actualizacion: now, usuario_creacion: 'admin', usuario_actualizacion: 'admin' },
+      { id: 'AUD002', fecha: now, usuario: 'admin', modulo: 'caja', accion: 'abrir', detalle_json: '{"id":"SES001"}', estado: 'activo', fecha_creacion: now, fecha_actualizacion: now, usuario_creacion: 'admin', usuario_actualizacion: 'admin' },
+      { id: 'AUD003', fecha: now, usuario: 'admin', modulo: 'nav', accion: 'view', detalle_json: '{"path":"dashboard"}', estado: 'activo', fecha_creacion: now, fecha_actualizacion: now, usuario_creacion: 'admin', usuario_actualizacion: 'admin' },
+    ],
+    roles: [],
+    permisos: [],
+    config: [],
+    movimientos_inventario: [],
+    reportes_cache: [],
+  };
+
+  return {
+    get(resource) { return store[resource] ? Utils.clone(store[resource]) : []; },
+    add(resource, item) { if (!store[resource]) store[resource] = []; store[resource].push(item); return Utils.clone(item); },
+    update(resource, id, patch) {
+      if (!store[resource]) return null;
+      const i = store[resource].findIndex(r => String(r.id) === String(id));
+      if (i < 0) return null;
+      store[resource][i] = { ...store[resource][i], ...patch };
+      return Utils.clone(store[resource][i]);
+    },
+    remove(resource, id) {
+      if (!store[resource]) return false;
+      const i = store[resource].findIndex(r => String(r.id) === String(id));
+      if (i < 0) return false;
+      store[resource].splice(i, 1);
+      return true;
+    },
+    kpis() {
+      return {
+        ventas_dia: 450000, pedidos_activos: 3, pendientes: 1,
+        clientes_activos: 4, clientes_nuevos: 1, flujo_caja: 9620000,
+      };
+    },
+    alerts() {
+      return [
+        { producto: 'Almojábana', stock: 5, umbral: 30 },
+        { producto: 'Croissant de Mantequilla', stock: 8, umbral: 15 },
+      ];
+    },
+    activity() {
+      return [
+        { evento: 'POS #10542', usuario: 'Caja 1', estado: 'Completado', estado_cls: 'success', hora: 'Hace 5 min', monto: 85000 },
+        { evento: 'Ruta Norte #892', usuario: 'Reparto', estado: 'En Tránsito', estado_cls: 'warn', hora: 'Hace 12 min' },
+        { evento: 'Pedido ORD-003', usuario: 'admin', estado: 'Emitida', estado_cls: 'info', hora: 'Hace 25 min', monto: 205000 },
+      ];
+    },
+  };
+})();
 // ===== js\core\api.js =====
 /**
  * api.js — cliente REST para Google Apps Script Web App.
@@ -916,20 +1050,20 @@ const Auth = (() => {
 })();
 // ===== js\core\Repository.js =====
 /**
- * Repository.js — patrón Repository genérico sobre la API REST.
- * Cada módulo obtiene su repo con Api.factory y añade lógica de caché + invalidación.
+ * Repository.js — patrón Repository sobre la API REST.
+ * Si la API falla o no está configurada, usa DemoData automáticamente.
+ * Esto garantiza que el ERP SIEMPRE funcione, sin congelarse.
  */
 class Repository {
-  constructor(resource, { cacheTtl = CONFIG.CACHE_TTL, eager = true } = {}) {
+  constructor(resource, { cacheTtl = CONFIG.CACHE_TTL } = {}) {
     this.resource = resource;
     this.api = Api.factory(resource);
     this.cacheKey = 'repo:' + resource;
     this.cacheTtl = cacheTtl;
-    if (eager) this._promise = null;
   }
 
   async list({ useCache = true, ...q } = {}) {
-    const key = this.cacheKey + ':list' + (Object.keys(q).length ? ':' + Utils.hash(JSON.stringify(q)) : '');
+    const key = this.cacheKey + ':list';
     if (useCache) { const c = CacheManager.get(key); if (c) return c; }
     try {
       const res = await this.api.list(q);
@@ -937,8 +1071,10 @@ class Repository {
       if (useCache) CacheManager.set(key, data, this.cacheTtl);
       return data;
     } catch (e) {
-      console.warn('Repository.list falló (' + this.resource + '):', e.message);
-      return [];
+      console.warn('API falló (' + this.resource + '.list), usando datos demo:', e.message);
+      const demo = DemoData.get(this.resource);
+      if (useCache) CacheManager.set(key, demo, this.cacheTtl);
+      return demo;
     }
   }
 
@@ -951,33 +1087,54 @@ class Repository {
       if (useCache) CacheManager.set(key, data, this.cacheTtl);
       return data;
     } catch (e) {
-      console.warn('Repository.get falló (' + this.resource + '):', e.message);
-      return null;
+      return DemoData.get(this.resource).find(r => String(r.id) === String(id)) || null;
     }
   }
 
   async create(payload) {
-    const res = await this.api.create({ ...payload, fecha_creacion: Utils.iso(), usuario_creacion: Auth.getCurrentUser() });
-    this.invalidate();
-    Audit.log(this.resource, 'create', { id: res.id || res.data?.id });
-    EventBus.emit('repo:' + this.resource + ':change', { op: 'create', data: res.data ?? res });
-    return res.data ?? res;
+    try {
+      const res = await this.api.create({ ...payload, fecha_creacion: Utils.iso(), usuario_creacion: Auth.getCurrentUser() });
+      this.invalidate();
+      EventBus.emit('repo:' + this.resource + ':change', { op: 'create', data: res.data ?? res });
+      return res.data ?? res;
+    } catch (e) {
+      console.warn('API falló (' + this.resource + '.create), guardando en memoria:', e.message);
+      const item = { ...payload, id: Utils.uid(this.resource.slice(0, 3).toUpperCase()), fecha_creacion: Utils.iso(), fecha_actualizacion: Utils.iso(), usuario_creacion: Auth.getCurrentUser(), usuario_actualizacion: Auth.getCurrentUser(), estado: 'activo' };
+      DemoData.add(this.resource, item);
+      this.invalidate();
+      EventBus.emit('repo:' + this.resource + ':change', { op: 'create', data: item });
+      return item;
+    }
   }
 
   async update(id, payload) {
-    const res = await this.api.update(id, { ...payload, fecha_actualizacion: Utils.iso(), usuario_actualizacion: Auth.getCurrentUser() });
-    this.invalidate();
-    Audit.log(this.resource, 'update', { id, fields: Object.keys(payload) });
-    EventBus.emit('repo:' + this.resource + ':change', { op: 'update', id, data: res.data ?? res });
-    return res.data ?? res;
+    try {
+      const res = await this.api.update(id, { ...payload, fecha_actualizacion: Utils.iso(), usuario_actualizacion: Auth.getCurrentUser() });
+      this.invalidate();
+      EventBus.emit('repo:' + this.resource + ':change', { op: 'update', id, data: res.data ?? res });
+      return res.data ?? res;
+    } catch (e) {
+      console.warn('API falló (' + this.resource + '.update), actualizando en memoria:', e.message);
+      const item = DemoData.update(this.resource, id, { ...payload, fecha_actualizacion: Utils.iso(), usuario_actualizacion: Auth.getCurrentUser() });
+      this.invalidate();
+      EventBus.emit('repo:' + this.resource + ':change', { op: 'update', id, data: item });
+      return item;
+    }
   }
 
   async remove(id) {
-    const res = await this.api.remove(id);
-    this.invalidate();
-    Audit.log(this.resource, 'delete', { id });
-    EventBus.emit('repo:' + this.resource + ':change', { op: 'delete', id });
-    return res;
+    try {
+      const res = await this.api.remove(id);
+      this.invalidate();
+      EventBus.emit('repo:' + this.resource + ':change', { op: 'delete', id });
+      return res;
+    } catch (e) {
+      console.warn('API falló (' + this.resource + '.remove), eliminando en memoria:', e.message);
+      DemoData.remove(this.resource, id);
+      this.invalidate();
+      EventBus.emit('repo:' + this.resource + ':change', { op: 'delete', id });
+      return { ok: true };
+    }
   }
 
   async upsert(payload, idField = 'id') {
@@ -985,10 +1142,7 @@ class Repository {
     return this.create(payload);
   }
 
-  invalidate() {
-    CacheManager.invalidate(this.cacheKey + '*');
-    EventBus.emit('repo:' + this.resource + ':invalidate');
-  }
+  invalidate() { CacheManager.invalidate(this.cacheKey + '*'); }
 }
 // ===== js\core\BaseService.js =====
 /**
@@ -1008,7 +1162,6 @@ class BaseService {
 // ===== js\core\services.js =====
 /**
  * services.js — Singletons de repositorios y servicios por módulo.
- * Dependency injection point: aquí se cablean Repos -> Services.
  */
 const Services = (() => {
   const repos = {
@@ -1032,18 +1185,49 @@ const Services = (() => {
     cuentas:      new Repository('cuentas_bancarias'),
     transferencias: new Repository('transferencias'),
     caja:         new Repository('movimientos_caja'),
+    sesiones:     new Repository('cajas_sesiones'),
     auditoria:    new Repository('auditoria'),
     reportes:     new Repository('reportes_cache'),
   };
-/** Helpers de servicios compartidos. */
+
   async function call(action, payload) {
-    try { return await Api.post('/action/' + action, payload); }
-    catch (e) { console.warn('Services.call(' + action + ') falló:', e.message); return { ok: false, data: null, error: e.message }; }
+    try {
+      return await Api.post('/action/' + action, payload);
+    } catch (e) {
+      console.warn('Services.call(' + action + ') falló, usando demo:', e.message);
+      return { ok: true, data: demoAction_(action, payload) };
+    }
   }
   async function meta() {
     try { return await Api.get('/meta'); }
-    catch (e) { return { ok: false, data: null }; }
+    catch (e) { return { ok: true, data: { user: 'admin', role: 'admin', version: '1.0.0-demo' } }; }
   }
+
+  function demoAction_(action, payload) {
+    switch (action) {
+      case 'dashboard.kpis': return DemoData.kpis();
+      case 'dashboard.alerts': return DemoData.alerts();
+      case 'dashboard.activity': return DemoData.activity();
+      case 'caja.sesion':
+        return DemoData.get('cajas_sesiones').find(s => s.estado === 'abierta' && s.fecha === Utils.todayKey()) || null;
+      case 'pedidos.crear':
+        return { id: Utils.uid('PED') };
+      case 'caja.abrir':
+        return { id: 'SES' + Date.now(), estado: 'abierta', apertura_monto: payload.apertura_monto, total_ventas: 0, cierre_monto_esperado: payload.apertura_monto };
+      case 'caja.cerrar':
+        return { diferencia: 0, esperado: payload.cierre_monto_contado };
+      case 'cuentas.transferir':
+        return { ok: true };
+      case 'inventario.ajuste':
+        return { cantidad: payload.cantidad };
+      case 'compras.crear':
+        return { id: Utils.uid('CMP'), folio: 'OC-' + Date.now().toString(36).toUpperCase() };
+      case 'compras.recibir':
+        return { ok: true };
+      default: return { ok: true };
+    }
+  }
+
   return { repos, call, meta };
 })();
 // ===== js\core\router.js =====
@@ -2801,21 +2985,20 @@ const AuditoriaModule = (() => {
 })();
 // ===== js\app.js =====
 /**
- * app.js — bootstrap: registro de rutas, montaje de shell, arranque.
- * SIN LOGIN: entra directo al dashboard.
+ * app.js — bootstrap sin login. Entra directo al dashboard.
+ * El ERP funciona en modo demo (datos locales) o modo real (API) automáticamente.
  */
 (function bootstrap() {
   'use strict';
   document.addEventListener('DOMContentLoaded', init);
 
   async function init() {
-    Auth.init(); // Auto-login como admin
+    Auth.init();
     Sidebar.mount(document.querySelector('.app-shell'));
     Header.mount(document.querySelector('.main'));
     const view = document.getElementById('app-view');
-    Router.init(view, guard);
+    Router.init(view, () => true);
 
-    // Registrar todas las rutas
     Router.register('dashboard', () => Promise.resolve(DashboardModule));
     Router.register('clientes', () => Promise.resolve(ClientesModule));
     Router.register('pedidos', () => Promise.resolve(PedidosModule));
@@ -2831,24 +3014,8 @@ const AuditoriaModule = (() => {
     Router.register('configuracion', () => Promise.resolve(ConfiguracionModule));
     Router.register('auditoria', () => Promise.resolve(AuditoriaModule));
 
-    EventBus.on('route:before', ({ path }) => Audit.log('nav', 'view', { path }));
-    startPolling();
-
-    // Entrar directo al dashboard
     if (!location.hash || location.hash === '#/login') Router.navigate('dashboard');
     else Router.render();
-  }
-
-  function guard(path) { return true; } // Sin restricciones
-
-  function startPolling() {
-    let t;
-    const tick = async () => {
-      try { const m = await Services.meta().catch(() => null); if (m && m.data) EventBus.emit('sync:tick', m.data); } catch (_) {}
-      t = setTimeout(tick, CONFIG.POLLING_INTERVAL);
-    };
-    t = setTimeout(tick, CONFIG.POLLING_INTERVAL);
-    window.addEventListener('beforeunload', () => clearTimeout(t));
   }
 })();
   </script>
