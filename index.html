@@ -308,9 +308,9 @@ let _isApplyingOracleData = false; // evita bucles de guardado al aplicar datos 
 /* PASO 3: Habilitar ORDS y crear endpoint REST (ver SQL más abajo) */
 /* PASO 4: Pegar aquí la URL del endpoint y credenciales */
 const ORACLE_CONFIG = {
-  enabled: false,               // ← Cambiar a true cuando Oracle esté configurado
+  enabled: true,               // ← Cambiar a true cuando Oracle esté configurado
   // URL base de ORDS: https://<tu-region>.oraclecloudapps.com/ords/<schema>/app_state/1
-  restUrl: '',                  // ← Pegar URL del REST endpoint aquí
+  restUrl: 'https://gd7cb3ad624e2dc-l2f6rezd7m9gbfip.adb.sa-bogota-1.oraclecloudapps.com/ords/panaderia/app_state/1',                  // ← Pegar URL del REST endpoint aquí
   clientId: '',                 // ← OAuth Client ID de ORDS (si usa OAuth; si no, dejar '')
   clientSecret: '',             // ← OAuth Client Secret
   pollInterval: 3000,           // cada cuántos ms se consulta Oracle por cambios (3s)
