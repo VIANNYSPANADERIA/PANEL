@@ -273,8 +273,8 @@ const DB = {
     encabezado:'BIENVENIDOS',
     mensaje:'Gracias por su compra',
     piePagina:'¡Vuelva pronto!',
-    mostrarNit:true,mostrarTelefono:true,mostrarDireccion:true,mostrarFecha:true,mostrarLogo:true,mostrarVendaje:true,mostrarCliente:true,mostrarSubtotalItem:true,mostrarNumTicket:true,mostrarProductosTitulo:true,mostrarPrecioUnitario:false,
-    orden:['logo','nombreNegocio','info','separador','numTicket','fecha','separador','cliente','separador','productosTitulo','separador','items','separador','comentario','total','mensaje','piePagina'],
+    mostrarNit:true,mostrarTelefono:true,mostrarDireccion:true,mostrarFecha:false,mostrarLogo:true,mostrarVendaje:true,mostrarCliente:true,mostrarSubtotalItem:true,mostrarNumTicket:true,mostrarProductosTitulo:true,mostrarPrecioUnitario:false,
+    orden:['logo','nombreNegocio','info','separador','numTicket','separador','cliente','separador','productosTitulo','separador','items','separador','comentario','total','mensaje','piePagina'],
     consecutivoTicket:1, prefijoTicket:'TICKET #', labelProductos:'PRODUCTOS', labelTotal:'TOTAL', labelComentario:'Comentario:', labelVendaje:'Vendaje:',
     mostrarDeuda:true, labelDebeCliente:'DEUDA DEL CLIENTE', labelDeboCliente:'SALDO A FAVOR DEL CLIENTE', colorDeuda:'#ba1a1a', colorFavor:'#005338', tamDeuda:18, negDeuda:true,
     // Tipografía (editable 100%)
@@ -308,13 +308,17 @@ let _isApplyingOracleData = false; // evita bucles de guardado al aplicar datos 
 /* PASO 3: Habilitar ORDS y crear endpoint REST (ver SQL más abajo) */
 /* PASO 4: Pegar aquí la URL del endpoint y credenciales */
 const ORACLE_CONFIG = {
-  enabled: true,               // ← Cambiar a true cuando Oracle esté configurado
-  // URL base de ORDS: https://<tu-region>.oraclecloudapps.com/ords/<schema>/app_state/1
-  restUrl: 'https://gd7cb3ad624e2dc-l2f6rezd7m9gbfip.adb.sa-bogota-1.oraclecloudapps.com/ords/panaderia/app_state/1',                  // ← Pegar URL del REST endpoint aquí
-  clientId: '',                 // ← OAuth Client ID de ORDS (si usa OAuth; si no, dejar '')
-  clientSecret: '',             // ← OAuth Client Secret
-  pollInterval: 3000,           // cada cuántos ms se consulta Oracle por cambios (3s)
-  debouncePush: 800             // debounce para no saturar Oracle con cada tecla
+  // DESACTIVADO: el polling cada 3s re-renderizaba la vista actual y borraba los
+  // formularios/tamaños/fechas en edición, y la sincronización inicial sobrescribía
+  // el localStorage con datos obsoletos del servidor. Se mantiene la persistencia
+  // 100% local (localStorage) + sincronía entre pestañas (BroadcastChannel).
+  // Para reactivar Oracle en el futuro, cambiar enabled a true y rellenar restUrl.
+  enabled: false,
+  restUrl: '',
+  clientId: '',
+  clientSecret: '',
+  pollInterval: 3000,
+  debouncePush: 800
 };
 
 /* === BroadcastChannel: sync instantánea entre pestañas del mismo navegador === */
@@ -400,6 +404,10 @@ function loadDB(){
     if(saved.cacheCalendario) DB.cacheCalendario = saved.cacheCalendario;
     DB.facturaConfig = Object.assign({}, defaultFC, saved.facturaConfig || {});
     if(!Array.isArray(DB.facturaConfig.orden) || DB.facturaConfig.orden.length===0) DB.facturaConfig.orden = defaultFC.orden;
+    // Bug #3: la fecha no debe aparecer en la factura de venta. Filtramos cualquier
+    // entrada 'fecha' guardada previamente en el orden y forzamos el flag a false.
+    DB.facturaConfig.orden = DB.facturaConfig.orden.filter(k=>k!=='fecha');
+    DB.facturaConfig.mostrarFecha = false;
     if(!DB.conta) DB.conta = defaultContaSnap();
     if(!DB.conta.transferencias) DB.conta.transferencias = [];
     if(!DB.nomina) DB.nomina = {empleados:[],historial:[]};
@@ -1023,6 +1031,8 @@ let _modoCondicion = 'condicion'; // o 'normal'
 let _itemsPedido = {}; // {productoId: {cantidad, dinero}}
 let _comentarioPedido = '';
 let _currentCliente = null;
+// Bug #2: flag por pedido para decidir si el ticket incluye o no la deuda del cliente.
+let _pedidoMostrarDeuda = true;
 
 function renderPedidos(params={}){
   if(params.clienteId) _currentCliente = params.clienteId;
@@ -1081,6 +1091,11 @@ function renderPedidos(params={}){
       <div class="card-h"><div class="card-t">Resumen del pedido</div></div>
       <div class="card-b">
         <div class="field"><label>Comentario para la factura</label><textarea id="comentario" rows="2" placeholder="Comentario..." oninput="_comentarioPedido=this.value">${_comentarioPedido}</textarea></div>
+        <div class="card mb-md" style="background:var(--surface-container-low)"><div class="card-b flex fb" style="gap:8px">
+          <span><span class="ms" style="vertical-align:middle;color:var(--tertiary)">receipt</span> Mostrar deuda pendiente del cliente en el ticket</span>
+          <label class="switch"><input type="checkbox" id="pedidoMostrarDeuda" ${_pedidoMostrarDeuda?'checked':''} onchange="_pedidoMostrarDeuda=this.checked"/></label>
+          <span class="muted" style="font-size:11px">${deuda>0?`El cliente debe ${money(deuda)}`:deuda<0?`A favor ${money(-deuda)}`:'Sin deuda'}</span>
+        </div></div>
         <div class="flex fb"><span class="bold">TOTAL DEL PEDIDO</span><span id="totalPedido" class="bold" style="font-size:24px;font-family:var(--font-mono);color:var(--primary)">${money(total)}</span></div>
         <div class="mt-md flex gap" style="flex-wrap:wrap">
           <button class="btn btn-primary" onclick="guardarPedido()"><span class="ms">save</span>Guardar Pedido</button>
@@ -1089,6 +1104,7 @@ function renderPedidos(params={}){
       </div>
     </div>
   `;
+  initSwitchCSS();
 }
 function updateItem(pid, field, val){
   if(!_itemsPedido[pid]) _itemsPedido[pid] = {cantidad:0,dinero:0};
@@ -1195,9 +1211,11 @@ function componerTicketHTML(items, total, cliNombre, comentario, numTicket, clie
   const cut = `<div class="cut" style="border-top:1px dashed #000;margin:4px 0"></div>`;
   const sty = (tam,bold,align,color,extra) => `style="font-size:${tam}px;font-weight:${bold?'bold':'normal'};text-align:${align};${color?`color:${color};`:''}${extra||''}"`;
   const numT = numTicket!=null ? numTicket : (f.consecutivoTicket||1);
-  // Deuda del cliente (integrado con cartera)
+  // Deuda del cliente (integrado con cartera). Bug #2: se respeta tanto el flag
+  // global como el checkbox del pedido actual (_pedidoMostrarDeuda).
   let deudaInfo = null;
-  if(clienteId && f.mostrarDeuda!==false){
+  const mostrarDeudaFlag = (typeof _pedidoMostrarDeuda === 'boolean' ? _pedidoMostrarDeuda : true) && f.mostrarDeuda!==false;
+  if(clienteId && mostrarDeudaFlag){
     const saldo = getSaldoCliente(clienteId);
     if(saldo<0) deudaInfo = {tipo:'debe', valor:Math.abs(saldo)};          // cliente le debe a la empresa
     else if(saldo>0) deudaInfo = {tipo:'debo', valor:saldo};                // empresa le debe al cliente
@@ -1213,7 +1231,7 @@ function componerTicketHTML(items, total, cliNombre, comentario, numTicket, clie
     }
     if(key==='separador') b += cut;
     if(key==='numTicket' && f.mostrarNumTicket!==false) b += `<div ${sty(f.tamInfo||11,f.negInfo,f.alineaInfo||'center')}>${esc(f.prefijoTicket||'TICKET #')}${numT}</div>`;
-    if(key==='fecha' && f.mostrarFecha!==false) b += `<div ${sty(f.tamInfo||11,f.negInfo,f.alineaInfo||'center')}>Fecha: ${nowLocalStr()}</div>`;
+    /* Bug #3: la fecha NO se agrega a la factura de venta, por decisión del usuario. */
     if(key==='cliente' && f.mostrarCliente!==false){
       const aliCli = f.alineaCliente || 'center';
       b += `<div ${sty(f.tamCliente||13,f.negCliente!==false,aliCli,null,'margin:2px 0')}>Cliente: ${esc(cliNombre||'-')}</div>`;
@@ -1275,22 +1293,26 @@ function generarTicketImpresion(){
   const total = items.reduce((a,b)=>a+b.subtotal,0);
   const cli = DB.clientes.find(c=>c.id===_currentCliente);
   const f = DB.facturaConfig;
+  // Bug #5: guardar el pedido ANTES de abrir la ventana de impresión, así nunca
+  // se pierde la información aunque el usuario cierre la ventana emergente.
+  guardarPedido(true);
   f.consecutivoTicket = (f.consecutivoTicket||1) + 1;
-  const body = componerTicketHTML(items, total, cli?cli.nombre:'', _comentarioPedido, f.consecutivoTicket-1, _currentCliente);
+  saveDB();
+  const numTicket = f.consecutivoTicket - 1;
+  const body = componerTicketHTML(items, total, cli?cli.nombre:'', _comentarioPedido, numTicket, _currentCliente);
   const fuente = f.fuente||'monospace';
   const w = window.open('','_blank','width=400');
-  w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Ticket</title>
+  if(w){
+    w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Ticket</title>
     <style>*{box-sizing:border-box}body{margin:0;padding:0;background:#fff}.ticket{width:80mm;padding:4mm 3mm;margin:0 auto;background:#fff;color:#000;font-family:${fuente}}.cut{border-top:1px dashed #000;margin:4px 0}@media print{body{background:#fff}button{display:none}}</style></head>
     <body onload="setTimeout(function(){window.print()},300)"><div class="ticket">${body}</div>
     <script>setTimeout(function(){try{window.print()}catch(e){}},400);window.onafterprint=function(){try{window.close()}catch(e){}}<\/script>
     </body></html>`);
-  w.document.close();
-  w.focus();
-  // La impresión se dispara desde el onload del documento abierto (más confiable)
-  // Guardar el pedido automáticamente y volver al panel de clientes
-  guardarPedido(true);
-  saveDB();
-  setTimeout(()=>{ _itemsPedido={}; _comentarioPedido=''; go('clientes'); toast('Pedido guardado y ticket enviado','success'); }, 500);
+    w.document.close();
+    w.focus();
+  }
+  toast('Pedido guardado y ticket enviado','success');
+  setTimeout(()=>{ _itemsPedido={}; _comentarioPedido=''; go('clientes'); }, 500);
 }
 // Enter para imprimir cuando esté en módulo pedidos
 document.addEventListener('keydown', e=>{
@@ -1455,7 +1477,7 @@ function renderFactura(){
     `;
   } else if(_factTab==='mostrar'){
     body=`<div class="grid grid-2">
-      ${[['mostrarLogo','Logo'],['mostrarNit','NIT'],['mostrarTelefono','Teléfono'],['mostrarDireccion','Dirección'],['mostrarNumTicket','Número de ticket'],['mostrarFecha','Fecha y hora'],['mostrarCliente','Cliente'],['mostrarProductosTitulo','Título PRODUCTOS'],['mostrarPrecioUnitario','Precio unitario en items'],['mostrarVendaje','Vendajes'],['mostrarSubtotalItem','Subtotal por item'],['mostrarDeuda','Deuda automática del cliente']].map(([k,l])=>`
+      ${[['mostrarLogo','Logo'],['mostrarNit','NIT'],['mostrarTelefono','Teléfono'],['mostrarDireccion','Dirección'],['mostrarNumTicket','Número de ticket'],['mostrarCliente','Cliente'],['mostrarProductosTitulo','Título PRODUCTOS'],['mostrarPrecioUnitario','Precio unitario en items'],['mostrarVendaje','Vendajes'],['mostrarSubtotalItem','Subtotal por item'],['mostrarDeuda','Deuda automática del cliente']].map(([k,l])=>`
         <div class="card"><div class="card-b flex fb"><span>${l}</span><label class="switch"><input type="checkbox" ${f[k]!==false?'checked':''} onchange="DB.facturaConfig.${k}=this.checked;saveDB()"/></label></div></div>
       `).join('')}
     </div><div class="mt-md"><button class="btn btn-primary" onclick="saveDB();toast('Configuración guardada','success')">Guardar</button></div>`;
