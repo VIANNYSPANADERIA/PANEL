@@ -275,7 +275,7 @@ const DB = {
     piePagina:'¡Vuelva pronto!',
     mostrarNit:true,mostrarTelefono:true,mostrarDireccion:true,mostrarFecha:false,mostrarLogo:true,mostrarVendaje:true,mostrarCliente:true,mostrarSubtotalItem:true,mostrarNumTicket:true,mostrarProductosTitulo:true,mostrarPrecioUnitario:false,
     orden:['logo','nombreNegocio','info','separador','numTicket','separador','cliente','separador','productosTitulo','separador','items','separador','comentario','total','mensaje','piePagina'],
-    consecutivoTicket:1, prefijoTicket:'TICKET #', labelProductos:'PRODUCTOS', labelTotal:'TOTAL', labelComentario:'Comentario:', labelVendaje:'Vendaje:',
+    consecutivoTicket:1, prefijoTicket:'TICKET #', labelProductos:'PRODUCTOS', labelTotal:'TOTAL', labelComentario:'Comentario:', labelVendaje:'VENDAJE',
     mostrarDeuda:true, labelDebeCliente:'DEUDA DEL CLIENTE', labelDeboCliente:'SALDO A FAVOR DEL CLIENTE', colorDeuda:'#ba1a1a', colorFavor:'#005338', tamDeuda:18, negDeuda:true,
     // Tipografía (editable 100%)
     fuente:'monospace',
@@ -1253,12 +1253,14 @@ function componerTicketHTML(items, total, cliNombre, comentario, numTicket, clie
         const vCada = Number(it.vendajeCada)||0;
         const vActivo = it.vendajeActivo!==false; // se muestra salvo que se haya desactivado expresamente
         const vCant = Number(it.cantidad)||0;
-        if(vCada>0 && vActivo && vCant>0){
+if(vCada>0 && vActivo && vCant>0){
           const vend = Math.floor(vCant/vCada);
           if(vend>0){
-            const pct = it.vendajePct? `${it.vendajePct}%` : '';
-            const totalEntregado = vCant + vend;
-            b += `<div ${sty((f.tamVendajes||14),true,f.alineaItems||'center','#fe932c','margin-top:2px')}>★ ${esc(f.labelVendaje||'Vendaje:')} +${vend} und${pct?` (${pct})`:''} · Total entregado: ${totalEntregado}</div>`;
+            const pct = it.vendajePct? ('(' + it.vendajePct + '%)') : '';
+            const lblRaw = f.labelVendaje || 'VENDAJE';
+            const lbl = lblRaw.replace(/:?\s*$/, '');
+            const txt = lbl + (pct ? (' ' + pct) : '') + ' = ' + vend;
+            b += `<div ${sty((f.tamVendajes||14),true,f.alineaItems||'center','#fe932c','margin-top:2px')}>${esc(txt)}</div>`;
           }
         }
       });
@@ -1428,31 +1430,31 @@ function renderFactura(){
   let body='';
   if(_factTab==='general'){
     body=`
-      <div class="field"><label>Nombre del negocio</label><input id="fc-nombre" value="${f.nombreNegocio}"/></div>
+<div class="field"><label>Nombre del negocio</label><input id="fc-nombre" value="${f.nombreNegocio}" oninput="autoSaveFactura()"/></div>
       <div class="gf">
-        <div class="field"><label>NIT</label><input id="fc-nit" value="${f.nit}"/></div>
-        <div class="field"><label>Teléfono</label><input id="fc-tel" value="${f.telefono}"/></div>
+        <div class="field"><label>NIT</label><input id="fc-nit" value="${f.nit}" oninput="autoSaveFactura()"/></div>
+        <div class="field"><label>Tel fono</label><input id="fc-tel" value="${f.telefono}" oninput="autoSaveFactura()"/></div>
       </div>
-      <div class="field"><label>Dirección</label><input id="fc-dir" value="${f.direccion}"/></div>
-      <div class="field"><label>Logo (URL o subir)</label><input id="fc-logo" value="${f.logo}" placeholder="URL"/><input type="file" accept="image/*" onchange="fileToData(this,'fc-logo')"/></div>
+      <div class="field"><label>Direcci n</label><input id="fc-dir" value="${f.direccion}" oninput="autoSaveFactura()"/></div>
+      <div class="field"><label>Logo (URL o subir)</label><input id="fc-logo" value="${f.logo}" placeholder="URL" oninput="autoSaveFactura()"/><input type="file" accept="image/*" onchange="fileToData(this,'fc-logo');autoSaveFactura()"/></div>
       <div class="gf">
-        <div class="field"><label>Encabezado</label><input id="fc-enc" value="${f.encabezado}"/></div>
-        <div class="field"><label>Mensaje personalizado</label><input id="fc-msg" value="${f.mensaje}"/></div>
+        <div class="field"><label>Encabezado</label><input id="fc-enc" value="${f.encabezado}" oninput="autoSaveFactura()"/></div>
+        <div class="field"><label>Mensaje personalizado</label><input id="fc-msg" value="${f.mensaje}" oninput="autoSaveFactura()"/></div>
       </div>
-      <div class="field"><label>Pie de página</label><input id="fc-pie" value="${f.piePagina}"/></div>
+      <div class="field"><label>Pie de p gina</label><input id="fc-pie" value="${f.piePagina}" oninput="autoSaveFactura()"/></div>
       <div class="card" style="background:var(--surface-container-low);margin-top:8px"><div class="card-b">
-        <div class="card-t mb-md">Deuda automática en el ticket</div>
+        <div class="card-t mb-md">Deuda autom tica en el ticket</div>
         <div class="gf">
-          <div class="field"><label>Etiqueta cuando el cliente DEBE</label><input id="fc-debe" value="${f.labelDebeCliente||'DEUDA DEL CLIENTE'}"/></div>
-          <div class="field"><label>Etiqueta cuando la empresa LE DEBE al cliente</label><input id="fc-debo" value="${f.labelDeboCliente||'SALDO A FAVOR DEL CLIENTE'}"/></div>
+          <div class="field"><label>Etiqueta cuando el cliente DEBE</label><input id="fc-debe" value="${f.labelDebeCliente||'DEUDA DEL CLIENTE'}" oninput="autoSaveFactura()"/></div>
+          <div class="field"><label>Etiqueta cuando la empresa LE DEBE al cliente</label><input id="fc-debo" value="${f.labelDeboCliente||'SALDO A FAVOR DEL CLIENTE'}" oninput="autoSaveFactura()"/></div>
         </div>
         <div class="gf3">
-          <div class="field"><label>Color "cliente debe"</label><input type="color" id="fc-color-deuda" value="${f.colorDeuda||'#ba1a1a'}"/></div>
-          <div class="field"><label>Color "a favor del cliente"</label><input type="color" id="fc-color-favor" value="${f.colorFavor||'#005338'}"/></div>
-          <div class="field"><label>Tamaño letra deuda (px)</label><input type="number" id="fc-tam-deuda" min="8" max="40" value="${f.tamDeuda||18}"/></div>
+          <div class="field"><label>Color "cliente debe"</label><input type="color" id="fc-color-deuda" value="${f.colorDeuda||'#ba1a1a'}" onchange="autoSaveFactura()"/></div>
+          <div class="field"><label>Color "a favor del cliente"</label><input type="color" id="fc-color-favor" value="${f.colorFavor||'#005338'}" onchange="autoSaveFactura()"/></div>
+          <div class="field"><label>Tama o letra deuda (px)</label><input type="number" id="fc-tam-deuda" min="8" max="40" value="${f.tamDeuda||18}" oninput="autoSaveFactura()"/></div>
         </div>
       </div></div>
-      <div class="field"><label>Fuente del ticket</label><select id="fc-fuente">
+      <div class="field"><label>Fuente del ticket</label><select id="fc-fuente" onchange="autoSaveFactura()">
         <option value="monospace" ${f.fuente==='monospace'?'selected':''}>Monoespaciada (tíquet clásico)</option>
         <option value="'Geist Mono',monospace" ${f.fuente.includes('Geist Mono')?'selected':''}>Geist Mono</option>
         <option value="Arial, sans-serif" ${f.fuente==='Arial, sans-serif'?'selected':''}>Arial</option>
@@ -1500,11 +1502,27 @@ function tipografiaSeccion(label, tamKey, negKey, alignKey){
   return `<div class="card mb-md"><div class="card-b">
     <div class="card-t mb-md">${label}</div>
     <div class="gf3">
-      <div class="field"><label>Tamaño (px)</label><input type="number" min="6" max="72" id="tip-${tamKey}" value="${f[tamKey]||11}"/></div>
-      ${negKey?`<div class="field"><label>Negrilla</label><select id="tip-${negKey}"><option value="true" ${f[negKey]?'selected':''}>Sí</option><option value="false" ${!f[negKey]?'selected':''}>No</option></select></div>`:'<div></div>'}
-      ${alignKey?`<div class="field"><label>Alineación</label><select id="tip-${alignKey}"><option value="left" ${f[alignKey]==='left'?'selected':''}>Izquierda</option><option value="center" ${(!f[alignKey]||f[alignKey]==='center')?'selected':''}>Centro</option><option value="right" ${f[alignKey]==='right'?'selected':''}>Derecha</option></select></div>`:'<div></div>'}
+      <div class="field"><label>Tama o (px)</label><input type="number" min="6" max="72" id="tip-${tamKey}" value="${f[tamKey]||11}" oninput="autoSaveTipografia()"/></div>
+      ${negKey?`<div class="field"><label>Negrilla</label><select id="tip-${negKey}" onchange="autoSaveTipografia()"><option value="true" ${f[negKey]?'selected':''}>S </option><option value="false" ${!f[negKey]?'selected':''}>No</option></select></div>`:'<div></div>'}
+      ${alignKey?`<div class="field"><label>Alineaci n</label><select id="tip-${alignKey}" onchange="autoSaveTipografia()"><option value="left" ${f[alignKey]==='left'?'selected':''}>Izquierda</option><option value="center" ${(!f[alignKey]||f[alignKey]==='center')?'selected':''}>Centro</option><option value="right" ${f[alignKey]==='right'?'selected':''}>Derecha</option></select></div>`:'<div></div>'}
     </div>
   </div></div>`;
+}
+/* Guardado autom tico de tipograf a: persiste en el acto sin re-renderizar (no
+   pierde foco ni resetea los inputs del formulario mientras se edita). */
+let _autoTipTimer = null;
+function autoSaveTipografia(){
+  if(_autoTipTimer) clearTimeout(_autoTipTimer);
+  _autoTipTimer = setTimeout(()=>{
+    const f = DB.facturaConfig;
+    const tams = ['tamEncabezado','tamNombre','tamInfo','tamCliente','tamItems','tamVendajes','tamTotal','tamComentario','tamMensaje','tamPie'];
+    const negs = ['negEncabezado','negNombre','negInfo','negCliente','negItems','negVendajes','negTotal','negMensaje','negPie'];
+    const aligns = ['alineaEncabezado','alineaNombre','alineaInfo','alineaCliente','alineaTotal','alineaItems'];
+    tams.forEach(k=>{ const el=$('#tip-'+k); if(el) f[k]=Number(el.value)||11; });
+    negs.forEach(k=>{ const el=$('#tip-'+k); if(el) f[k]=el.value==='true'; });
+    aligns.forEach(k=>{ const el=$('#tip-'+k); if(el) f[k]=el.value; });
+    saveDB();
+  }, 250);
 }
 function guardarFactura(){
   Object.assign(DB.facturaConfig,{
@@ -1514,7 +1532,27 @@ function guardarFactura(){
     fuente:$('#fc-fuente').value
   });
   saveDB();
-  toast('Configuración guardada','success'); renderFactura();
+  toast('Configuraci n guardada','success'); renderFactura();
+}
+/* Guardado autom tico de la pesta a "Datos del Negocio": persiste sin
+   re-renderizar para no perder el foco ni resetear los inputs mientras edita. */
+let _autoFacTimer = null;
+function autoSaveFactura(){
+  if(_autoFacTimer) clearTimeout(_autoFacTimer);
+  _autoFacTimer = setTimeout(()=>{
+    const get = id => { const el=$('#'+id); return el ? el.value : null; };
+    if(get('fc-nombre')!=null){
+      Object.assign(DB.facturaConfig,{
+        nombreNegocio:get('fc-nombre'),nit:get('fc-nit'),telefono:get('fc-tel'),direccion:get('fc-dir'),
+        logo:get('fc-logo'),encabezado:get('fc-enc'),mensaje:get('fc-msg'),piePagina:get('fc-pie'),
+        labelDebeCliente:get('fc-debe'),labelDeboCliente:get('fc-debo'),
+        colorDeuda:get('fc-color-deuda'),colorFavor:get('fc-color-favor'),
+        tamDeuda:Number(get('fc-tam-deuda'))||18,
+        fuente:get('fc-fuente')
+      });
+      saveDB();
+    }
+  }, 400);
 }
 function guardarTipografia(){
   const f = DB.facturaConfig;
