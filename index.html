@@ -289,34 +289,40 @@ const DB = {
 
 /* ============ PERSISTENCIA + ORACLE CLOUD SYNC (24/7) ============
    El sistema guarda SIEMPRE en localStorage (instantáneo, sin delay).
-   Además sincroniza con Oracle Cloud en background:
-   - Cada saveDB() hace push a Oracle (debounced)
-   - Polling cada N segundos trae cambios de otros dispositivos
+   Además sincroniza con Oracle Cloud en background (cuando está configurado):
+   - saveDB() hace push a Oracle (debounced) SOLO si el DB cambió
+   - Polling periódico trae cambios de otros dispositivos
    - BroadcastChannel sincroniza pestañas del mismo navegador en tiempo real
-   Para activar Oracle: rellenar ORACLE_CONFIG y poner enabled:true
+   - Anti-bugs: NO re-renderiza si el usuario está editando (modal abierto /
+     con foco en input/select/textarea); NO pisotea datos locales más nuevos
+     que el servidor (last-write-wins con timestamp).
+   Para activar Oracle: rellenar restUrl (y opcional clientId/Secret) en
+   ORACLE_CONFIG. Con restUrl vacío, las funciones de red son no-ops seguros.
    ================================================================== */
 
 const DB_KEY = 'erp_panaderia_db_v1';
+const DB_TS_KEY = 'erp_panaderia_db_ts_v1'; // timestamp del último cambio LOCAL real
 let _saveTimer = null;
 let _oraclePushTimer = null;
-let _oracleLastSync = 0;        // timestamp del último cambio recibido de Oracle
-let _isApplyingOracleData = false; // evita bucles de guardado al aplicar datos de Oracle
+let _oracleLastSync = 0;          // timestamp del último cambio recibido de Oracle/BC
+let _localLastWriteTs = 0;       // timestamp del último cambio hecho en ESTE dispositivo
+let _isApplyingOracleData = false;
+let _lastSavedJson = '';         // cache para detectar cambios reales vs writes no-op
+let _lastSavedInit = false;
+
+try{ _localLastWriteTs = parseInt(localStorage.getItem(DB_TS_KEY)) || 0; }catch(e){ _localLastWriteTs = 0; }
 
 /* === CONFIGURACIÓN ORACLE CLOUD === */
 /* PASO 1: Crear cuenta en https://cloud.oracle.com (Always Free) */
-/* PASO 2: Crear Autonomous Database (ver guía más abajo) */
-/* PASO 3: Habilitar ORDS y crear endpoint REST (ver SQL más abajo) */
-/* PASO 4: Pegar aquí la URL del endpoint y credenciales */
+/* PASO 2: Crear Autonomous Database (ver oracle_setup.sql en la carpeta) */
+/* PASO 3: Habilitar ORDS y crear endpoint REST (ver oracle_setup.sql) */
+/* PASO 4: Pegar aquí la URL del endpoint (y credenciales si usás OAuth) */
+/* Ejemplo restUrl: https://<tu-host>.oraclecloudapps.com/ords/panaderia/erp/state/ */
 const ORACLE_CONFIG = {
-  // DESACTIVADO: el polling cada 3s re-renderizaba la vista actual y borraba los
-  // formularios/tamaños/fechas en edición, y la sincronización inicial sobrescribía
-  // el localStorage con datos obsoletos del servidor. Se mantiene la persistencia
-  // 100% local (localStorage) + sincronía entre pestañas (BroadcastChannel).
-  // Para reactivar Oracle en el futuro, cambiar enabled a true y rellenar restUrl.
-  enabled: false,
-  restUrl: '',
-  clientId: '',
-  clientSecret: '',
+  enabled: true,    // true: cuando completes restUrl, la sync 24/7 arranca sola
+  restUrl: '',      // <-- PEGÁ aquí la URL del endpoint REST de Oracle
+  clientId: '',      // <-- opcional (si habilitaste OAuth en ORDS)
+  clientSecret: '', // <-- opcional
   pollInterval: 3000,
   debouncePush: 800
 };
@@ -333,19 +339,45 @@ if(_bc){
   };
 }
 
-/* === saveDB: guarda en localStorage + notifica pestañas + push a Oracle === */
-function saveDB(){
-  try{
-    localStorage.setItem(DB_KEY, JSON.stringify(DB));
-  }catch(e){
-    console.warn('No se pudo guardar local:', e);
+/* === isUserEditing: detecta si hay un modal abierto o input con foco ===
+   Evita que el polling re-renderice y pisotee formularios a mitad de edición. */
+function isUserEditing(){
+  // Modal abierto
+  const root = document.getElementById('modalRoot');
+  if(root && root.innerHTML && root.innerHTML.trim()) return true;
+  // Input/select/textarea con foco (edición inline o búsqueda)
+  const a = document.activeElement;
+  if(a){
+    const tag = (a.tagName || '').toLowerCase();
+    if(tag==='input' || tag==='textarea' || tag==='select') return true;
+    if(a.isContentEditable) return true;
   }
-  const ts = Date.now();
-  if(_bc){ try{ _bc.postMessage({type:'db-update', db: getDBSnapshot(), ts}); }catch(e){} }
-  // Push a Oracle (debounced para no saturar)
-  if(ORACLE_CONFIG.enabled && !_isApplyingOracleData){
-    if(_oraclePushTimer) clearTimeout(_oraclePushTimer);
-    _oraclePushTimer = setTimeout(pushToOracle, ORACLE_CONFIG.debouncePush || 800);
+  return false;
+}
+
+/* === saveDB: guarda en localStorage + notifica pestañas + push a Oracle ===
+   Solo dispara BC/push y marca "cambio local" si el DB realmente cambió,
+   así el auto-save periódico (cada 2s) NO fija "soy el más nuevo" sin motivo. */
+function saveDB(){
+  let newJson;
+  try{ newJson = JSON.stringify(DB); }catch(e){ console.warn('No se pudo serializar DB:', e); return; }
+  const changed = !_lastSavedInit || newJson !== _lastSavedJson;
+  try{ localStorage.setItem(DB_KEY, newJson); }catch(e){ console.warn('No se pudo guardar local:', e); }
+  _lastSavedJson = newJson;
+  _lastSavedInit = true;
+
+  if(!changed) return; // no hacemos nada si nada cambió
+
+  if(!_isApplyingOracleData){
+    const ts = Date.now();
+    _localLastWriteTs = ts;
+    try{ localStorage.setItem(DB_TS_KEY, String(ts)); }catch(e){}
+    if(_bc){ try{ _bc.postMessage({type:'db-update', db: JSON.parse(newJson), ts}); }catch(e){} }
+    // Push a Oracle (debounced para no saturar)
+    if(ORACLE_CONFIG.enabled && ORACLE_CONFIG.restUrl){
+      if(_oraclePushTimer) clearTimeout(_oraclePushTimer);
+      _oraclePushTimer = setTimeout(pushToOracle, ORACLE_CONFIG.debouncePush || 800);
+    }
   }
 }
 
@@ -354,7 +386,9 @@ function getDBSnapshot(){
   return JSON.parse(JSON.stringify(DB));
 }
 
-/* === applyExternalData: aplica datos de Oracle/BroadcastChannel sin disparar push === */
+/* === applyExternalData: aplica datos de Oracle/BroadcastChannel sin disparar push ===
+   NO re-renderiza si el usuario está editando (preserva formularios). El DB en
+   memoria se actualiza igual, así en el próximo cambio del usuario se guarda todo. */
 function applyExternalData(newData, fromOracle){
   if(!newData) return;
   _isApplyingOracleData = true;
@@ -371,15 +405,22 @@ function applyExternalData(newData, fromOracle){
     if(!DB.conta) DB.conta = {movimientos:[],categorias:[],cuentas:[],transferencias:[]};
     if(!DB.conta.transferencias) DB.conta.transferencias = [];
     if(!DB.nomina) DB.nomina = {empleados:[],historial:[]};
-    localStorage.setItem(DB_KEY, JSON.stringify(DB));
-    // Re-renderizar la vista actual para mostrar los cambios en tiempo real
-    const currentRoute = $('#hdr-title') ? $('#hdr-title').textContent : '';
-    const routeMap = {'Clientes':'clientes','Pedidos':'pedidos','Administrar Productos':'productos',
-      'Configuración de Factura':'factura','Recaudo de Domiciliarios':'recaudo','Cartera':'cartera',
-      'Nómina':'nomina','Contabilidad':'contabilidad'};
-    const route = routeMap[currentRoute];
-    if(route && ROUTES[route]){
-      try{ ROUTES[route](); }catch(e){}
+    const newJson = JSON.stringify(DB);
+    localStorage.setItem(DB_KEY, newJson);
+    // Actualizamos la cache de "último guardado" para que el auto-save periódico
+    // NO interprete estos datos como un cambio local nuevo (evita loops de push).
+    _lastSavedJson = newJson;
+    _lastSavedInit = true;
+    // Solo re-renderizamos si el usuario NO está editando.
+    if(!isUserEditing()){
+      const currentRoute = $('#hdr-title') ? $('#hdr-title').textContent : '';
+      const routeMap = {'Clientes':'clientes','Pedidos':'pedidos','Administrar Productos':'productos',
+        'Configuración de Factura':'factura','Recaudo de Domiciliarios':'recaudo','Cartera':'cartera',
+        'Nómina':'nomina','Contabilidad':'contabilidad'};
+      const route = routeMap[currentRoute];
+      if(route && ROUTES[route]){
+        try{ ROUTES[route](); }catch(e){}
+      }
     }
   }catch(e){
     console.warn('Error aplicando datos externos:', e);
@@ -391,6 +432,7 @@ function applyExternalData(newData, fromOracle){
 function loadDB(){
   try{
     const raw = localStorage.getItem(DB_KEY);
+    if(raw){ _lastSavedJson = raw; _lastSavedInit = true; }
     if(!raw) return false;
     const saved = JSON.parse(raw);
     const defaultFC = DB.facturaConfig;
@@ -411,6 +453,8 @@ function loadDB(){
     if(!DB.conta) DB.conta = defaultContaSnap();
     if(!DB.conta.transferencias) DB.conta.transferencias = [];
     if(!DB.nomina) DB.nomina = {empleados:[],historial:[]};
+    // Refrescar cache de serialización con el DB cargado
+    try{ _lastSavedJson = JSON.stringify(DB); _lastSavedInit = true; }catch(e){}
     return true;
   }catch(e){
     console.warn('No se pudo cargar la base de datos local:', e);
@@ -419,6 +463,19 @@ function loadDB(){
 }
 
 /* ============ ORACLE CLOUD: funciones de red ============ */
+
+/* parseOracleTs: convierte el updated_at de Oracle a epoch ms.
+   Oracle (en oracle_setup.sql) lo emite como "YYYY-MM-DDTHH:MM:SS.FF3" sin zona
+   horaria; si no trae TZ, asumimos UTC para comparación determinista. */
+function parseOracleTs(s){
+  if(!s) return 0;
+  if(typeof s === 'number') return s;
+  let str = String(s).trim();
+  if(!str) return 0;
+  if(!/[zZ]$|[+-]\d\d:?\d\d$/.test(str)) str += 'Z';
+  const t = Date.parse(str);
+  return isNaN(t) ? (Date.parse(str.replace('Z','')) || 0) : t;
+}
 
 /* Obtener token OAuth de ORDS (si está configurado) */
 async function getOracleToken(){
@@ -475,36 +532,59 @@ async function pullFromOracle(){
     const dataStr = row.data || (row.items && row.items[0] && row.items[0].data) || null;
     if(!dataStr) return null;
     const parsed = JSON.parse(dataStr);
-    return {db: parsed, ts: row.updated_at ? new Date(row.updated_at).getTime() : Date.now()};
+    const ts = parseOracleTs(row.updated_at) || (row.items && row.items[0] && parseOracleTs(row.items[0].updated_at)) || Date.now();
+    return {db: parsed, ts};
   }catch(e){
     console.warn('Oracle pull error:', e);
     return null;
   }
 }
 
-/* Sincronización inicial: cargar desde Oracle al arrancar (si hay) */
+/* Sincronización inicial: cargar desde Oracle al arrancar.
+   Last-write-wins: solo aplica el remoto si es MÁS nuevo que el último cambio
+   local. Si el local es más nuevo (ej. se editó offline), empuja el local al
+   servidor en vez de pisotearlo. */
 async function oracleInitialSync(){
-  if(!ORACLE_CONFIG.enabled) return;
+  if(!ORACLE_CONFIG.enabled || !ORACLE_CONFIG.restUrl) return;
   const result = await pullFromOracle();
-  if(result && result.db){
-    _oracleLastSync = result.ts || Date.now();
+  if(!result || !result.db) return;
+  if(result.ts > _localLastWriteTs){
+    // El servidor está más nuevo → aplicar
+    _oracleLastSync = result.ts;
+    _localLastWriteTs = result.ts;
+    try{ localStorage.setItem(DB_TS_KEY, String(result.ts)); }catch(e){}
     applyExternalData(result.db, true);
     toast('Datos cargados desde Oracle Cloud','success');
+  }else if(_localLastWriteTs > result.ts){
+    // El local está más nuevo → empujar al servidor (no pisotear)
+    _oracleLastSync = result.ts;
+    pushToOracle();
+  }else{
+    // iguales: nada que hacer
+    _oracleLastSync = result.ts;
   }
 }
 
-/* Polling: consultar Oracle periódicamente por cambios de otros dispositivos */
+/* Polling: consultar Oracle periódicamente por cambios de otros dispositivos.
+   - Si el usuario está editando, SALTA este ciclo (reintenta el siguiente).
+   - Solo aplica si el remoto es más nuevo que el último cambio visto y que
+     el último cambio local (evita pisotear ediciones locales recientes). */
 async function oraclePoll(){
-  if(!ORACLE_CONFIG.enabled) return;
+  if(!ORACLE_CONFIG.enabled || !ORACLE_CONFIG.restUrl) return;
+  if(isUserEditing()) return; // no molestar al usuario mientras edita
   const result = await pullFromOracle();
   if(!result) return;
-  if(result.ts > _oracleLastSync){
+  if(result.ts > _oracleLastSync && result.ts >= _localLastWriteTs){
     _oracleLastSync = result.ts;
     applyExternalData(result.db, true);
+  }else if(result.ts > _oracleLastSync){
+    // remoto cambió pero el local también tiene cambios más nuevos → no pisoteamos,
+    // sí actualizamos el marcador y dejamos que el próximo saveDB empuje el local.
+    _oracleLastSync = result.ts;
   }
 }
 function startOraclePolling(){
-  if(!ORACLE_CONFIG.enabled) return;
+  if(!ORACLE_CONFIG.enabled || !ORACLE_CONFIG.restUrl) return;
   setInterval(oraclePoll, ORACLE_CONFIG.pollInterval || 3000);
 }
 
