@@ -2300,7 +2300,6 @@ window.addEventListener('pagehide', saveDB);
 // === Appwrite Tables: inicializa SDK + carga inicial + Realtime (push sin delay) ===
 (async ()=>{
   if(awInit && awInit()){
-    _awReady = true;
     try{
       await awCargarTodo();               // rellena DB desde Appwrite Tables
       if(!isUserEditing()) refrescarVistaActiva();
