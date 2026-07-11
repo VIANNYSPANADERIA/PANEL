@@ -10,6 +10,8 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/appwrite@26"></script>
+  <script src="appwriteService.js"></script>
   <style>
 :root{
   --primary:#3525cd;--on-primary:#fff;--primary-container:#4f46e5;--on-primary-container:#dad7ff;
@@ -208,6 +210,7 @@ table.d tr:hover td{background:var(--surface-container-low)}
 <div class="bottom-nav" id="bottomNav"></div>
 <div id="modalRoot"></div>
 <div class="toast-wrap" id="toasts"></div>
+
 <script>
 /* =====================================================================
    ERP PANADERÍA — Sistema completo (diseño + funcionalidad, en memoria)
@@ -287,65 +290,37 @@ const DB = {
   cacheCalendario: {}
 };
 
-/* ============ PERSISTENCIA + ORACLE CLOUD SYNC (24/7) ============
-   El sistema guarda SIEMPRE en localStorage (instantáneo, sin delay).
-   Además sincroniza con Oracle Cloud en background (cuando está configurado):
-   - saveDB() hace push a Oracle (debounced) SOLO si el DB cambió
-   - Polling periódico trae cambios de otros dispositivos
-   - BroadcastChannel sincroniza pestañas del mismo navegador en tiempo real
-   - Anti-bugs: NO re-renderiza si el usuario está editando (modal abierto /
-     con foco en input/select/textarea); NO pisotea datos locales más nuevos
-     que el servidor (last-write-wins con timestamp).
-   Para activar Oracle: rellenar restUrl (y opcional clientId/Secret) en
-   ORACLE_CONFIG. Con restUrl vacío, las funciones de red son no-ops seguros.
+/* ============ PERSISTENCIA + APPWRITE TABLES (API MODERNA) ============
+   El sistema usa Appwrite Tables (servicio TablesDB) como fuente de verdad.
+   Cada entidad del ERP es una tabla independiente; cada registro es una fila.
+   El objeto `DB` en memoria se mantiene solo como CACHÉ: la UI lee de `DB`
+   (instantáneo) y cada mutación escribe la fila concreta en Appwrite Tables.
+
+   Sync en vivo 24/7: Appwrite Realtime (WebSocket) empuja los cambios de
+   otros dispositivos en milisegundos — sin polling, sin delay.
+   Anti-bugs: NO re-renderiza si el usuario está editando (modal o input con
+   foco) y suprime el eco del propio evento con awSetApplying().
+
+   === CÓMO ACTIVAR (solo 4 valores, no 5) ===
+   1) cloud.appwrite.io → Create Project → anota ENDPOINT + PROJECT ID
+   2) Add Platform → Web → hostname (localhost + tu dominio)
+   3) Databases → Create Database → anota DATABASE ID
+   4) Crea las 12 tablas listadas en TABLE_IDS (dentro de appwriteService.js)
+      con sus columnas. Permissions: Users → Read+Create+Update+Delete.
+   5) Edita AW_CONFIG en appwriteService.js con endpoint, projectId, databaseId.
+   ¡Listo! Arranca solo: awInit() → awCargarTodo() → awIniciarRealtime().
    ================================================================== */
 
 const DB_KEY = 'erp_panaderia_db_v1';
-const DB_TS_KEY = 'erp_panaderia_db_ts_v1'; // timestamp del último cambio LOCAL real
-let _saveTimer = null;
-let _oraclePushTimer = null;
-let _oracleLastSync = 0;          // timestamp del último cambio recibido de Oracle/BC
-let _localLastWriteTs = 0;       // timestamp del último cambio hecho en ESTE dispositivo
-let _isApplyingOracleData = false;
-let _lastSavedJson = '';         // cache para detectar cambios reales vs writes no-op
+let _saveTimer = null;       
+let _lastSavedJson = '';    // cache para detectar cambios reales vs writes no-op
 let _lastSavedInit = false;
 
-try{ _localLastWriteTs = parseInt(localStorage.getItem(DB_TS_KEY)) || 0; }catch(e){ _localLastWriteTs = 0; }
-
-/* === CONFIGURACIÓN ORACLE CLOUD === */
-/* PASO 1: Crear cuenta en https://cloud.oracle.com (Always Free) */
-/* PASO 2: Crear Autonomous Database (ver oracle_setup.sql en la carpeta) */
-/* PASO 3: Habilitar ORDS y crear endpoint REST (ver oracle_setup.sql) */
-/* PASO 4: Pegar aquí la URL del endpoint (y credenciales si usás OAuth) */
-/* Ejemplo restUrl: https://<tu-host>.oraclecloudapps.com/ords/panaderia/erp/state/ */
-const ORACLE_CONFIG = {
-  enabled: true,    // true: cuando completes restUrl, la sync 24/7 arranca sola
-  restUrl: '',      // <-- PEGÁ aquí la URL del endpoint REST de Oracle
-  clientId: '',      // <-- opcional (si habilitaste OAuth en ORDS)
-  clientSecret: '', // <-- opcional
-  pollInterval: 3000,
-  debouncePush: 800
-};
-
-/* === BroadcastChannel: sync instantánea entre pestañas del mismo navegador === */
-let _bc = null;
-try{ _bc = new BroadcastChannel('erp_panaderia_sync'); }catch(e){ _bc=null; }
-if(_bc){
-  _bc.onmessage = (ev)=>{
-    if(ev.data && ev.data.type==='db-update' && ev.data.ts > _oracleLastSync){
-      _oracleLastSync = ev.data.ts;
-      applyExternalData(ev.data.db, false);
-    }
-  };
-}
-
 /* === isUserEditing: detecta si hay un modal abierto o input con foco ===
-   Evita que el polling re-renderice y pisotee formularios a mitad de edición. */
+   Evita que el Realtime re-renderice y pisotee formularios a mitad de edición. */
 function isUserEditing(){
-  // Modal abierto
   const root = document.getElementById('modalRoot');
   if(root && root.innerHTML && root.innerHTML.trim()) return true;
-  // Input/select/textarea con foco (edición inline o búsqueda)
   const a = document.activeElement;
   if(a){
     const tag = (a.tagName || '').toLowerCase();
@@ -355,80 +330,23 @@ function isUserEditing(){
   return false;
 }
 
-/* === saveDB: guarda en localStorage + notifica pestañas + push a Oracle ===
-   Solo dispara BC/push y marca "cambio local" si el DB realmente cambió,
-   así el auto-save periódico (cada 2s) NO fija "soy el más nuevo" sin motivo. */
+/* === saveDB: SOLO cache local. Ya NO empuja un JSON global a la nube.
+   Las mutaciones persistentes se hacen vía appwriteService.guardarXXX(). */
 function saveDB(){
   let newJson;
   try{ newJson = JSON.stringify(DB); }catch(e){ console.warn('No se pudo serializar DB:', e); return; }
-  const changed = !_lastSavedInit || newJson !== _lastSavedJson;
   try{ localStorage.setItem(DB_KEY, newJson); }catch(e){ console.warn('No se pudo guardar local:', e); }
   _lastSavedJson = newJson;
   _lastSavedInit = true;
-
-  if(!changed) return; // no hacemos nada si nada cambió
-
-  if(!_isApplyingOracleData){
-    const ts = Date.now();
-    _localLastWriteTs = ts;
-    try{ localStorage.setItem(DB_TS_KEY, String(ts)); }catch(e){}
-    if(_bc){ try{ _bc.postMessage({type:'db-update', db: JSON.parse(newJson), ts}); }catch(e){} }
-    // Push a Oracle (debounced para no saturar)
-    if(ORACLE_CONFIG.enabled && ORACLE_CONFIG.restUrl){
-      if(_oraclePushTimer) clearTimeout(_oraclePushTimer);
-      _oraclePushTimer = setTimeout(pushToOracle, ORACLE_CONFIG.debouncePush || 800);
-    }
-  }
 }
 
-/* === getDBSnapshot: devuelve una copia limpia del DB === */
+/* === getDBSnapshot: devuelve una copia del DB en memoria (para backups) === */
 function getDBSnapshot(){
   return JSON.parse(JSON.stringify(DB));
 }
 
-/* === applyExternalData: aplica datos de Oracle/BroadcastChannel sin disparar push ===
-   NO re-renderiza si el usuario está editando (preserva formularios). El DB en
-   memoria se actualiza igual, así en el próximo cambio del usuario se guarda todo. */
-function applyExternalData(newData, fromOracle){
-  if(!newData) return;
-  _isApplyingOracleData = true;
-  try{
-    const defaultFC = _defaultFacturaConfig;
-    if(newData.clientes) DB.clientes = newData.clientes;
-    if(newData.productos) DB.productos = newData.productos;
-    if(newData.pedidos) DB.pedidos = newData.pedidos;
-    if(newData.recaudo) DB.recaudo = newData.recaudo;
-    if(newData.cartera) DB.cartera = newData.cartera;
-    if(newData.nomina) DB.nomina = newData.nomina;
-    if(newData.conta) DB.conta = newData.conta;
-    if(newData.facturaConfig) DB.facturaConfig = Object.assign({}, defaultFC, newData.facturaConfig);
-    if(!DB.conta) DB.conta = {movimientos:[],categorias:[],cuentas:[],transferencias:[]};
-    if(!DB.conta.transferencias) DB.conta.transferencias = [];
-    if(!DB.nomina) DB.nomina = {empleados:[],historial:[]};
-    const newJson = JSON.stringify(DB);
-    localStorage.setItem(DB_KEY, newJson);
-    // Actualizamos la cache de "último guardado" para que el auto-save periódico
-    // NO interprete estos datos como un cambio local nuevo (evita loops de push).
-    _lastSavedJson = newJson;
-    _lastSavedInit = true;
-    // Solo re-renderizamos si el usuario NO está editando.
-    if(!isUserEditing()){
-      const currentRoute = $('#hdr-title') ? $('#hdr-title').textContent : '';
-      const routeMap = {'Clientes':'clientes','Pedidos':'pedidos','Administrar Productos':'productos',
-        'Configuración de Factura':'factura','Recaudo de Domiciliarios':'recaudo','Cartera':'cartera',
-        'Nómina':'nomina','Contabilidad':'contabilidad'};
-      const route = routeMap[currentRoute];
-      if(route && ROUTES[route]){
-        try{ ROUTES[route](); }catch(e){}
-      }
-    }
-  }catch(e){
-    console.warn('Error aplicando datos externos:', e);
-  }
-  _isApplyingOracleData = false;
-}
-
-/* === loadDB: carga desde localStorage (síncrono) === */
+/* === loadDB: carga la cache local (offline-first, arranque instantáneo)
+   antes de que awCargarTodo() traiga la verdad desde Appwrite Tables. === */
 function loadDB(){
   try{
     const raw = localStorage.getItem(DB_KEY);
@@ -446,14 +364,11 @@ function loadDB(){
     if(saved.cacheCalendario) DB.cacheCalendario = saved.cacheCalendario;
     DB.facturaConfig = Object.assign({}, defaultFC, saved.facturaConfig || {});
     if(!Array.isArray(DB.facturaConfig.orden) || DB.facturaConfig.orden.length===0) DB.facturaConfig.orden = defaultFC.orden;
-    // Bug #3: la fecha no debe aparecer en la factura de venta. Filtramos cualquier
-    // entrada 'fecha' guardada previamente en el orden y forzamos el flag a false.
     DB.facturaConfig.orden = DB.facturaConfig.orden.filter(k=>k!=='fecha');
     DB.facturaConfig.mostrarFecha = false;
     if(!DB.conta) DB.conta = defaultContaSnap();
     if(!DB.conta.transferencias) DB.conta.transferencias = [];
     if(!DB.nomina) DB.nomina = {empleados:[],historial:[]};
-    // Refrescar cache de serialización con el DB cargado
     try{ _lastSavedJson = JSON.stringify(DB); _lastSavedInit = true; }catch(e){}
     return true;
   }catch(e){
@@ -462,130 +377,16 @@ function loadDB(){
   }
 }
 
-/* ============ ORACLE CLOUD: funciones de red ============ */
-
-/* parseOracleTs: convierte el updated_at de Oracle a epoch ms.
-   Oracle (en oracle_setup.sql) lo emite como "YYYY-MM-DDTHH:MM:SS.FF3" sin zona
-   horaria; si no trae TZ, asumimos UTC para comparación determinista. */
-function parseOracleTs(s){
-  if(!s) return 0;
-  if(typeof s === 'number') return s;
-  let str = String(s).trim();
-  if(!str) return 0;
-  if(!/[zZ]$|[+-]\d\d:?\d\d$/.test(str)) str += 'Z';
-  const t = Date.parse(str);
-  return isNaN(t) ? (Date.parse(str.replace('Z','')) || 0) : t;
-}
-
-/* Obtener token OAuth de ORDS (si está configurado) */
-async function getOracleToken(){
-  if(!ORACLE_CONFIG.clientId || !ORACLE_CONFIG.clientSecret) return null;
-  try{
-    const resp = await fetch(ORACLE_CONFIG.restUrl.replace(/\/app_state\/\d+$/, '') + '/oauth/token', {
-      method:'POST',
-      headers:{'Content-Type':'application/x-www-form-urlencoded'},
-      body:`grant_type=client_credentials&client_id=${ORACLE_CONFIG.clientId}&client_secret=${ORACLE_CONFIG.clientSecret}`
-    });
-    if(!resp.ok) return null;
-    const data = await resp.json();
-    return data.access_token || null;
-  }catch(e){ console.warn('Oracle token error:', e); return null; }
-}
-
-/* Push: enviar DB completa a Oracle */
-async function pushToOracle(){
-  if(!ORACLE_CONFIG.enabled || !ORACLE_CONFIG.restUrl) return;
-  try{
-    const token = await getOracleToken();
-    const headers = {'Content-Type':'application/json'};
-    if(token) headers['Authorization'] = 'Bearer ' + token;
-    const body = JSON.stringify({
-      data: JSON.stringify(getDBSnapshot()),
-      updated_at: new Date().toISOString()
-    });
-    const resp = await fetch(ORACLE_CONFIG.restUrl, {
-      method:'PUT',
-      headers,
-      body
-    });
-    if(resp.ok){
-      // OK silencioso
-    }else{
-      console.warn('Oracle push HTTP', resp.status);
-    }
-  }catch(e){
-    console.warn('Oracle push error (offline?):', e);
-  }
-}
-
-/* Pull: traer DB completa de Oracle */
-async function pullFromOracle(){
-  if(!ORACLE_CONFIG.enabled || !ORACLE_CONFIG.restUrl) return null;
-  try{
-    const token = await getOracleToken();
-    const headers = {'Accept':'application/json'};
-    if(token) headers['Authorization'] = 'Bearer ' + token;
-    const resp = await fetch(ORACLE_CONFIG.restUrl, {method:'GET', headers});
-    if(!resp.ok) return null;
-    const row = await resp.json();
-    // ORDS devuelve {data:"...", updated_at:"..."} o el row directo
-    const dataStr = row.data || (row.items && row.items[0] && row.items[0].data) || null;
-    if(!dataStr) return null;
-    const parsed = JSON.parse(dataStr);
-    const ts = parseOracleTs(row.updated_at) || (row.items && row.items[0] && parseOracleTs(row.items[0].updated_at)) || Date.now();
-    return {db: parsed, ts};
-  }catch(e){
-    console.warn('Oracle pull error:', e);
-    return null;
-  }
-}
-
-/* Sincronización inicial: cargar desde Oracle al arrancar.
-   Last-write-wins: solo aplica el remoto si es MÁS nuevo que el último cambio
-   local. Si el local es más nuevo (ej. se editó offline), empuja el local al
-   servidor en vez de pisotearlo. */
-async function oracleInitialSync(){
-  if(!ORACLE_CONFIG.enabled || !ORACLE_CONFIG.restUrl) return;
-  const result = await pullFromOracle();
-  if(!result || !result.db) return;
-  if(result.ts > _localLastWriteTs){
-    // El servidor está más nuevo → aplicar
-    _oracleLastSync = result.ts;
-    _localLastWriteTs = result.ts;
-    try{ localStorage.setItem(DB_TS_KEY, String(result.ts)); }catch(e){}
-    applyExternalData(result.db, true);
-    toast('Datos cargados desde Oracle Cloud','success');
-  }else if(_localLastWriteTs > result.ts){
-    // El local está más nuevo → empujar al servidor (no pisotear)
-    _oracleLastSync = result.ts;
-    pushToOracle();
-  }else{
-    // iguales: nada que hacer
-    _oracleLastSync = result.ts;
-  }
-}
-
-/* Polling: consultar Oracle periódicamente por cambios de otros dispositivos.
-   - Si el usuario está editando, SALTA este ciclo (reintenta el siguiente).
-   - Solo aplica si el remoto es más nuevo que el último cambio visto y que
-     el último cambio local (evita pisotear ediciones locales recientes). */
-async function oraclePoll(){
-  if(!ORACLE_CONFIG.enabled || !ORACLE_CONFIG.restUrl) return;
-  if(isUserEditing()) return; // no molestar al usuario mientras edita
-  const result = await pullFromOracle();
-  if(!result) return;
-  if(result.ts > _oracleLastSync && result.ts >= _localLastWriteTs){
-    _oracleLastSync = result.ts;
-    applyExternalData(result.db, true);
-  }else if(result.ts > _oracleLastSync){
-    // remoto cambió pero el local también tiene cambios más nuevos → no pisoteamos,
-    // sí actualizamos el marcador y dejamos que el próximo saveDB empuje el local.
-    _oracleLastSync = result.ts;
-  }
-}
-function startOraclePolling(){
-  if(!ORACLE_CONFIG.enabled || !ORACLE_CONFIG.restUrl) return;
-  setInterval(oraclePoll, ORACLE_CONFIG.pollInterval || 3000);
+/* === refrescarVistaActiva: re-renderiza la vista activa cuando llega un
+   evento realtime (si el usuario NO está editando). Lo usa el service. === */
+function refrescarVistaActiva(){
+  if(isUserEditing()) return;
+  const current = $('#hdr-title') ? $('#hdr-title').textContent : '';
+  const map = {'Clientes':'clientes','Pedidos':'pedidos','Administrar Productos':'productos',
+    'Configuración de Factura':'factura','Recaudo de Domiciliarios':'recaudo',
+    'Cartera':'cartera','Nómina':'nomina','Contabilidad':'contabilidad'};
+  const route = map[current];
+  if(route && ROUTES[route]) try{ ROUTES[route](); }catch(e){}
 }
 
 /* === Conectividad: indicador online/offline === */
@@ -595,7 +396,7 @@ function initConnectivityIndicator(){
   dot.style.cssText = 'width:8px;height:8px;border-radius:50%;background:#005338;display:inline-block;margin-left:8px;title:Conectado';
   const hdr = $('#hdr-title');
   if(hdr && !document.getElementById('connDot')) hdr.appendChild(dot);
-  window.addEventListener('online', ()=>{ if(dot) dot.style.background='#005338'; });
+  window.addEventListener('online',  ()=>{ if(dot) dot.style.background='#005338'; });
   window.addEventListener('offline', ()=>{ if(dot) dot.style.background='#ba1a1a'; });
 }
 
@@ -830,6 +631,8 @@ function initDragClientes(){
       if(srcIdx<0||tgtIdx<0) return;
       const [moved] = DB.clientes.splice(srcIdx,1);
       DB.clientes.splice(tgtIdx,0,moved);
+      // persiste el nuevo orden en Appwrite Tables (cada fila con su `orden`)
+      appwriteService.reordenarClientes(DB.clientes).catch(()=>{});
       saveDB();
       toast('Orden actualizado','success');
       renderClientesCards();
@@ -876,9 +679,9 @@ function verPedidoGuardado(id){
 function eliminarPedidoGuardado(id){
   modal('Eliminar pedido','<p>¿Eliminar este pedido guardado del día?</p>',`<button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><button class="btn btn-danger" onclick="_delPedidoGuardado('${id}')">Eliminar</button>`);
 }
-function _delPedidoGuardado(id){
-  DB.pedidos = DB.pedidos.filter(p=>p.id!==id);
-  saveDB(); closeModal(); renderClientes(); toast('Pedido eliminado','success');
+async function _delPedidoGuardado(id){
+  try{ await appwriteService.eliminarPedido(id); saveDB(); closeModal(); renderClientes(); toast('Pedido eliminado','success'); }
+  catch(e){ toast('No se pudo eliminar el pedido','error'); }
 }
 function colorPickerHtml(selected){
   return `<div class="field"><label>Color distintivo del cliente</label>
@@ -971,7 +774,7 @@ function quitarCoordenadas(){
   if(a) a.value=''; if(b) b.value='';
   toast('Ubicación quitada','');
 }
-function guardarCliente(id){
+async function guardarCliente(id){
   const nombre = $('#nc-nombre').value.trim();
   if(!nombre){ toast('El nombre es obligatorio','error'); return; }
   const latRaw = $('#nc-lat') ? $('#nc-lat').value.trim() : '';
@@ -979,17 +782,21 @@ function guardarCliente(id){
   const lat = (latRaw!=='' && !isNaN(Number(latRaw))) ? Number(latRaw) : null;
   const lng = (lngRaw!=='' && !isNaN(Number(lngRaw))) ? Number(lngRaw) : null;
   const data = {nombre,tipo:$('#nc-tipo').value,telefono:$('#nc-tel').value,direccion:$('#nc-dir').value,color:$('#nc-color').value,lat,lng};
-  if(id){ Object.assign(DB.clientes.find(x=>x.id===id), data); } else { DB.clientes.push({id:uid('C'),...data}); }
-  saveDB(); toast('Cliente guardado','success'); closeModal(); renderClientes();
+  try{
+    if(id){ await appwriteService.guardarCliente({id, ...data}); }
+    else  { await appwriteService.guardarCliente(data); }
+    saveDB(); toast('Cliente guardado','success'); closeModal(); renderClientes();
+  }catch(e){ toast('No se pudo guardar el cliente','error'); }
 }
 function editarClienteModal(id){ nuevoClienteModal(id); }
 function eliminarCliente(id){
   modal('Eliminar cliente','<p>¿Confirmar eliminación del cliente y todos sus pedidos?</p>',`<button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><button class="btn btn-danger" onclick="_delCliente('${id}')">Eliminar</button>`);
 }
-function _delCliente(id){
-  DB.clientes = DB.clientes.filter(c=>c.id!==id);
-  DB.pedidos = DB.pedidos.filter(p=>p.clienteId!==id);
-  saveDB(); closeModal(); renderClientes(); toast('Cliente eliminado','success');
+async function _delCliente(id){
+  try{
+    await appwriteService.eliminarCliente(id);
+    saveDB(); closeModal(); renderClientes(); toast('Cliente eliminado','success');
+  }catch(e){ toast('No se pudo eliminar el cliente','error'); }
 }
 
 /* ---------- Mapa dinámico de clientes (Leaflet) ---------- */
@@ -1221,18 +1028,17 @@ function limpiarPedido(){
     renderPedidos(); toast('Pedido limpio','success');
   }
 }
-function confirmarLimpiarPedido(){
+async function confirmarLimpiarPedido(){
   const fecha = _clientesFecha || todayKey();
   const existente = _currentCliente ? DB.pedidos.find(p=>p.clienteId===_currentCliente && p.fecha===fecha) : null;
   if(existente){
-    DB.pedidos = DB.pedidos.filter(p=>p.id!==existente.id);
-    if(DB.recaudo[fecha]) delete DB.recaudo[fecha][existente.id];
+    await appwriteService.eliminarPedido(existente.id);
     saveDB();
     toast('Pedido eliminado y retirado del recaudo','success');
   }
   closeModal(); renderPedidos();
 }
-function guardarPedido(silent){
+async function guardarPedido(silent){
   if(!_currentCliente){ if(!silent) toast('Seleccione cliente','error'); return; }
   const productos = DB.productos.filter(p=>p.activo);
   const items = productos.map(p=>{
@@ -1245,8 +1051,7 @@ function guardarPedido(silent){
   // Pedido en cero / limpio: se elimina el pedido existente y su fila de recaudo
   if(items.length===0){
     if(existente){
-      DB.pedidos = DB.pedidos.filter(p=>p.id!==existente.id);
-      if(DB.recaudo[fecha]) delete DB.recaudo[fecha][existente.id];
+      await appwriteService.eliminarPedido(existente.id);
       saveDB();
       if(!silent) toast('Pedido guardado en 0 y retirado del recaudo','success');
     } else {
@@ -1256,20 +1061,20 @@ function guardarPedido(silent){
     return;
   }
   const total = items.reduce((a,b)=>a+b.subtotal,0);
-  // No crear duplicados: si ya existe un pedido del cliente para esa fecha, se actualiza
-  if(existente){
-    existente.items = items; existente.comentario = _comentarioPedido;
-    existente.total = total; existente.modoCondicion = _modoCondicion;
-  } else {
-    DB.pedidos.push({id:uid('P'),clienteId:_currentCliente,fecha,items,comentario:_comentarioPedido,total,modoCondicion:_modoCondicion});
-  }
-  sincronizarRecaudoDia(fecha);
-  saveDB();
-  if(!silent){
-    toast('Pedido guardado','success');
-    _itemsPedido={}; _comentarioPedido='';
-    go('clientes');
-  }
+  try{
+    if(existente){
+      await appwriteService.editarPedido(existente.id, {items, comentario:_comentarioPedido, total, modoCondicion:_modoCondicion});
+    } else {
+      await appwriteService.guardarPedido({clienteId:_currentCliente, fecha, items, comentario:_comentarioPedido, total, modoCondicion:_modoCondicion});
+    }
+    sincronizarRecaudoDia(fecha);
+    saveDB();
+    if(!silent){
+      toast('Pedido guardado','success');
+      _itemsPedido={}; _comentarioPedido='';
+      go('clientes');
+    }
+  }catch(e){ if(!silent) toast('No se pudo guardar el pedido','error'); }
 }
 function imprimirTicket(){ generarTicketImpresion(); }
 function obtenerItemsPedidoActual(){
@@ -1379,6 +1184,7 @@ function generarTicketImpresion(){
   // se pierde la información aunque el usuario cierre la ventana emergente.
   guardarPedido(true);
   f.consecutivoTicket = (f.consecutivoTicket||1) + 1;
+  appwriteService.guardarFacturaConfig({consecutivoTicket: f.consecutivoTicket}).catch(()=>{});
   saveDB();
   const numTicket = f.consecutivoTicket - 1;
   const body = componerTicketHTML(items, total, cli?cli.nombre:'', _comentarioPedido, numTicket, _currentCliente);
@@ -1434,13 +1240,14 @@ function renderProductos(){
   `;
   initSwitchCSS();
 }
-function toggleProdActivo(id,val){ const p=DB.productos.find(x=>x.id===id); if(p){p.activo=val; saveDB(); toast('Producto '+(val?'activado':'desactivado'),'success');} }
+function toggleProdActivo(id,val){ const p=DB.productos.find(x=>x.id===id); if(p){ appwriteService.toggleProductoActivo(id,val).catch(()=>{}); saveDB(); toast('Producto '+(val?'activado':'desactivado'),'success'); } }
 function moverOrden(id,dir){
   const sorted = [...DB.productos].sort((a,b)=>a.orden-b.orden);
   const i = sorted.findIndex(p=>p.id===id);
   const j = i+dir; if(j<0||j>=sorted.length) return;
   const a = sorted[i].orden, b = sorted[j].orden;
   sorted[i].orden = b; sorted[j].orden = a;
+  appwriteService.reordenarProductos(sorted).catch(()=>{});
   saveDB(); renderProductos();
 }
 function prodModal(id){
@@ -1467,7 +1274,7 @@ function fileToData(input, targetId){
   const f = input.files[0]; if(!f) return;
   const r = new FileReader(); r.onload = ()=>{ document.getElementById(targetId).value = r.result; toast('Imagen cargada','success'); }; r.readAsDataURL(f);
 }
-function guardarProd(id){
+async function guardarProd(id){
   const data = {
     nombre: $('#p-nombre').value.trim(),
     precio: Number($('#p-precio').value)||0,
@@ -1480,13 +1287,19 @@ function guardarProd(id){
     activo: $('#p-activo').value==='true'
   };
   if(!data.nombre){ toast('Nombre obligatorio','error'); return; }
-  if(id){ Object.assign(DB.productos.find(x=>x.id===id), data); } else { DB.productos.push({id:uid('P'),...data}); }
-  saveDB(); toast('Producto guardado','success'); closeModal(); renderProductos();
+  try{
+    if(id){ await appwriteService.guardarProducto({id, ...data}); }
+    else  { await appwriteService.guardarProducto(data); }
+    saveDB(); toast('Producto guardado','success'); closeModal(); renderProductos();
+  }catch(e){ toast('No se pudo guardar el producto','error'); }
 }
 function eliminarProd(id){
   modal('Eliminar producto','<p>¿Eliminar el producto?</p>',`<button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><button class="btn btn-danger" onclick="_delProd('${id}')">Eliminar</button>`);
 }
-function _delProd(id){ DB.productos = DB.productos.filter(p=>p.id!==id); saveDB(); closeModal(); renderProductos(); toast('Producto eliminado','success'); }
+async function _delProd(id){
+  try{ await appwriteService.eliminarProducto(id); saveDB(); closeModal(); renderProductos(); toast('Producto eliminado','success'); }
+  catch(e){ toast('No se pudo eliminar el producto','error'); }
+}
 
 /* Switch CSS inject */
 function initSwitchCSS(){
@@ -1560,9 +1373,9 @@ function renderFactura(){
   } else if(_factTab==='mostrar'){
     body=`<div class="grid grid-2">
       ${[['mostrarLogo','Logo'],['mostrarNit','NIT'],['mostrarTelefono','Teléfono'],['mostrarDireccion','Dirección'],['mostrarNumTicket','Número de ticket'],['mostrarCliente','Cliente'],['mostrarProductosTitulo','Título PRODUCTOS'],['mostrarPrecioUnitario','Precio unitario en items'],['mostrarVendaje','Vendajes'],['mostrarSubtotalItem','Subtotal por item'],['mostrarDeuda','Deuda automática del cliente']].map(([k,l])=>`
-        <div class="card"><div class="card-b flex fb"><span>${l}</span><label class="switch"><input type="checkbox" ${f[k]!==false?'checked':''} onchange="DB.facturaConfig.${k}=this.checked;saveDB()"/></label></div></div>
+        <div class="card"><div class="card-b flex fb"><span>${l}</span><label class="switch"><input type="checkbox" ${f[k]!==false?'checked':''} onchange="DB.facturaConfig.${k}=this.checked;appwriteService.guardarFacturaConfig({${k}:this.checked}).catch(()=>{});saveDB()"/></label></div></div>
       `).join('')}
-    </div><div class="mt-md"><button class="btn btn-primary" onclick="saveDB();toast('Configuración guardada','success')">Guardar</button></div>`;
+    </div><div class="mt-md"><button class="btn btn-primary" onclick="appwriteService.guardarFacturaConfig(DB.facturaConfig).catch(()=>{});saveDB();toast('Configuración guardada','success')">Guardar</button></div>`;
   } else if(_factTab==='orden'){
     body=`<div class="muted mb-md">Use los botones para reordenar los elementos del ticket.</div>
       <table class="tw"><tbody>${f.orden.map((k,i)=>`<tr><td>${i+1}.</td><td class="bold">${k}</td><td class="right"><button class="btn btn-ghost btn-sm" onclick="moverOrdenFactura(${i},-1)">▲</button> <button class="btn btn-ghost btn-sm" onclick="moverOrdenFactura(${i},1)">▼</button></td></tr>`).join('')}</tbody></table>`;
@@ -1598,21 +1411,25 @@ function autoSaveTipografia(){
     const tams = ['tamEncabezado','tamNombre','tamInfo','tamCliente','tamItems','tamVendajes','tamTotal','tamComentario','tamMensaje','tamPie'];
     const negs = ['negEncabezado','negNombre','negInfo','negCliente','negItems','negVendajes','negTotal','negMensaje','negPie'];
     const aligns = ['alineaEncabezado','alineaNombre','alineaInfo','alineaCliente','alineaTotal','alineaItems'];
-    tams.forEach(k=>{ const el=$('#tip-'+k); if(el) f[k]=Number(el.value)||11; });
-    negs.forEach(k=>{ const el=$('#tip-'+k); if(el) f[k]=el.value==='true'; });
-    aligns.forEach(k=>{ const el=$('#tip-'+k); if(el) f[k]=el.value; });
+    const patch = {};
+    tams.forEach(k=>{ const el=$('#tip-'+k); if(el){ f[k]=Number(el.value)||11; patch[k]=f[k]; } });
+    negs.forEach(k=>{ const el=$('#tip-'+k); if(el){ f[k]=el.value==='true'; patch[k]=f[k]; } });
+    aligns.forEach(k=>{ const el=$('#tip-'+k); if(el){ f[k]=el.value; patch[k]=f[k]; } });
+    appwriteService.guardarFacturaConfig(patch).catch(()=>{});
     saveDB();
   }, 250);
 }
 function guardarFactura(){
-  Object.assign(DB.facturaConfig,{
+  const patch={
     nombreNegocio:$('#fc-nombre').value,nit:$('#fc-nit').value,telefono:$('#fc-tel').value,direccion:$('#fc-dir').value,
     logo:$('#fc-logo').value,encabezado:$('#fc-enc').value,mensaje:$('#fc-msg').value,piePagina:$('#fc-pie').value,
     labelDebeCliente:$('#fc-debe').value,labelDeboCliente:$('#fc-debo').value,colorDeuda:$('#fc-color-deuda').value,colorFavor:$('#fc-color-favor').value,tamDeuda:Number($('#fc-tam-deuda').value)||18,
     fuente:$('#fc-fuente').value
-  });
+  };
+  Object.assign(DB.facturaConfig, patch);
+  appwriteService.guardarFacturaConfig(patch).catch(()=>{});
   saveDB();
-  toast('Configuraci n guardada','success'); renderFactura();
+  toast('Configuración guardada','success'); renderFactura();
 }
 /* Guardado autom tico de la pesta a "Datos del Negocio": persiste sin
    re-renderizar para no perder el foco ni resetear los inputs mientras edita. */
@@ -1622,14 +1439,16 @@ function autoSaveFactura(){
   _autoFacTimer = setTimeout(()=>{
     const get = id => { const el=$('#'+id); return el ? el.value : null; };
     if(get('fc-nombre')!=null){
-      Object.assign(DB.facturaConfig,{
+      const patch={
         nombreNegocio:get('fc-nombre'),nit:get('fc-nit'),telefono:get('fc-tel'),direccion:get('fc-dir'),
         logo:get('fc-logo'),encabezado:get('fc-enc'),mensaje:get('fc-msg'),piePagina:get('fc-pie'),
         labelDebeCliente:get('fc-debe'),labelDeboCliente:get('fc-debo'),
         colorDeuda:get('fc-color-deuda'),colorFavor:get('fc-color-favor'),
         tamDeuda:Number(get('fc-tam-deuda'))||18,
         fuente:get('fc-fuente')
-      });
+      };
+      Object.assign(DB.facturaConfig, patch);
+      appwriteService.guardarFacturaConfig(patch).catch(()=>{});
       saveDB();
     }
   }, 400);
@@ -1639,16 +1458,20 @@ function guardarTipografia(){
   const tams = ['tamEncabezado','tamNombre','tamInfo','tamCliente','tamItems','tamVendajes','tamTotal','tamComentario','tamMensaje','tamPie'];
   const negs = ['negEncabezado','negNombre','negInfo','negCliente','negItems','negVendajes','negTotal','negMensaje','negPie'];
   const aligns = ['alineaEncabezado','alineaNombre','alineaInfo','alineaCliente','alineaTotal'];
-  tams.forEach(k=>{ const el=$('#tip-'+k); if(el) f[k]=Number(el.value)||11; });
-  negs.forEach(k=>{ const el=$('#tip-'+k); if(el) f[k]=el.value==='true'; });
-  aligns.forEach(k=>{ const el=$('#tip-'+k); if(el) f[k]=el.value; });
-  const aliItems=$('#tip-alineaItems'); if(aliItems) f.alineaItems=aliItems.value;
+  const patch={};
+  tams.forEach(k=>{ const el=$('#tip-'+k); if(el){ f[k]=Number(el.value)||11; patch[k]=f[k]; } });
+  negs.forEach(k=>{ const el=$('#tip-'+k); if(el){ f[k]=el.value==='true'; patch[k]=f[k]; } });
+  aligns.forEach(k=>{ const el=$('#tip-'+k); if(el){ f[k]=el.value; patch[k]=f[k]; } });
+  const aliItems=$('#tip-alineaItems'); if(aliItems){ f.alineaItems=aliItems.value; patch.alineaItems=f.alineaItems; }
+  appwriteService.guardarFacturaConfig(patch).catch(()=>{});
   saveDB();
   toast('Tipografía guardada','success'); renderFactura();
 }
 function moverOrdenFactura(i,dir){
   const arr = DB.facturaConfig.orden; const j=i+dir; if(j<0||j>=arr.length) return;
-  [arr[i],arr[j]]=[arr[j],arr[i]]; saveDB(); renderFactura();
+  [arr[i],arr[j]]=[arr[j],arr[i]];
+  appwriteService.guardarFacturaConfig({orden: arr}).catch(()=>{});
+  saveDB(); renderFactura();
 }
 function vistaPreviaTicket(){
   const itemsEj = [
@@ -1676,25 +1499,30 @@ function generarTicketImpresionPreview(){
 
 /* ===================== RECAUDO DE DOMICILIARIOS ===================== */
 let _recaudoFecha = todayKey();
-function sincronizarRecaudoDia(fecha){
+async function sincronizarRecaudoDia(fecha){
   const pedidos = DB.pedidos.filter(p=>p.fecha===fecha);
   if(!DB.recaudo[fecha]) DB.recaudo[fecha]={};
   const r = DB.recaudo[fecha];
-  pedidos.forEach(p=>{
+  for(const p of pedidos){
     if(!r[p.id]){
       const cli = DB.clientes.find(c=>c.id===p.clienteId);
-      r[p.id] = {
+      const nuevaFila = {
         pedidoId:p.id, clienteId:p.clienteId, cliente:cli?cli.nombre:'', tipo:cli?cli.tipo:'',
         subtotal:p.total, deuda:0, entregado:false, recibido:false, recaudado:false,
         nequi:0, bancolombia:0, deudaPago:0, debeCliente:0,
-        faltante:0, salida:0, observacion:'', efectivo:0
+        faltante:0, salida:0, observacion:'', efectivo:0, fecha
       };
+      // crea la fila en Appwrite Tables
+      try{ const saved = await appwriteService.guardarRecaudo(nuevaFila); if(saved) nuevaFila.id = saved.id; }catch(e){}
+      r[p.id] = nuevaFila;
     } else {
       r[p.id].subtotal = p.total;
       r[p.id].cliente = (DB.clientes.find(c=>c.id===p.clienteId)||{}).nombre || r[p.id].cliente;
       if(r[p.id].recaudado===undefined) r[p.id].recaudado=false;
+      // actualiza la fila existente
+      appwriteService.editarRecaudo(r[p.id].id, {subtotal:r[p.id].subtotal, cliente:r[p.id].cliente}).catch(()=>{});
     }
-  });
+  }
 }
 function renderRecaudo(){
   setHeader('Recaudo de Domiciliarios');
@@ -1786,8 +1614,8 @@ function recalcEfectivoFila(r){
 function recaudarPedido(id){
   const r = DB.recaudo[_recaudoFecha] && DB.recaudo[_recaudoFecha][id]; if(!r) return;
   r.recaudado = !r.recaudado;
-  // Al deseleccionar se restauran/recalculan los valores (no quedan estáticos)
   recalcEfectivoFila(r);
+  appwriteService.editarRecaudo(r.id, r).catch(()=>{});
   saveDB();
   toast(r.recaudado ? `Recaudo registrado: ${money(r.subtotal)}` : 'Recaudo retirado', r.recaudado ? 'success' : 'default');
   renderRecaudo();
@@ -1795,9 +1623,7 @@ function recaudarPedido(id){
 function updRec(id,campo,val){
   const r = DB.recaudo[_recaudoFecha] && DB.recaudo[_recaudoFecha][id]; if(!r) return;
   r[campo] = (campo==='entregado'||campo==='recibido'||campo==='observacion') ? val : (parseNum(val));
-  // Lógica del día: deuda del cliente resta, le debo al cliente aumenta.
   recalcEfectivoFila(r);
-  // Sincronizar cartera por DELTA (evita movimientos duplicados al editar varias veces)
   if(['deuda','deudaPago','debeCliente'].includes(campo) && r.clienteId){
     const lastKey = '_last_' + campo;
     const last = r[lastKey] || 0;
@@ -1809,11 +1635,16 @@ function updRec(id,campo,val){
       r[lastKey] = r[campo];
     }
   }
+  appwriteService.editarRecaudo(r.id, r).catch(()=>{});
   saveDB();
   renderRecaudo();
 }
 function reiniciarRecaudo(){
-  modal('Reiniciar día','<p>¿Reiniciar todos los controles del día?</p>',`<button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><button class="btn btn-danger" onclick="DB.recaudo['${_recaudoFecha}']={};saveDB();closeModal();renderRecaudo()">Reiniciar</button>`);
+  modal('Reiniciar día','<p>¿Reiniciar todos los controles del día?</p>',`<button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><button class="btn btn-danger" onclick="_reiniciarRecaudo()">Reiniciar</button>`);
+}
+async function _reiniciarRecaudo(){
+  try{ await appwriteService.reiniciarRecaudoDia(_recaudoFecha); saveDB(); closeModal(); renderRecaudo(); toast('Día reiniciado','success'); }
+  catch(e){ toast('No se pudo reiniciar el día','error'); }
 }
 
 /* ---- Menú oculto: descuento rápido de $10.000 en pedido + recaudo ---- */
@@ -1843,15 +1674,16 @@ function abrirMenuSecretoRecaudo(){
   }).join('');
   modal('Ajuste rápido', `<div class="muted mb-md">Seleccione un cliente para descontar <b>${money(10000)}</b> de su pedido del día y de los totales de recaudo (una vez por clic).</div>${cards}`, '', 'modal-lg');
 }
-function descontarClienteRecaudo(pedidoId){
+async function descontarClienteRecaudo(pedidoId){
   const fecha = _recaudoFecha;
   const ped = DB.pedidos.find(p=>p.id===pedidoId && p.fecha===fecha);
   if(!ped){ toast('Pedido no encontrado para esta fecha','error'); closeModal(); return; }
   const monto = 10000;
   ped.total = Math.max(0, (Number(ped.total)||0) - monto);
-  sincronizarRecaudoDia(fecha); // el subtotal del recaudo se sincroniza con el nuevo total
+  try{ await appwriteService.editarPedido(ped.id, {total: ped.total}); }catch(e){}
+  await sincronizarRecaudoDia(fecha);
   const r = DB.recaudo[fecha] && DB.recaudo[fecha][pedidoId];
-  if(r) recalcEfectivoFila(r); // refresca el efectivo y los totales (disminución única)
+  if(r){ recalcEfectivoFila(r); appwriteService.editarRecaudo(r.id, r).catch(()=>{}); }
   saveDB();
   const cli = DB.clientes.find(c=>c.id===ped.clienteId);
   toast(`-${money(monto)} aplicado a ${cli?cli.nombre:'pedido'}`, 'success');
@@ -1914,18 +1746,19 @@ function getSaldoCliente(clienteId){
   const movs = DB.cartera.filter(m=>m.clienteId===clienteId);
   return movs.length?movs[movs.length-1].saldoActual:0;
 }
-function registrarMovCartera(clienteId,tipo,valor,observacion=''){
+async function registrarMovCartera(clienteId,tipo,valor,observacion=''){
   const v = Number(valor)||0;
   if(v===0) return;
   const salAnt = getSaldoCliente(clienteId);
   let nv = salAnt;
-  // Convención: saldo negativo = cliente debe a la empresa; saldo positivo = empresa debe al cliente.
-  if(tipo==='deuda') nv = salAnt - v;            // cliente debe más => resta
-  if(tipo==='debo_cliente') nv = salAnt + v;     // empresa debe a cliente => suma
-  if(tipo==='pago'||tipo==='pago_deuda') nv = salAnt + v;  // cliente paga su deuda => suma (acercándose a 0)
-  if(tipo==='pago_empresa') nv = salAnt - v;     // empresa le paga al cliente => resta
+  if(tipo==='deuda') nv = salAnt - v;
+  if(tipo==='debo_cliente') nv = salAnt + v;
+  if(tipo==='pago'||tipo==='pago_deuda') nv = salAnt + v;
+  if(tipo==='pago_empresa') nv = salAnt - v;
   if(tipo==='saldo_inicial'||tipo==='ajuste') nv = v;
-  DB.cartera.push({id:uid('M'),clienteId,fecha:isoDate(new Date()),tipo,valor:v,saldoAnterior:salAnt,saldoActual:nv,observacion});
+  const mov = {id:uid('M'),clienteId,fecha:isoDate(new Date()),tipo,valor:v,saldoAnterior:salAnt,saldoActual:nv,observacion};
+  DB.cartera.push(mov);
+  appwriteService.guardarMovCartera(mov).catch(()=>{});
 }
 function renderCartera(){
   setHeader('Cartera');
@@ -1966,12 +1799,13 @@ function saldoInicialModal(){
     </div>
   `,`<button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" onclick="guardarSaldoInicial()">Guardar</button>`);
 }
-function guardarSaldoInicial(){
+async function guardarSaldoInicial(){
   const cliId=$('#si-cli').value, v=Number($('#si-val').value)||0, tipo=$('#si-tipo').value;
   if(v===0){toast('Valor inválido','error');return;}
   const signo = tipo==='debe'?-v:v;
-  DB.cartera.push({id:uid('M'),clienteId:cliId,fecha:isoDate(new Date()),tipo:'saldo_inicial',valor:signo,saldoAnterior:0,saldoActual:signo,observacion:'Saldo inicial'});
-  saveDB(); closeModal();renderCartera();toast('Saldo inicial registrado','success');
+  const mov = {id:uid('M'),clienteId:cliId,fecha:isoDate(new Date()),tipo:'saldo_inicial',valor:signo,saldoAnterior:0,saldoActual:signo,observacion:'Saldo inicial'};
+  try{ await appwriteService.guardarMovCartera(mov); saveDB(); closeModal();renderCartera();toast('Saldo inicial registrado','success'); }
+  catch(e){ toast('No se pudo registrar el saldo','error'); }
 }
 function editSaldoModal(id){
   const c=DB.clientes.find(x=>x.id===id);
@@ -1981,11 +1815,12 @@ function editSaldoModal(id){
     <div class="field"><label>Observación</label><input id="es-obs" placeholder="Motivo del ajuste"/></div>
   `,`<button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" onclick="guardarAjuste('${id}')">Guardar ajuste</button>`);
 }
-function guardarAjuste(id){
+async function guardarAjuste(id){
   const nv=Number($('#es-val').value)||0, obs=$('#es-obs').value;
   const ant=getSaldoCliente(id);
-  DB.cartera.push({id:uid('M'),clienteId:id,fecha:isoDate(new Date()),tipo:'ajuste',valor:nv-ant,saldoAnterior:ant,saldoActual:nv,observacion:obs||'Ajuste'});
-  saveDB(); closeModal();renderCartera();toast('Ajuste registrado','success');
+  const mov = {id:uid('M'),clienteId:id,fecha:isoDate(new Date()),tipo:'ajuste',valor:nv-ant,saldoAnterior:ant,saldoActual:nv,observacion:obs||'Ajuste'};
+  try{ await appwriteService.guardarMovCartera(mov); saveDB(); closeModal();renderCartera();toast('Ajuste registrado','success'); }
+  catch(e){ toast('No se pudo registrar el ajuste','error'); }
 }
 function historialClienteModal(id){
   const c=DB.clientes.find(x=>x.id===id);
@@ -2050,13 +1885,20 @@ function empModal(id){
     </div>
   `,`<button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" onclick="guardarEmp('${id||''}')">Guardar</button>`);
 }
-function guardarEmp(id){
+async function guardarEmp(id){
   const data={nombre:$('#e-nombre').value.trim(),periodo:$('#e-periodo').value,salarioBase:Number($('#e-sal').value)||0};
   if(!data.nombre){toast('Nombre obligatorio','error');return;}
-  if(id){Object.assign(DB.nomina.empleados.find(x=>x.id===id),data);}else{DB.nomina.empleados.push({id:uid('E'),...data,calendario:{},adelantos:[],pendientes:[]});}
-  saveDB(); closeModal();renderNomina();toast('Empleado guardado','success');
+  try{
+    if(id){ await appwriteService.guardarEmpleado({id,...data}); }
+    else  { await appwriteService.guardarEmpleado({...data, calendario:{}, adelantos:[], pendientes:[]}); }
+    saveDB(); closeModal();renderNomina();toast('Empleado guardado','success');
+  }catch(e){ toast('No se pudo guardar el empleado','error'); }
 }
-function eliminarEmp(id){ modal('Eliminar','<p>¿Eliminar empleado?</p>',`<button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><button class="btn btn-danger" onclick="DB.nomina.empleados=DB.nomina.empleados.filter(e=>e.id!=='${id}');saveDB();closeModal();renderNomina()">Eliminar</button>`); }
+function eliminarEmp(id){ modal('Eliminar','<p>¿Eliminar empleado?</p>',`<button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><button class="btn btn-danger" onclick="_delEmp('${id}')">Eliminar</button>`); }
+async function _delEmp(id){
+  try{ await appwriteService.eliminarEmpleado(id); saveDB(); closeModal(); renderNomina(); toast('Empleado eliminado','success'); }
+  catch(e){ toast('No se pudo eliminar','error'); }
+}
 function abrirCalendario(empId){
   const e=DB.nomina.empleados.find(x=>x.id===empId);
   const today=new Date(); const y=today.getFullYear(),m=today.getMonth();
@@ -2073,6 +1915,7 @@ function toggleDay(empId,y,m,day){
   const e=DB.nomina.empleados.find(x=>x.id===empId);
   const k=`${y}-${m}-${day}`;
   e.calendario[k]=!e.calendario[k];
+  appwriteService.editarEmpleado(empId, {calendario: e.calendario}).catch(()=>{});
   saveDB();
   abrirCalendario(empId);
 }
@@ -2119,21 +1962,24 @@ function empExtras(empId){
   }
   modal(`Extras - ${e.nombre}`, `<div class="menu-tabs">${tabBtn('adel','Adelantos')}${tabBtn('pend','Pendientes')}${tabBtn('hist','Historial')}</div>${body}`, '', 'modal-lg');
 }
-function addAdel(id){const e=DB.nomina.empleados.find(x=>x.id===id);if(!e)return;e.adelantos.push({valor:Number($('#ade-val').value)||0,motivo:$('#ade-mot').value,fecha:$('#ade-fecha').value});saveDB();empExtras(id);toast('Adelanto agregado','success');}
-function delAdel(id,i){const e=DB.nomina.empleados.find(x=>x.id===id);if(!e)return;e.adelantos.splice(i,1);saveDB();empExtras(id);}
-function addPend(id){const e=DB.nomina.empleados.find(x=>x.id===id);if(!e)return;e.pendientes.push({valor:Number($('#pen-val').value)||0,motivo:$('#pen-mot').value,fecha:$('#pen-fecha').value,estado:'Pendiente'});saveDB();empExtras(id);toast('Pendiente agregado','success');}
-function delPend(id,i){const e=DB.nomina.empleados.find(x=>x.id===id);if(!e)return;e.pendientes.splice(i,1);saveDB();empExtras(id);}
-function pagarNomina(id){
+function addAdel(id){const e=DB.nomina.empleados.find(x=>x.id===id);if(!e)return;e.adelantos.push({valor:Number($('#ade-val').value)||0,motivo:$('#ade-mot').value,fecha:$('#ade-fecha').value});appwriteService.editarEmpleado(id,{adelantos:e.adelantos}).catch(()=>{});saveDB();empExtras(id);toast('Adelanto agregado','success');}
+function delAdel(id,i){const e=DB.nomina.empleados.find(x=>x.id===id);if(!e)return;e.adelantos.splice(i,1);appwriteService.editarEmpleado(id,{adelantos:e.adelantos}).catch(()=>{});saveDB();empExtras(id);}
+function addPend(id){const e=DB.nomina.empleados.find(x=>x.id===id);if(!e)return;e.pendientes.push({valor:Number($('#pen-val').value)||0,motivo:$('#pen-mot').value,fecha:$('#pen-fecha').value,estado:'Pendiente'});appwriteService.editarEmpleado(id,{pendientes:e.pendientes}).catch(()=>{});saveDB();empExtras(id);toast('Pendiente agregado','success');}
+function delPend(id,i){const e=DB.nomina.empleados.find(x=>x.id===id);if(!e)return;e.pendientes.splice(i,1);appwriteService.editarEmpleado(id,{pendientes:e.pendientes}).catch(()=>{});saveDB();empExtras(id);}
+async function pagarNomina(id){
   const e=DB.nomina.empleados.find(x=>x.id===id);
   const dias=Object.values(e.calendario).filter(Boolean).length;
   const adel=(e.adelantos||[]).reduce((a,b)=>a+b.valor,0);
   const pend=(e.pendientes||[]).filter(p=>p.estado==='Pendiente');
   const pendVal=pend.reduce((a,b)=>a+b.valor,0);
   const pago=calcularPagoFinal(e);
-  DB.nomina.historial.push({empId:id,fecha:todayKey(),base:e.salarioBase,dias,adelantos:adel,pendientes:pendVal,pagado:pago});
+  const entry={id:uid('NH'),empId:id,fecha:todayKey(),base:e.salarioBase,dias,adelantos:adel,pendientes:pendVal,pagado:pago};
   pend.forEach(p=>p.estado='Descontado');
   e.adelantos=[]; e.calendario={};
-  saveDB(); closeModal();renderNomina();toast('Pago de nómina registrado','success');
+  try{
+    await appwriteService.guardarPagoNomina(entry, {pendientes:e.pendientes, adelantos:e.adelantos, calendario:e.calendario});
+    saveDB(); closeModal();renderNomina();toast('Pago de nómina registrado','success');
+  }catch(err){ toast('No se pudo registrar el pago','error'); }
 }
 
 /* ===================== CONTABILIDAD ===================== */
@@ -2241,11 +2087,11 @@ function renderConta(){
   `;
 }
 function valCat(c){return DB.conta.movimientos.filter(m=>m.categoria===c.nombre).reduce((a,b)=>a+b.valor,0);}
-function guardarMov(){
+async function guardarMov(){
   const data={tipo:$('#mv-tipo').value,categoria:$('#mv-cat').value,valor:Number($('#mv-val').value)||0,descripcion:$('#mv-desc').value,fecha:$('#mv-fecha').value};
   if(data.valor<=0){toast('Valor inválido','error');return;}
-  DB.conta.movimientos.push({id:uid('MV'),...data});
-  saveDB(); toast('Movimiento registrado','success');renderConta();
+  try{ await appwriteService.guardarMovimientoContable({id:uid('MV'),...data}); saveDB(); toast('Movimiento registrado','success');renderConta(); }
+  catch(e){ toast('No se pudo registrar el movimiento','error'); }
 }
 function editMov(id){
   const m=DB.conta.movimientos.find(x=>x.id===id);
@@ -2258,8 +2104,14 @@ function editMov(id){
     <div class="gf"><div class="field"><label>Descripción</label><input id="em-desc" value="${m.descripcion}"/></div><div class="field"><label>Fecha</label><input id="em-fecha" type="date" value="${m.fecha}"/></div></div>
   `,`<button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" onclick="guardarEditMov('${id}')">Guardar</button>`);
 }
-function guardarEditMov(id){const m=DB.conta.movimientos.find(x=>x.id===id);Object.assign(m,{tipo:$('#em-tipo').value,categoria:$('#em-cat').value,valor:Number($('#em-val').value)||0,descripcion:$('#em-desc').value,fecha:$('#em-fecha').value});saveDB();closeModal();renderConta();toast('Movimiento actualizado','success');}
-function delMov(id){DB.conta.movimientos=DB.conta.movimientos.filter(m=>m.id!==id);saveDB();renderConta();toast('Movimiento eliminado','success');}
+async function guardarEditMov(id){
+  const patch={tipo:$('#em-tipo').value,categoria:$('#em-cat').value,valor:Number($('#em-val').value)||0,descripcion:$('#em-desc').value,fecha:$('#em-fecha').value};
+  try{ await appwriteService.editarMovimientoContable(id, patch); saveDB();closeModal();renderConta();toast('Movimiento actualizado','success'); }
+  catch(e){ toast('No se pudo actualizar','error'); }
+}
+function delMov(id){
+  appwriteService.eliminarMovimientoContable(id).then(()=>{ saveDB();renderConta();toast('Movimiento eliminado','success'); }).catch(()=>toast('No se pudo eliminar','error'));
+}
 function _csvCell(v){
   v = String(v==null?'':v);
   if(/[",;\n\r]/.test(v)) v = '"' + v.replace(/"/g,'""') + '"';
@@ -2336,14 +2188,34 @@ function catModal(id){
   const c=id?DB.conta.categorias.find(x=>x.id===id):{nombre:'',tipo:'Ingreso'};
   modal('Categoría',`<div class="field"><label>Nombre</label><input id="cat-nombre" value="${c.nombre}"/></div><div class="field"><label>Tipo</label><select id="cat-tipo"><option ${c.tipo==='Ingreso'?'selected':''}>Ingreso</option><option ${c.tipo==='Gasto'?'selected':''}>Gasto</option></select></div>`,`<button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" onclick="guardarCat('${id||''}')">Guardar</button>`);
 }
-function guardarCat(id){const data={nombre:$('#cat-nombre').value,tipo:$('#cat-tipo').value};if(!data.nombre){toast('Nombre obligatorio','error');return;}if(id)Object.assign(DB.conta.categorias.find(x=>x.id===id),data);else DB.conta.categorias.push({id:uid('CAT'),...data});saveDB();closeModal();renderConta();toast('Categoría guardada','success');}
-function delCat(id){DB.conta.categorias=DB.conta.categorias.filter(c=>c.id!==id);saveDB();renderConta();toast('Categoría eliminada','success');}
+async function guardarCat(id){
+  const data={nombre:$('#cat-nombre').value,tipo:$('#cat-tipo').value};
+  if(!data.nombre){toast('Nombre obligatorio','error');return;}
+  try{
+    if(id){ await appwriteService.guardarCategoriaContable({id,...data}); }
+    else  { await appwriteService.guardarCategoriaContable({id:uid('CAT'),...data}); }
+    saveDB();closeModal();renderConta();toast('Categoría guardada','success');
+  }catch(e){ toast('No se pudo guardar','error'); }
+}
+function delCat(id){
+  appwriteService.eliminarCategoriaContable(id).then(()=>{saveDB();renderConta();toast('Categoría eliminada','success');}).catch(()=>toast('No se pudo eliminar','error'));
+}
 function ctaModal(id){
   const c=id?DB.conta.cuentas.find(x=>x.id===id):{nombre:'',tipo:'Efectivo',saldo:0};
   modal('Cuenta',`<div class="field"><label>Nombre</label><input id="cta-nombre" value="${c.nombre}"/></div><div class="gf"><div class="field"><label>Tipo</label><input id="cta-tipo" value="${c.tipo}"/></div><div class="field"><label>Saldo</label><input id="cta-saldo" type="number" value="${c.saldo}"/></div></div>`,`<button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" onclick="guardarCta('${id||''}')">Guardar</button>`);
 }
-function guardarCta(id){const data={nombre:$('#cta-nombre').value,tipo:$('#cta-tipo').value,saldo:Number($('#cta-saldo').value)||0};if(!data.nombre){toast('Nombre obligatorio','error');return;}if(id)Object.assign(DB.conta.cuentas.find(x=>x.id===id),data);else DB.conta.cuentas.push({id:uid('CT'),...data});saveDB();closeModal();renderConta();toast('Cuenta guardada','success');}
-function delCta(id){DB.conta.cuentas=DB.conta.cuentas.filter(c=>c.id!==id);saveDB();renderConta();toast('Cuenta eliminada','success');}
+async function guardarCta(id){
+  const data={nombre:$('#cta-nombre').value,tipo:$('#cta-tipo').value,saldo:Number($('#cta-saldo').value)||0};
+  if(!data.nombre){toast('Nombre obligatorio','error');return;}
+  try{
+    if(id){ await appwriteService.guardarCuenta({id,...data}); }
+    else  { await appwriteService.guardarCuenta({id:uid('CT'),...data}); }
+    saveDB();closeModal();renderConta();toast('Cuenta guardada','success');
+  }catch(e){ toast('No se pudo guardar','error'); }
+}
+function delCta(id){
+  appwriteService.eliminarCuenta(id).then(()=>{saveDB();renderConta();toast('Cuenta eliminada','success');}).catch(()=>toast('No se pudo eliminar','error'));
+}
 function transferModal(){
   modal('Transferencia entre Cuentas',`
     <div class="gf">
@@ -2357,12 +2229,17 @@ function transferModal(){
     <div class="field"><label>Observación</label><input id="tr-obs"/></div>
   `,`<button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" onclick="hacerTransferencia()">Transferir</button>`);
 }
-function hacerTransferencia(){
+async function hacerTransferencia(){
   const o=DB.conta.cuentas.find(c=>c.id===$('#tr-orig').value);const d=DB.conta.cuentas.find(c=>c.id===$('#tr-dest').value);const v=Number($('#tr-val').value)||0;
   if(v<=0||!o||!d||o.id===d.id){toast('Datos inválidos','error');return;}
   o.saldo-=v;d.saldo+=v;
-  DB.conta.transferencias.push({id:uid('TR'),fecha:$('#tr-fecha').value,origen:o.nombre,destino:d.nombre,valor:v,observacion:$('#tr-obs').value});
-  saveDB(); closeModal();renderConta();toast('Transferencia realizada','success');
+  const t={id:uid('TR'),fecha:$('#tr-fecha').value,origen:o.nombre,destino:d.nombre,valor:v,observacion:$('#tr-obs').value};
+  try{
+    await appwriteService.guardarTransferencia(t);
+    await appwriteService.editarCuenta(o.id, {saldo:o.saldo});
+    await appwriteService.editarCuenta(d.id, {saldo:d.saldo});
+    saveDB(); closeModal();renderConta();toast('Transferencia realizada','success');
+  }catch(e){ toast('No se pudo realizar la transferencia','error'); }
 }
 
 /* Añadir dinero a una cuenta (aporte/ingreso de capital) */
@@ -2379,14 +2256,18 @@ function addDineroCuentaModal(){
     <div class="field"><label>Observación / Origen del dinero</label><input id="adc-obs" placeholder="Ej: Aporte de capital, préstamo, venta en efectivo..."/></div>
   `,`<button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" onclick="addDineroCuenta()">Agregar Dinero</button>`);
 }
-function addDineroCuenta(){
+async function addDineroCuenta(){
   const cuenta = DB.conta.cuentas.find(c=>c.id===$('#adc-cuenta').value);
   const v = Number($('#adc-val').value)||0;
   if(!cuenta){ toast('Seleccione una cuenta','error'); return; }
   if(v<=0){ toast('Ingrese un monto válido','error'); return; }
   cuenta.saldo = (Number(cuenta.saldo)||0) + v;
-  DB.conta.transferencias.push({id:uid('AP'),fecha:$('#adc-fecha').value,origen:'(Aporte de dinero)',destino:cuenta.nombre,valor:v,observacion:$('#adc-obs').value||'Aporte de dinero'});
-  saveDB(); closeModal(); renderConta(); toast(`${money(v)} agregados a ${cuenta.nombre}`,'success');
+  const t={id:uid('AP'),fecha:$('#adc-fecha').value,origen:'(Aporte de dinero)',destino:cuenta.nombre,valor:v,observacion:$('#adc-obs').value||'Aporte de dinero'};
+  try{
+    await appwriteService.guardarTransferencia(t);
+    await appwriteService.editarCuenta(cuenta.id, {saldo:cuenta.saldo});
+    saveDB(); closeModal(); renderConta(); toast(`${money(v)} agregados a ${cuenta.nombre}`,'success');
+  }catch(e){ toast('No se pudo agregar el dinero','error'); }
 }
 
 /* ---------- Init ---------- */
@@ -2412,13 +2293,22 @@ if(!window._carteraSeeded){
   });
 }
 go('clientes');
-// Autoguardado periódico + al cerrar/recargar para no perder cambios
+// Autoguardado periódico de la cache local + al cerrar/recargar
 setInterval(saveDB, 2000);
 window.addEventListener('beforeunload', saveDB);
 window.addEventListener('pagehide', saveDB);
-// === Oracle Cloud: sync inicial + polling continuo ===
-oracleInitialSync();
-startOraclePolling();
+// === Appwrite Tables: inicializa SDK + carga inicial + Realtime (push sin delay) ===
+(async ()=>{
+  if(awInit && awInit()){
+    _awReady = true;
+    try{
+      await awCargarTodo();               // rellena DB desde Appwrite Tables
+      if(!isUserEditing()) refrescarVistaActiva();
+      awIniciarRealtime(refrescarVistaActiva);   // WebSocket: cambios de otros dispositivos al instante
+      toast('Conectado a Appwrite Tables · sync en vivo','success');
+    }catch(e){ console.warn('Appwrite carga inicial fallida (modo local):', e); }
+  }
+})();
 initConnectivityIndicator();
 </script>
 </body>
