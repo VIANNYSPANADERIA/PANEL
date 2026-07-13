@@ -159,14 +159,24 @@ table.d tr:hover td{background:var(--surface-container-low)}
 .swatch:hover{transform:scale(1.1)}
 .swatch.selected{border-color:var(--on-surface)}
 .prod-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:var(--s-md)}
-.prod{background:var(--surface-container-lowest);border:1px solid var(--outline-variant);border-radius:var(--r-xl);padding:var(--s-md);display:flex;flex-direction:column;gap:8px}
-.prod-img{width:100%;height:120px;object-fit:cover;border-radius:var(--r-lg);background:var(--surface-container-high);display:grid;place-items:center;color:var(--on-surface-variant)}
-.prod-img img{width:100%;height:100%;object-fit:cover;border-radius:var(--r-lg)}
-.prod-name{font-weight:700;font-size:14px}
-.prod-price{font-size:12px;color:var(--on-surface-variant)}
+.prod{background:var(--surface-container-lowest);border:1px solid var(--outline-variant);border-radius:var(--r-xl);padding:var(--s-md);display:flex;flex-direction:column;gap:8px;overflow:hidden;color:#000}
+/* Caja de imagen blindada: relacion fija, recorte limpio, nunca se sale ni se deforma */
+.prod-img{position:relative;width:100%;aspect-ratio:4/3;flex:0 0 auto;overflow:hidden;border-radius:var(--r-lg);background:var(--surface-container-high);display:grid;place-items:center;color:var(--on-surface-variant)}
+.prod-img img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center;display:block;border-radius:inherit}
+.prod-name{font-weight:800;font-size:14px;color:#000;line-height:1.25}
+.prod-price{font-size:12.5px;font-weight:700;color:#000}
 .prod-row{display:flex;flex-direction:column;gap:4px}
-.prod-row input{width:100%;padding:6px 8px;font-size:13px;border:1px solid var(--outline-variant);border-radius:var(--r-lg);background:var(--surface-container-low);outline:none}
+.prod-row label{font-size:11px;font-weight:700;color:#000}
+.prod-row input{width:100%;padding:6px 8px;font-size:13px;font-weight:700;color:#000;border:1px solid var(--outline-variant);border-radius:var(--r-lg);background:var(--surface-container-low);outline:none}
 .prod-row input:focus{border-color:var(--primary)}
+.prod .fb span{color:#000;font-weight:800}
+.prod-exc{font-size:10.5px;font-weight:700;color:var(--primary)}
+.chart-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:var(--s-md)}
+.chart-card{background:var(--surface-container-lowest);border:1px solid var(--outline-variant);border-radius:var(--r-xl);padding:var(--s-md);display:flex;flex-direction:column;min-width:0}
+.chart-card h4{margin:0 0 2px;font-size:14px;font-weight:800;color:#000}
+.chart-card .chart-sub{font-size:11px;color:var(--on-surface-variant);margin-bottom:10px}
+.chart-box{position:relative;width:100%;height:260px}
+.chart-empty{display:grid;place-items:center;height:260px;color:var(--on-surface-variant);font-size:13px}
 .toggle{display:inline-flex;border:1px solid var(--outline-variant);border-radius:var(--r-full);padding:2px;gap:2px}
 .toggle button{border:none;background:transparent;padding:6px 14px;border-radius:var(--r-full);font-size:12px;font-weight:600;color:var(--on-surface-variant)}
 .toggle button.active{background:var(--primary);color:var(--on-primary)}
@@ -433,10 +443,31 @@ function closeModal(){ $('#modalRoot').innerHTML=''; }
    - 3 panes => 5000
    - Viceversa: si dinero=5000 => 3; 15000 => 9
 */
+/* ---------- Exclusividad de producto: 0, 1 o VARIOS clientes ----------
+   Se guarda en la misma columna `clienteExclusivo` como IDs separados por coma.
+   Vacio/null = visible para todos. Compatible con los datos antiguos (1 solo ID). */
+function excIds(p){
+  const v = p && p.clienteExclusivo;
+  if(!v) return [];
+  if(Array.isArray(v)) return v.filter(Boolean);
+  return String(v).split(',').map(x=>x.trim()).filter(Boolean);
+}
+function excVisible(p, clienteId){
+  const ids = excIds(p);
+  return ids.length===0 || ids.includes(clienteId);
+}
+function excNombres(p){
+  const ids = excIds(p);
+  if(!ids.length) return '';
+  return ids.map(id=>DB.clientes.find(c=>c.id===id)?.nombre).filter(Boolean).join(', ');
+}
+
 function calcCondicion2000(productoId, cantidad, dinero){
   // Solo aplica al producto "Pan de 2.000" (precio 2000) -> por nombre o precio
   const prod = DB.productos.find(p=>p.id===productoId);
-  if(!prod || prod.precio!==2000) return {cantidad, dinero, subtotal:(cantidad||0)*(prod?prod.precio:0)};
+  // Si el producto NO vale 2.000, la condicion no aplica: se calcula normal.
+  // (Antes se ignoraba el campo "Valor en dinero" y el subtotal quedaba en 0.)
+  if(!prod || prod.precio!==2000) return calcNormal(productoId, cantidad, dinero);
   let q = Number(cantidad)||0, m = Number(dinero)||0;
   if(q>0 && m===0){
     // cantidad -> dinero
@@ -929,7 +960,7 @@ function renderPedidos(params={}){
   if(!cli){ toast('Seleccione un cliente','error'); go('clientes'); return; }
   const deuda = getDeudaCliente(cli.id);
   const productos = DB.productos.filter(p=>p.activo).sort((a,b)=>a.orden-b.orden)
-    .filter(p=>!p.clienteExclusivo || p.clienteExclusivo===cli.id);
+    .filter(p=>excVisible(p, cli.id));
 
   const items = productos.map(p=>{
     const it = _itemsPedido[p.id] || {cantidad:0,dinero:0};
@@ -963,6 +994,7 @@ function renderPedidos(params={}){
           <div class="prod-img">${x.p.imagen?`<img src="${x.p.imagen}"/>`:'<span class="ms" style="font-size:32px">cake</span>'}</div>
           <div class="prod-name">${x.p.nombre}</div>
           <div class="prod-price">${money(x.p.precio)} / unidad ${x.p.vendajeActivo?'· <span class="badge badge-warn">Vendaje '+x.p.vendajePct+'%</span>':''}</div>
+          ${excIds(x.p).length?`<div class="prod-exc">Exclusivo: ${excNombres(x.p)}</div>`:''}
           <div class="prod-row">
             <label style="font-size:11px;color:var(--on-surface-variant)">Cantidad</label>
             <input type="text" inputmode="numeric" value="${fmtInputMil(x.it.cantidad)}" placeholder="0" onkeyup="updateItem('${x.p.id}','cantidad',this.value)" onblur="formatInputMil(this)"/>
@@ -1229,7 +1261,7 @@ function renderProductos(){
             <td class="bold">${p.nombre}</td>
             <td class="num bold">${money(p.precio)}</td>
             <td>${p.vendajeActivo?`<span class="badge badge-warn">Sí ${p.vendajePct}%</span>`:'-'}</td>
-            <td>${DB.clientes.find(c=>c.id===p.clienteExclusivo)?.nombre || '-'}</td>
+            <td>${excNombres(p) || '-'}</td>
             <td><label class="switch"><input type="checkbox" ${p.activo?'checked':''} onchange="toggleProdActivo('${p.id}',this.checked)"/></label></td>
             <td>
               <button class="btn btn-ghost btn-sm" onclick="prodModal('${p.id}')"><span class="ms">edit</span></button>
@@ -1266,7 +1298,10 @@ function prodModal(id){
     </div>
     <div class="gf">
       <div class="field"><label>Unidades por vendaje (cada N unidades = 1 vendaje)</label><input id="p-vcada" type="number" value="${p.vendajeCada}"/></div>
-      <div class="field"><label>Producto exclusivo para cliente</label><select id="p-exc"><option value="">Todos</option>${DB.clientes.map(c=>`<option value="${c.id}" ${p.clienteExclusivo===c.id?'selected':''}>${c.nombre}</option>`).join('')}</select></div>
+      <div class="field"><label>Exclusivo para cliente(s) <span class="muted" style="font-weight:400">· Ctrl/Cmd + clic para varios. Ninguno = todos</span></label>
+        <select id="p-exc" multiple size="5" style="height:auto">${DB.clientes.map(c=>`<option value="${c.id}" ${excIds(p).includes(c.id)?'selected':''}>${c.nombre}</option>`).join('')}</select>
+        <button type="button" class="btn btn-ghost btn-sm mt-sm" onclick="document.querySelectorAll('#p-exc option').forEach(o=>o.selected=false)">Quitar exclusividad (visible para todos)</button>
+      </div>
     </div>
     <div class="field"><label>Activo en pedidos</label><select id="p-activo"><option value="true" ${p.activo?'selected':''}>Sí</option><option value="false" ${!p.activo?'selected':''}>No</option></select></div>
   `, `<button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" onclick="guardarProd('${id||''}')">Guardar</button>`);
@@ -1284,7 +1319,7 @@ async function guardarProd(id){
     vendajeActivo: $('#p-vendaje').value==='true',
     vendajePct: Number($('#p-vpct').value)||0,
     vendajeCada: Number($('#p-vcada').value)||0,
-    clienteExclusivo: $('#p-exc').value||null,
+    clienteExclusivo: Array.from($('#p-exc').selectedOptions).map(o=>o.value).filter(Boolean).join(',') || null,
     activo: $('#p-activo').value==='true'
   };
   if(!data.nombre){ toast('Nombre obligatorio','error'); return; }
@@ -1843,7 +1878,16 @@ function renderNomina(){
   const men = emp.filter(e=>e.periodo==='mensual').reduce((a,e)=>a+calcularPagoFinal(e),0);
   $('#view').innerHTML = `
     <div class="ph"><div><h1>Nómina</h1><div class="sub">Administración de empleados y pagos</div></div><div class="h-spacer"></div>
+      <button class="btn btn-secondary" onclick="resetNominaModal()"><span class="ms">restart_alt</span>Reiniciar valores</button>
       <button class="btn btn-primary" onclick="empModal()"><span class="ms">person_add</span>Nuevo Empleado</button></div>
+    <div class="card mb-md" style="background:var(--surface-container-low)"><div class="card-b" style="font-size:12.5px;line-height:1.6">
+      <b>Cómo funciona "Pagar Nómina":</b> toma el salario base, lo prorratea por los días marcados en el calendario,
+      <b>resta los adelantos</b> y <b>resta los pendientes en estado "Pendiente"</b>. Al confirmar: guarda el pago en el historial,
+      marca los pendientes como <b>Descontado</b> (no los borra, quedan como registro), <b>vacía los adelantos</b> y
+      <b>limpia el calendario</b> para empezar el siguiente período en cero. El empleado y su salario base nunca se tocan.
+      <br><b>"Reiniciar valores":</b> deja el empleado intacto pero pone en cero calendario, adelantos y pendientes,
+      <b>sin</b> registrar ningún pago. Úsalo solo para corregir errores de digitación.
+    </div></div>
     <div class="grid grid-3 mb-md">
       <div class="kpi"><div class="kpi-ico kpi-ico-p"><span class="ms">calendar_view_week</span></div><div class="kpi-l">Nómina Semanal</div><div class="kpi-v">${money(sem)}</div></div>
       <div class="kpi"><div class="kpi-ico kpi-ico-s"><span class="ms">calendar_month</span></div><div class="kpi-l">Nómina Quincenal</div><div class="kpi-v">${money(qui)}</div></div>
@@ -1862,6 +1906,7 @@ function renderNomina(){
           <td class="num bold" style="color:var(--tertiary)">${money(pago)}</td>
           <td><button class="btn btn-ghost btn-sm" onclick="empModal('${e.id}')"><span class="ms">edit</span></button>
           <button class="btn btn-ghost btn-sm" onclick="empExtras('${e.id}')"><span class="ms">more_horiz</span></button>
+          <button class="btn btn-ghost btn-sm" title="Reiniciar valores de este empleado" onclick="resetEmpleado('${e.id}')"><span class="ms">restart_alt</span></button>
           <button class="btn btn-danger btn-sm" onclick="eliminarEmp('${e.id}')"><span class="ms">delete</span></button></td>
         </tr>`;
       }).join('')}
@@ -1967,6 +2012,52 @@ function addAdel(id){const e=DB.nomina.empleados.find(x=>x.id===id);if(!e)return
 function delAdel(id,i){const e=DB.nomina.empleados.find(x=>x.id===id);if(!e)return;e.adelantos.splice(i,1);appwriteService.editarEmpleado(id,{adelantos:e.adelantos}).catch(()=>{});saveDB();empExtras(id);}
 function addPend(id){const e=DB.nomina.empleados.find(x=>x.id===id);if(!e)return;e.pendientes.push({valor:Number($('#pen-val').value)||0,motivo:$('#pen-mot').value,fecha:$('#pen-fecha').value,estado:'Pendiente'});appwriteService.editarEmpleado(id,{pendientes:e.pendientes}).catch(()=>{});saveDB();empExtras(id);toast('Pendiente agregado','success');}
 function delPend(id,i){const e=DB.nomina.empleados.find(x=>x.id===id);if(!e)return;e.pendientes.splice(i,1);appwriteService.editarEmpleado(id,{pendientes:e.pendientes}).catch(()=>{});saveDB();empExtras(id);}
+/* Reinicia calendario, adelantos y pendientes de UN empleado. No borra al empleado
+   ni su salario base, y no registra ningún pago en el historial. */
+function resetEmpleado(id){
+  const e = DB.nomina.empleados.find(x=>x.id===id);
+  if(!e) return;
+  modal('Reiniciar valores', `
+    <p>Se pondrán en cero los valores de <b>${e.nombre}</b>:</p>
+    <ul style="margin:10px 0 0 18px;line-height:1.8">
+      <li>Días trabajados del calendario</li>
+      <li>Adelantos (${(e.adelantos||[]).length})</li>
+      <li>Pendientes (${(e.pendientes||[]).length})</li>
+    </ul>
+    <p class="mt-md"><b>No</b> se borra el empleado, su salario base ni su historial de pagos.</p>`,
+    `<button class="btn btn-ghost" onclick="closeModal()">Cancelar</button>
+     <button class="btn btn-danger" onclick="confirmarResetEmpleado('${id}')">Reiniciar</button>`);
+}
+async function confirmarResetEmpleado(id){
+  const e = DB.nomina.empleados.find(x=>x.id===id);
+  if(!e) return;
+  e.calendario={}; e.adelantos=[]; e.pendientes=[];
+  try{
+    await appwriteService.editarEmpleado(id,{calendario:{},adelantos:[],pendientes:[]});
+    saveDB(); closeModal(); renderNomina(); toast('Valores reiniciados','success');
+  }catch(err){ toast('No se pudo reiniciar','error'); }
+}
+/* Reinicio masivo: todos los empleados a la vez. */
+function resetNominaModal(){
+  const n = DB.nomina.empleados.length;
+  modal('Reiniciar valores de TODA la nómina', `
+    <p>Se pondrán en cero <b>calendario, adelantos y pendientes</b> de los <b>${n}</b> empleados.</p>
+    <p class="mt-md"><b>No</b> se borra ningún empleado, ni su salario base, ni el historial de pagos.</p>
+    <p class="mt-md" style="color:var(--error)"><b>Esto no registra ningún pago.</b> Si lo que quieres es pagar y descontar,
+    usa "Pagar Nómina" dentro de cada empleado.</p>`,
+    `<button class="btn btn-ghost" onclick="closeModal()">Cancelar</button>
+     <button class="btn btn-danger" onclick="confirmarResetNomina()">Reiniciar todo</button>`);
+}
+async function confirmarResetNomina(){
+  try{
+    await Promise.all(DB.nomina.empleados.map(e=>{
+      e.calendario={}; e.adelantos=[]; e.pendientes=[];
+      return appwriteService.editarEmpleado(e.id,{calendario:{},adelantos:[],pendientes:[]});
+    }));
+    saveDB(); closeModal(); renderNomina(); toast('Nómina reiniciada','success');
+  }catch(err){ toast('No se pudo reiniciar la nómina','error'); }
+}
+
 async function pagarNomina(id){
   const e=DB.nomina.empleados.find(x=>x.id===id);
   const dias=Object.values(e.calendario).filter(Boolean).length;
@@ -1987,6 +2078,7 @@ async function pagarNomina(id){
 let _contaTab='resumen';
 function renderConta(){
   setHeader('Contabilidad');
+  destruirGraficos();   // sin esto Chart.js acumula instancias sobre canvas muertos
   const movs=DB.conta.movimientos;
   const ing=movs.filter(m=>m.tipo==='Ingreso').reduce((a,b)=>a+b.valor,0);
   const gas=movs.filter(m=>m.tipo==='Gasto').reduce((a,b)=>a+b.valor,0);
@@ -2060,6 +2152,27 @@ function renderConta(){
         }).join('')}
       </tbody></table></div>
     `;
+  } else if(_contaTab==='estadisticas'){
+    body = `
+      <div class="ph mb-md"><div class="flex gap" style="align-items:end;flex-wrap:wrap">
+        <div class="field" style="margin:0"><label>Año</label><input id="est-year" type="number" value="${_estYear}" onchange="_estYear=Number(this.value)||new Date().getFullYear();renderConta()" style="width:110px"/></div>
+        <button class="btn btn-ghost btn-sm" onclick="renderConta()"><span class="ms">refresh</span>Actualizar</button>
+      </div></div>
+      <div class="chart-grid">
+        ${[
+          ['g1','Ingresos vs Gastos por mes','Comparativo mensual del año '+_estYear],
+          ['g2','Balance acumulado','Cómo se acumula la ganancia mes a mes'],
+          ['g3','Gastos por categoría','En qué se va la plata'],
+          ['g4','Ingresos por categoría','De dónde entra la plata'],
+          ['g5','Saldo por cuenta','Dónde está el dinero hoy'],
+          ['g6','Top 10 productos más vendidos','Unidades vendidas (histórico de pedidos)'],
+          ['g7','Ventas de los últimos 30 días','Total facturado por día']
+        ].map(([id,t,sub])=>`
+          <div class="chart-card">
+            <h4>${t}</h4><div class="chart-sub">${sub}</div>
+            <div class="chart-box"><canvas id="${id}"></canvas></div>
+          </div>`).join('')}
+      </div>`;
   } else if(_contaTab==='cuentas'){
     body=`
       <button class="btn btn-primary mb-md" onclick="ctaModal()"><span class="ms">add</span>Nueva Cuenta</button>
@@ -2076,7 +2189,7 @@ function renderConta(){
       </tbody></table></div>
     `;
   }
-  const tabs=[['resumen','Resumen'],['registrar','Registrar Movimiento'],['historial','Historial'],['flujo','Flujo de Caja'],['categorias','Categorías'],['cuentas','Cuentas y Transferencias']];
+  const tabs=[['resumen','Resumen'],['estadisticas','Estadísticas'],['registrar','Registrar Movimiento'],['historial','Historial'],['flujo','Flujo de Caja'],['categorias','Categorías'],['cuentas','Cuentas y Transferencias']];
   $('#view').innerHTML=`
     <div class="ph"><div><h1>Contabilidad</h1><div class="sub">Ingresos, gastos, flujo de caja y cuentas</div></div>
       <div class="h-spacer"></div>
@@ -2086,7 +2199,147 @@ function renderConta(){
     <div class="menu-tabs">${tabs.map(t=>`<button class="menu-tab ${_contaTab===t[0]?'active':''}" onclick="_contaTab='${t[0]}';renderConta()">${t[1]}</button>`).join('')}</div>
     <div class="fade-in">${body}</div>
   `;
+  if(_contaTab==='estadisticas') requestAnimationFrame(pintarGraficos);
 }
+
+/* ===================== ESTADÍSTICAS (Chart.js) ===================== */
+let _estYear = new Date().getFullYear();
+let _charts = [];
+
+/** Destruye los gráficos anteriores: sin esto Chart.js deja canvas huérfanos (memory leak). */
+function destruirGraficos(){
+  _charts.forEach(c=>{ try{ c.destroy(); }catch(e){} });
+  _charts = [];
+}
+
+/** Crea un gráfico o muestra "sin datos" si no hay nada que mostrar. */
+function mkChart(id, config, hayDatos){
+  const cv = document.getElementById(id);
+  if(!cv) return;
+  if(!hayDatos){
+    cv.parentElement.innerHTML = '<div class="chart-empty">Sin datos todavía</div>';
+    return;
+  }
+  _charts.push(new Chart(cv.getContext('2d'), config));
+}
+
+const EST_COLORS = ['#3525cd','#00897b','#f9a825','#e53935','#8e24aa','#1e88e5','#43a047','#fb8c00','#6d4c41','#546e7a','#d81b60','#00acc1'];
+/** Opciones base. Se construyen NUEVAS en cada llamada: Chart.js muta el objeto
+    de opciones, y compartir una misma referencia entre gráficos los corrompe. */
+function estOpts(extra){
+  return Object.assign({
+    responsive:true,
+    maintainAspectRatio:false,
+    plugins:{
+      legend:{labels:{color:'#000', font:{weight:'700'}}},
+      tooltip:{callbacks:{label:c=>` ${c.dataset.label||c.label}: ${money(c.parsed.y ?? c.parsed)}`}}
+    },
+    scales:{
+      x:{ticks:{color:'#000',font:{weight:'600'}}, grid:{display:false}},
+      y:{ticks:{color:'#000',font:{weight:'600'},callback:v=>money(v)}, grid:{color:'#e5e7eb'}}
+    }
+  }, extra||{});
+}
+
+function pintarGraficos(){
+  if(typeof Chart === 'undefined'){ toast('No se pudo cargar la librería de gráficos','error'); return; }
+  destruirGraficos();
+
+  const movs   = DB.conta.movimientos || [];
+  const year   = _estYear;
+  const MESES  = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+  const delAno = movs.filter(m=>String(m.fecha||'').startsWith(year+'-'));
+
+  const ingMes = MESES.map((_,i)=>delAno.filter(m=>m.tipo==='Ingreso' && Number(String(m.fecha).slice(5,7))===i+1).reduce((a,b)=>a+(Number(b.valor)||0),0));
+  const gasMes = MESES.map((_,i)=>delAno.filter(m=>m.tipo==='Gasto'   && Number(String(m.fecha).slice(5,7))===i+1).reduce((a,b)=>a+(Number(b.valor)||0),0));
+
+  /* 1 — Ingresos vs Gastos por mes */
+  mkChart('g1', {
+    type:'bar',
+    data:{ labels:MESES, datasets:[
+      {label:'Ingresos', data:ingMes, backgroundColor:'#00897b', borderRadius:6},
+      {label:'Gastos',   data:gasMes, backgroundColor:'#e53935', borderRadius:6}
+    ]},
+    options: estOpts()
+  }, delAno.length>0);
+
+  /* 2 — Balance acumulado */
+  let acc = 0;
+  const balAcum = MESES.map((_,i)=>{ acc += ingMes[i]-gasMes[i]; return acc; });
+  mkChart('g2', {
+    type:'line',
+    data:{ labels:MESES, datasets:[{label:'Balance acumulado', data:balAcum, borderColor:'#3525cd',
+      backgroundColor:'rgba(53,37,205,.12)', fill:true, tension:.35, pointRadius:4, borderWidth:3}]},
+    options: estOpts()
+  }, delAno.length>0);
+
+  /* 3 — Gastos por categoría */
+  const catsG = [...new Set(movs.filter(m=>m.tipo==='Gasto').map(m=>m.categoria||'Sin categoría'))];
+  const valsG = catsG.map(c=>movs.filter(m=>m.tipo==='Gasto' && (m.categoria||'Sin categoría')===c).reduce((a,b)=>a+(Number(b.valor)||0),0));
+  mkChart('g3', {
+    type:'doughnut',
+    data:{ labels:catsG, datasets:[{data:valsG, backgroundColor:EST_COLORS, borderWidth:2, borderColor:'#fff'}]},
+    options:{ responsive:true, maintainAspectRatio:false, cutout:'55%',
+      plugins:{ legend:{position:'right', labels:{color:'#000',font:{weight:'700'},boxWidth:12}},
+                tooltip:{callbacks:{label:c=>` ${c.label}: ${money(c.parsed)}`}} } }
+  }, catsG.length>0);
+
+  /* 4 — Ingresos por categoría */
+  const catsI = [...new Set(movs.filter(m=>m.tipo==='Ingreso').map(m=>m.categoria||'Sin categoría'))];
+  const valsI = catsI.map(c=>movs.filter(m=>m.tipo==='Ingreso' && (m.categoria||'Sin categoría')===c).reduce((a,b)=>a+(Number(b.valor)||0),0));
+  mkChart('g4', {
+    type:'pie',
+    data:{ labels:catsI, datasets:[{data:valsI, backgroundColor:[...EST_COLORS].reverse(), borderWidth:2, borderColor:'#fff'}]},
+    options:{ responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{position:'right', labels:{color:'#000',font:{weight:'700'},boxWidth:12}},
+                tooltip:{callbacks:{label:c=>` ${c.label}: ${money(c.parsed)}`}} } }
+  }, catsI.length>0);
+
+  /* 5 — Saldo por cuenta */
+  const ctas = DB.conta.cuentas || [];
+  mkChart('g5', {
+    type:'bar',
+    data:{ labels:ctas.map(c=>c.nombre), datasets:[{label:'Saldo', data:ctas.map(c=>Number(c.saldo)||0),
+      backgroundColor:ctas.map((_,i)=>EST_COLORS[i%EST_COLORS.length]), borderRadius:6}]},
+    options: estOpts({ indexAxis:'y',
+      scales:{ x:{ticks:{color:'#000',font:{weight:'600'},callback:v=>money(v)},grid:{color:'#e5e7eb'}},
+               y:{ticks:{color:'#000',font:{weight:'700'}},grid:{display:false}} },
+      plugins:{ legend:{display:false}, tooltip:{callbacks:{label:c=>` ${c.label}: ${money(c.parsed.x)}`}} } })
+  }, ctas.length>0);
+
+  /* 6 — Top 10 productos más vendidos (por unidades) */
+  const unidades = {};
+  (DB.pedidos||[]).forEach(p=>(p.items||[]).forEach(it=>{
+    const n = it.nombre || 'Producto';
+    unidades[n] = (unidades[n]||0) + (Number(it.cantidad)||0);
+  }));
+  const top = Object.entries(unidades).sort((a,b)=>b[1]-a[1]).slice(0,10);
+  mkChart('g6', {
+    type:'bar',
+    data:{ labels:top.map(t=>t[0]), datasets:[{label:'Unidades', data:top.map(t=>t[1]),
+      backgroundColor:'#3525cd', borderRadius:6}]},
+    options: estOpts({ indexAxis:'y',
+      scales:{ x:{ticks:{color:'#000',font:{weight:'600'},precision:0},grid:{color:'#e5e7eb'}},
+               y:{ticks:{color:'#000',font:{weight:'700'}},grid:{display:false}} },
+      plugins:{ legend:{display:false}, tooltip:{callbacks:{label:c=>` ${c.label}: ${c.parsed.x} und.`}} } })
+  }, top.length>0);
+
+  /* 7 — Ventas de los últimos 30 días */
+  const dias=[], ventas=[];
+  for(let i=29;i>=0;i--){
+    const d = new Date(); d.setDate(d.getDate()-i);
+    const key = d.toISOString().slice(0,10);
+    dias.push(key.slice(8,10)+'/'+key.slice(5,7));
+    ventas.push((DB.pedidos||[]).filter(p=>p.fecha===key).reduce((a,b)=>a+(Number(b.total)||0),0));
+  }
+  mkChart('g7', {
+    type:'line',
+    data:{ labels:dias, datasets:[{label:'Ventas del día', data:ventas, borderColor:'#f9a825',
+      backgroundColor:'rgba(249,168,37,.18)', fill:true, tension:.3, pointRadius:2, borderWidth:2}]},
+    options: estOpts()
+  }, ventas.some(v=>v>0));
+}
+
 function valCat(c){return DB.conta.movimientos.filter(m=>m.categoria===c.nombre).reduce((a,b)=>a+b.valor,0);}
 async function guardarMov(){
   const data={tipo:$('#mv-tipo').value,categoria:$('#mv-cat').value,valor:Number($('#mv-val').value)||0,descripcion:$('#mv-desc').value,fecha:$('#mv-fecha').value};
