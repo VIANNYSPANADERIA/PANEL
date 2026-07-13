@@ -330,8 +330,9 @@ let _lastSavedInit = false;
 /* === isUserEditing: detecta si hay un modal abierto o input con foco ===
    Evita que el Realtime re-renderice y pisotee formularios a mitad de edición. */
 function isUserEditing(){
-  const root = document.getElementById('modalRoot');
-  if(root && root.innerHTML && root.innerHTML.trim()) return true;
+  // Solo se bloquea el repintado si el cursor esta DENTRO de un campo editable.
+  // Tener un modal abierto ya no congela la vista: el modal vive en #modalRoot,
+  // fuera de #view, asi que repintar #view es seguro y mantiene el sync en vivo.
   const a = document.activeElement;
   if(a){
     const tag = (a.tagName || '').toLowerCase();
@@ -1957,13 +1958,16 @@ function abrirCalendario(empId){
     <div class="muted mt-md">Click en un día para marcar/desmarcar.</div>
   `);
 }
-function toggleDay(empId,y,m,day){
+async function toggleDay(empId,y,m,day){
   const e=DB.nomina.empleados.find(x=>x.id===empId);
+  if(!e) return;
   const k=`${y}-${m}-${day}`;
   e.calendario[k]=!e.calendario[k];
-  appwriteService.editarEmpleado(empId, {calendario: e.calendario}).catch(()=>{});
   saveDB();
-  abrirCalendario(empId);
+  renderNomina();        // <- la tabla de fondo (dias, descuentos, A pagar) se actualiza YA
+  abrirCalendario(empId);// <- y el modal se redibuja con el dia marcado
+  try{ await appwriteService.editarEmpleado(empId, {calendario: e.calendario}); }
+  catch(err){ e.calendario[k]=!e.calendario[k]; saveDB(); renderNomina(); abrirCalendario(empId); }
 }
 function empExtras(empId){
   const e=DB.nomina.empleados.find(x=>x.id===empId);
@@ -2008,10 +2012,10 @@ function empExtras(empId){
   }
   modal(`Extras - ${e.nombre}`, `<div class="menu-tabs">${tabBtn('adel','Adelantos')}${tabBtn('pend','Pendientes')}${tabBtn('hist','Historial')}</div>${body}`, '', 'modal-lg');
 }
-function addAdel(id){const e=DB.nomina.empleados.find(x=>x.id===id);if(!e)return;e.adelantos.push({valor:Number($('#ade-val').value)||0,motivo:$('#ade-mot').value,fecha:$('#ade-fecha').value});appwriteService.editarEmpleado(id,{adelantos:e.adelantos}).catch(()=>{});saveDB();empExtras(id);toast('Adelanto agregado','success');}
-function delAdel(id,i){const e=DB.nomina.empleados.find(x=>x.id===id);if(!e)return;e.adelantos.splice(i,1);appwriteService.editarEmpleado(id,{adelantos:e.adelantos}).catch(()=>{});saveDB();empExtras(id);}
-function addPend(id){const e=DB.nomina.empleados.find(x=>x.id===id);if(!e)return;e.pendientes.push({valor:Number($('#pen-val').value)||0,motivo:$('#pen-mot').value,fecha:$('#pen-fecha').value,estado:'Pendiente'});appwriteService.editarEmpleado(id,{pendientes:e.pendientes}).catch(()=>{});saveDB();empExtras(id);toast('Pendiente agregado','success');}
-function delPend(id,i){const e=DB.nomina.empleados.find(x=>x.id===id);if(!e)return;e.pendientes.splice(i,1);appwriteService.editarEmpleado(id,{pendientes:e.pendientes}).catch(()=>{});saveDB();empExtras(id);}
+function addAdel(id){const e=DB.nomina.empleados.find(x=>x.id===id);if(!e)return;const v=Number($('#ade-val').value)||0;if(v<=0){toast('Valor inválido','error');return;}e.adelantos.push({valor:v,motivo:$('#ade-mot').value,fecha:$('#ade-fecha').value});saveDB();renderNomina();empExtras(id);appwriteService.editarEmpleado(id,{adelantos:e.adelantos}).catch(()=>{});toast('Adelanto agregado','success');}
+function delAdel(id,i){const e=DB.nomina.empleados.find(x=>x.id===id);if(!e)return;e.adelantos.splice(i,1);saveDB();renderNomina();empExtras(id);appwriteService.editarEmpleado(id,{adelantos:e.adelantos}).catch(()=>{});}
+function addPend(id){const e=DB.nomina.empleados.find(x=>x.id===id);if(!e)return;const v=Number($('#pen-val').value)||0;if(v<=0){toast('Valor inválido','error');return;}e.pendientes.push({valor:v,motivo:$('#pen-mot').value,fecha:$('#pen-fecha').value,estado:'Pendiente'});saveDB();renderNomina();empExtras(id);appwriteService.editarEmpleado(id,{pendientes:e.pendientes}).catch(()=>{});toast('Pendiente agregado','success');}
+function delPend(id,i){const e=DB.nomina.empleados.find(x=>x.id===id);if(!e)return;e.pendientes.splice(i,1);saveDB();renderNomina();empExtras(id);appwriteService.editarEmpleado(id,{pendientes:e.pendientes}).catch(()=>{});}
 /* Reinicia calendario, adelantos y pendientes de UN empleado. No borra al empleado
    ni su salario base, y no registra ningún pago en el historial. */
 function resetEmpleado(id){
