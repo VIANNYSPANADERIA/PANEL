@@ -1389,7 +1389,7 @@ async function _delProd(id){
 /* Switch CSS inject */
 function initSwitchCSS(){
   if(window._switchCss) return; window._switchCss=true;
-  const s=document.createElement('style'); s.textContent=`.switch{display:inline-flex;position:relative;width:42px;height:22px}.switch input{opacity:0;width:0;height:0}.switch:before{content:'';position:absolute;inset:0;background:var(--surface-container-high);border-radius:9999px;transition:.2s}.switch:after{content:'';position:absolute;top:3px;left:3px;width:16px;height:16px;background:#fff;border-radius:50%;transition:.2s;box-shadow:0 1px 3px rgba(0,0,0,.2)}.switch input:checked:before{background:var(--tertiary)}.switch input:checked:after{transform:translateX(20px)}`;
+  const s=document.createElement('style'); s.textContent=`.switch{display:inline-flex;position:relative;width:42px;height:22px;cursor:pointer}.switch input{position:absolute;inset:0;width:100%;height:100%;margin:0;opacity:0;cursor:pointer;z-index:2}.switch:before{content:'';position:absolute;inset:0;background:var(--surface-container-high);border-radius:9999px;transition:.2s}.switch:after{content:'';position:absolute;top:3px;left:3px;width:16px;height:16px;background:#fff;border-radius:50%;transition:.2s;box-shadow:0 1px 3px rgba(0,0,0,.2)}.switch input:checked:before{background:var(--tertiary)}.switch input:checked:after{transform:translateX(20px)}`;
   document.head.appendChild(s);
 }
 
@@ -1601,17 +1601,21 @@ async function sincronizarRecaudoDia(fecha){
       try{ const saved = await appwriteService.guardarRecaudo(nuevaFila); if(saved) nuevaFila.id = saved.id; }catch(e){}
       r[p.id] = nuevaFila;
     } else {
+      // Solo memoria. NO se re-guarda en Appwrite en cada render (eso causaba el 429).
+      const cambioSub = r[p.id].subtotal !== p.total;
       r[p.id].subtotal = p.total;
       r[p.id].cliente = (DB.clientes.find(c=>c.id===p.clienteId)||{}).nombre || r[p.id].cliente;
       if(r[p.id].recaudado===undefined) r[p.id].recaudado=false;
-      // actualiza la fila existente
-      appwriteService.editarRecaudo(r[p.id].id, {subtotal:r[p.id].subtotal, cliente:r[p.id].cliente}).catch(()=>{});
+      if(cambioSub && r[p.id].id) _encolarRecaudo(r[p.id]);
     }
   }
 }
+async function entrarRecaudo(){
+  await sincronizarRecaudoDia(_recaudoFecha);
+  renderRecaudo();
+}
 function renderRecaudo(){
   setHeader('Recaudo de Domiciliarios');
-  sincronizarRecaudoDia(_recaudoFecha);
   const filas = Object.values(DB.recaudo[_recaudoFecha]||{});
   // Los totales superiores solo suman las filas CONFIRMADAS (recibido=true).
   // Así, al deseleccionar "Recibido" se restan los valores de arriba.
@@ -1631,8 +1635,8 @@ function renderRecaudo(){
   $('#view').innerHTML = `
     <div class="ph"><div><h1>Recaudo de Domiciliarios<button class="rec-secret" title="" aria-hidden="true" onclick="abrirMenuSecretoRecaudo()"></button></h1><div class="sub">Control diario de pedidos entregados</div></div>
       <div class="h-spacer"></div>
-      <input type="date" id="rec-fecha" value="${_recaudoFecha}" onchange="_recaudoFecha=this.value;renderRecaudo()"/>
-      <button class="btn btn-ghost btn-sm" onclick="renderRecaudo()"><span class="ms">refresh</span>Actualizar</button>
+      <input type="date" id="rec-fecha" value="${_recaudoFecha}" onchange="_recaudoFecha=this.value;entrarRecaudo()"/>
+      <button class="btn btn-ghost btn-sm" onclick="entrarRecaudo()"><span class="ms">refresh</span>Actualizar</button>
       <button class="btn btn-danger btn-sm" onclick="reiniciarRecaudo()"><span class="ms">restart_alt</span>Reiniciar día</button>
       <button class="btn btn-secondary btn-sm" onclick="exportarRecaudoExcel()"><span class="ms">download</span>Exportar Excel</button>
     </div>
@@ -1722,24 +1726,56 @@ async function _procesarColaRecaudo(){
         // Si Appwrite devuelve 429, se reencola y se espera más antes de reintentar.
         if(String(e && e.message || '').includes('429') || (e && e.code===429)){
           _recaudoCola.set(id, fila);
-          await new Promise(res=>setTimeout(res, 1500));
+          await new Promise(res=>setTimeout(res, 3000));
         }
       }
-      await new Promise(res=>setTimeout(res, 250));  // separa las peticiones
+      await new Promise(res=>setTimeout(res, 400));  // separa bien las peticiones
     }
   } finally {
     _recaudoEnviando = false;
   }
 }
 
+/* Repinta SOLO una fila (color, botón, efectivo), sin re-renderizar la tabla. */
+function _repintarFilaRecaudo(id){
+  const r = DB.recaudo[_recaudoFecha] && DB.recaudo[_recaudoFecha][id]; if(!r) return;
+  const tr = document.querySelector(`tr[data-id="${id}"]`);
+  if(!tr) return;
+  tr.style.background = r.recibido ? '#e6f7ec' : (r.recaudado ? '#ffe0b2' : '#ffffff');
+  const btn = tr.querySelector('button[onclick^="recaudarPedido"]');
+  if(btn){
+    btn.className = `btn ${r.recaudado?'btn-tertiary':'btn-ghost'} btn-sm`;
+    btn.innerHTML = `<span class="ms">${r.recaudado?'check_circle':'payments'}</span>${r.recaudado?'Recaudado':'Recaudo'}`;
+  }
+  const celEfe = tr.querySelector('td.num.bold');
+  if(celEfe) celEfe.textContent = money(r.efectivo);
+}
+function _repintarTotalesRecaudo(){
+  const filas = Object.values(DB.recaudo[_recaudoFecha]||{});
+  const conf = filas.filter(f=>f.recibido);
+  const tEfe = conf.reduce((a,b)=>a+(b.efectivo||0),0);
+  const tNeq = conf.reduce((a,b)=>a+(b.nequi||0),0);
+  const tBan = conf.reduce((a,b)=>a+(b.bancolombia||0),0);
+  const tDeu = conf.reduce((a,b)=>a+(b.deudaPago||0),0);
+  const tRec = filas.filter(f=>f.recaudado).reduce((a,b)=>a+(b.subtotal||0),0);
+  const kpis = document.querySelectorAll('#view .grid.grid-4 .kpi .kpi-v');
+  if(kpis[0]) kpis[0].textContent = money(tEfe);
+  if(kpis[1]) kpis[1].textContent = money(tNeq);
+  if(kpis[2]) kpis[2].textContent = money(tBan);
+  if(kpis[3]) kpis[3].textContent = money(tDeu);
+  const fills = document.querySelectorAll('#view .kpi-fill .kpi-v');
+  if(fills[0]) fills[0].textContent = money(tEfe+tNeq+tBan+tDeu);
+  if(fills[1]) fills[1].textContent = money(tRec);
+}
 function recaudarPedido(id){
   const r = DB.recaudo[_recaudoFecha] && DB.recaudo[_recaudoFecha][id]; if(!r) return;
   r.recaudado = !r.recaudado;
   recalcEfectivoFila(r);
   saveDB();
-  _encolarRecaudo(r);        // guardado diferido: no satura Appwrite
+  _encolarRecaudo(r);
+  _repintarFilaRecaudo(id);
+  _repintarTotalesRecaudo();
   toast(r.recaudado ? `Recaudo registrado: ${money(r.subtotal)}` : 'Recaudo retirado', r.recaudado ? 'success' : 'default');
-  renderRecaudo();
 }
 function updRec(id,campo,val){
   const r = DB.recaudo[_recaudoFecha] && DB.recaudo[_recaudoFecha][id]; if(!r) return;
@@ -1757,14 +1793,15 @@ function updRec(id,campo,val){
     }
   }
   saveDB();
-  _encolarRecaudo(r);        // guardado diferido: no satura Appwrite
-  renderRecaudo();
+  _encolarRecaudo(r);
+  _repintarFilaRecaudo(id);
+  _repintarTotalesRecaudo();
 }
 function reiniciarRecaudo(){
   modal('Reiniciar día','<p>¿Reiniciar todos los controles del día?</p>',`<button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><button class="btn btn-danger" onclick="_reiniciarRecaudo()">Reiniciar</button>`);
 }
 async function _reiniciarRecaudo(){
-  try{ await appwriteService.reiniciarRecaudoDia(_recaudoFecha); saveDB(); closeModal(); renderRecaudo(); toast('Día reiniciado','success'); }
+  try{ await appwriteService.reiniciarRecaudoDia(_recaudoFecha); saveDB(); closeModal(); entrarRecaudo(); toast('Día reiniciado','success'); }
   catch(e){ toast('No se pudo reiniciar el día','error'); }
 }
 
@@ -2617,7 +2654,7 @@ ROUTES.clientes = renderClientes;
 ROUTES.pedidos = renderPedidos;
 ROUTES.productos = renderProductos;
 ROUTES.factura = renderFactura;
-ROUTES.recaudo = renderRecaudo;
+ROUTES.recaudo = entrarRecaudo;
 ROUTES.cartera = renderCartera;
 ROUTES.nomina = renderNomina;
 ROUTES.contabilidad = renderConta;
