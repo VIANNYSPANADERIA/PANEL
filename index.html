@@ -1650,9 +1650,9 @@ function renderRecaudo(){
       <div class="kpi"><div class="kpi-ico" style="background:#fff3b0;color:var(--bancolombia-blue)"><span class="ms">account_balance</span></div><div class="kpi-l">Bancolombia</div><div class="kpi-v">${money(tBan)}</div></div>
       <div class="kpi"><div class="kpi-ico kpi-ico-e"><span class="ms">credit_card</span></div><div class="kpi-l">Pagos Deudas</div><div class="kpi-v">${money(tDeu)}</div></div>
     </div>
-    <div class="kpi kpi-fill mb-md"><div class="kpi-ico"><span class="ms">savings</span></div><div class="kpi-l">Total General Recaudado</div><div class="kpi-v" style="font-size:26px">${money(tGen)}</div></div>
+    <div class="kpi kpi-fill mb-md"><div class="kpi-ico"><span class="ms">savings</span></div><div class="kpi-l">Total General Recaudado</div><div class="kpi-v" style="font-size:26px">${(()=>{ let ex=0; filas.forEach(f=>{ if(f.incluirDeuda){ const s2=f.clienteId?getSaldoCliente(f.clienteId):0; if(s2<0) ex+=Math.abs(s2); else if(s2>0) ex-=s2; } }); return money(tGen+ex); })()}</div></div>
     <div class="kpi kpi-fill mb-md" style="background:var(--tertiary);border-color:var(--tertiary)"><div class="kpi-ico"><span class="ms">check_circle</span></div><div class="kpi-l">Total Recaudado (botón Recaudo)</div><div class="kpi-v" style="font-size:24px">${money(tRec)}</div></div>
-    <div class="kpi mb-md" style="background:#1a237e;color:#fff;border-color:#1a237e"><div class="kpi-ico" style="background:rgba(255,255,255,.15);color:#fff"><span class="ms">account_balance_wallet</span></div><div class="kpi-l" style="color:rgba(255,255,255,.8)">Total a cobrar (con deudas ☑)</div><div class="kpi-v" style="font-size:24px;color:#fff" id="kpi-total-deudas">${money(_calcTotalConDeudas())}</div></div>
+    
     <div class="card mb-md"><div class="card-h"><div class="card-t">Resumen del día</div></div><div class="card-b grid grid-4">
       <div><div class="muted" style="font-size:11px">Bruto total</div><div class="bold" style="font-family:var(--font-mono)">${money(bruto)}</div></div>
       <div><div class="muted" style="font-size:11px">Confirmado domiciliarios</div><div class="bold" style="font-family:var(--font-mono)">${money(conf)}</div></div>
@@ -1795,12 +1795,19 @@ function _repintarTotalesRecaudo(){
   if(kpis[1]) kpis[1].textContent = money(tNeq);
   if(kpis[2]) kpis[2].textContent = money(tBan);
   if(kpis[3]) kpis[3].textContent = money(tDeu);
+  // Sumar las deudas cuyo checkbox está marcado al total general
+  const filasTod = Object.values(DB.recaudo[_recaudoFecha]||{});
+  let extraDeudas = 0;
+  for(const f of filasTod){
+    if(f.incluirDeuda){
+      const s2 = f.clienteId ? getSaldoCliente(f.clienteId) : 0;
+      if(s2 < 0) extraDeudas += Math.abs(s2);  // cliente debe: suma
+      else if(s2 > 0) extraDeudas -= s2;         // empresa debe: resta
+    }
+  }
   const fills = document.querySelectorAll('#view .kpi-fill .kpi-v');
-  if(fills[0]) fills[0].textContent = money(tEfe+tNeq+tBan+tDeu);
+  if(fills[0]) fills[0].textContent = money(tEfe+tNeq+tBan+tDeu + extraDeudas);
   if(fills[1]) fills[1].textContent = money(tRec);
-  // KPI dinámico: total a cobrar incluyendo deudas marcadas
-  const kpiDeu = document.getElementById('kpi-total-deudas');
-  if(kpiDeu) kpiDeu.textContent = money(_calcTotalConDeudas());
 }
 function recaudarPedido(id){
   const r = DB.recaudo[_recaudoFecha] && DB.recaudo[_recaudoFecha][id]; if(!r) return;
