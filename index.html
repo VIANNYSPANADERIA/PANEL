@@ -93,11 +93,13 @@ input,select,textarea{font-family:inherit}
 .kpi-fill .kpi-l,.kpi-fill .kpi-ico{color:var(--on-primary)}
 .kpi-fill .kpi-ico{background:rgba(255,255,255,.18)}
 .tw{background:var(--surface-container-lowest);border:1px solid var(--outline-variant);border-radius:var(--r-xl);overflow:hidden;overflow-x:auto}
+/* Tabla de recaudo: scroll vertical interno para que el sticky header funcione. */
+.tw.rec-tw{max-height:62vh;overflow-y:auto;overflow-x:auto;border-radius:var(--r-xl)}
 table.d{width:100%;border-collapse:collapse}
 table.d>thead{background:var(--surface-container-low)}
 table.d th{padding:8px var(--s-md);text-align:left;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--on-surface-variant);white-space:nowrap}
-/* Header pegajoso: la fila de títulos queda fija al hacer scroll vertical. */
-table.d>thead th{position:sticky;top:0;z-index:5;background:var(--surface-container);box-shadow:inset 0 -1px 0 var(--outline-variant)}
+/* Header pegajoso: sticky dentro del contenedor con overflow (funciona en .rec-tw). */
+.rec-tw table.d>thead th{position:sticky;top:0;z-index:5;background:var(--surface-container);box-shadow:inset 0 -1px 0 var(--outline-variant)}
 table.d td{padding:8px var(--s-md);border-top:1px solid var(--outline-variant);font-size:13px;vertical-align:middle}
 table.d tr:hover td{background:var(--surface-container-low)}
 .num{font-family:var(--font-mono);text-align:right}
@@ -1650,13 +1652,14 @@ function renderRecaudo(){
     </div>
     <div class="kpi kpi-fill mb-md"><div class="kpi-ico"><span class="ms">savings</span></div><div class="kpi-l">Total General Recaudado</div><div class="kpi-v" style="font-size:26px">${money(tGen)}</div></div>
     <div class="kpi kpi-fill mb-md" style="background:var(--tertiary);border-color:var(--tertiary)"><div class="kpi-ico"><span class="ms">check_circle</span></div><div class="kpi-l">Total Recaudado (botón Recaudo)</div><div class="kpi-v" style="font-size:24px">${money(tRec)}</div></div>
+    <div class="kpi mb-md" style="background:#1a237e;color:#fff;border-color:#1a237e"><div class="kpi-ico" style="background:rgba(255,255,255,.15);color:#fff"><span class="ms">account_balance_wallet</span></div><div class="kpi-l" style="color:rgba(255,255,255,.8)">Total a cobrar (con deudas ☑)</div><div class="kpi-v" style="font-size:24px;color:#fff" id="kpi-total-deudas">${money(_calcTotalConDeudas())}</div></div>
     <div class="card mb-md"><div class="card-h"><div class="card-t">Resumen del día</div></div><div class="card-b grid grid-4">
       <div><div class="muted" style="font-size:11px">Bruto total</div><div class="bold" style="font-family:var(--font-mono)">${money(bruto)}</div></div>
       <div><div class="muted" style="font-size:11px">Confirmado domiciliarios</div><div class="bold" style="font-family:var(--font-mono)">${money(conf)}</div></div>
       <div><div class="muted" style="font-size:11px">Faltantes y salidas</div><div class="bold" style="color:var(--error);font-family:var(--font-mono)">${money(falt+sal)}</div></div>
       <div><div class="muted" style="font-size:11px">Descontado por deudas</div><div class="bold" style="color:var(--error);font-family:var(--font-mono)">${money(desDeu)}</div></div>
     </div></div>
-    <div class="tw">
+    <div class="tw rec-tw">
       <table class="d">
         <thead><tr>
           <th>Zona</th><th>Cliente</th><th>Subtotal</th><th>Cartera</th><th>Deuda</th><th>Recaudo</th><th>Recibido</th>
@@ -1678,7 +1681,13 @@ function renderRecaudo(){
               <td>${f.tipo}</td><td class="bold">${f.cliente}</td>
               <td class="num">${money(f.subtotal)}</td>
               <td class="center">${celdaCartera}</td>
-              <td class="num"><input type="number" value="${f.deuda}" style="width:80px" onchange="updRec('${f.pedidoId}','deuda',this.value)"/></td>
+              <td class="num" style="white-space:nowrap">
+                <input type="checkbox" title="Incluir deuda del cliente en el total a cobrar"
+                  ${f.incluirDeuda?'checked':''}
+                  onchange="toggleIncluirDeuda('${f.pedidoId}',this.checked)"
+                  style="margin-right:4px;cursor:pointer;width:15px;height:15px;vertical-align:middle"/>
+                <input type="number" value="${f.deuda}" style="width:70px" onchange="updRec('${f.pedidoId}','deuda',this.value)"/>
+              </td>
               <td class="center"><button class="btn ${f.recaudado?'btn-tertiary':'btn-ghost'} btn-sm" onclick="recaudarPedido('${f.pedidoId}')" title="Marcar recaudo y sumar al total"><span class="ms">${f.recaudado?'check_circle':'payments'}</span>${f.recaudado?'Recaudado':'Recaudo'}</button></td>
               <td class="center"><input type="checkbox" ${f.recibido?'checked':''} onchange="updRec('${f.pedidoId}','recibido',this.checked)"/></td>
               <td class="num"><input type="number" value="${f.nequi}" style="width:80px" onchange="updRec('${f.pedidoId}','nequi',this.value)"/></td>
@@ -1701,6 +1710,27 @@ function renderRecaudo(){
 function recalcEfectivoFila(r){
   if(!r) return;
   r.efectivo = Math.max(0, (Number(r.subtotal)||0) - (Number(r.nequi)||0) - (Number(r.bancolombia)||0) - (Number(r.deudaPago)||0) - (Number(r.deuda)||0) + (Number(r.debeCliente)||0) + (Number(r.faltante)||0) + (Number(r.salida)||0));
+}
+/** Suma de deudas incluidas (checkbox marcado) para el KPI "Total a cobrar". */
+function _calcTotalConDeudas(){
+  const filas = Object.values(DB.recaudo[_recaudoFecha]||{});
+  let total = 0;
+  for(const f of filas){
+    total += Number(f.subtotal)||0;
+    if(f.incluirDeuda){
+      const saldo = f.clienteId ? getSaldoCliente(f.clienteId) : 0;
+      if(saldo < 0) total += Math.abs(saldo);  // cliente debe → se suma
+      else if(saldo > 0) total -= saldo;         // empresa debe → se resta
+    }
+  }
+  return Math.max(0, total);
+}
+function toggleIncluirDeuda(pedidoId, val){
+  const r = DB.recaudo[_recaudoFecha] && DB.recaudo[_recaudoFecha][pedidoId]; if(!r) return;
+  r.incluirDeuda = val;
+  saveDB();
+  _encolarRecaudo(r);
+  _repintarTotalesRecaudo();
 }
 /* Cola de guardado de recaudo: agrupa por fila y envía espaciado.
    Evita el 429 de Appwrite cuando se marcan varias filas seguidas. */
@@ -1768,6 +1798,9 @@ function _repintarTotalesRecaudo(){
   const fills = document.querySelectorAll('#view .kpi-fill .kpi-v');
   if(fills[0]) fills[0].textContent = money(tEfe+tNeq+tBan+tDeu);
   if(fills[1]) fills[1].textContent = money(tRec);
+  // KPI dinámico: total a cobrar incluyendo deudas marcadas
+  const kpiDeu = document.getElementById('kpi-total-deudas');
+  if(kpiDeu) kpiDeu.textContent = money(_calcTotalConDeudas());
 }
 function recaudarPedido(id){
   const r = DB.recaudo[_recaudoFecha] && DB.recaudo[_recaudoFecha][id]; if(!r) return;
