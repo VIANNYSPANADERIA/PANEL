@@ -96,6 +96,8 @@ input,select,textarea{font-family:inherit}
 table.d{width:100%;border-collapse:collapse}
 table.d>thead{background:var(--surface-container-low)}
 table.d th{padding:8px var(--s-md);text-align:left;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--on-surface-variant);white-space:nowrap}
+/* Header pegajoso: la fila de títulos queda fija al hacer scroll vertical. */
+table.d>thead th{position:sticky;top:0;z-index:5;background:var(--surface-container);box-shadow:inset 0 -1px 0 var(--outline-variant)}
 table.d td{padding:8px var(--s-md);border-top:1px solid var(--outline-variant);font-size:13px;vertical-align:middle}
 table.d tr:hover td{background:var(--surface-container-low)}
 .num{font-family:var(--font-mono);text-align:right}
@@ -1841,12 +1843,12 @@ async function descontarClienteRecaudo(pedidoId){
   try{ await appwriteService.editarPedido(ped.id, {total: ped.total}); }catch(e){}
   await sincronizarRecaudoDia(fecha);
   const r = DB.recaudo[fecha] && DB.recaudo[fecha][pedidoId];
-  if(r){ recalcEfectivoFila(r); appwriteService.editarRecaudo(r.id, r).catch(()=>{}); }
+  if(r){ recalcEfectivoFila(r); _encolarRecaudo(r); }  // el subtotal ya bajó -> afecta efectivo, bruto y totales
   saveDB();
   const cli = DB.clientes.find(c=>c.id===ped.clienteId);
   toast(`-${money(monto)} aplicado a ${cli?cli.nombre:'pedido'}`, 'success');
   closeModal();
-  renderRecaudo();
+  entrarRecaudo();   // re-sincroniza y repinta con los totales ya actualizados
 }
 function exportarRecaudoExcel(){
   const filas = Object.values(DB.recaudo[_recaudoFecha]||{});
