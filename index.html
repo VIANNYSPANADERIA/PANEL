@@ -168,8 +168,11 @@ table.d tr:hover td{background:var(--surface-container-low)}
 .prod-price{font-size:12.5px;font-weight:700;color:#000}
 .prod-row{display:flex;flex-direction:column;gap:4px}
 .prod-row label{font-size:11px;font-weight:700;color:#000}
-.prod-row input{width:100%;padding:6px 8px;font-size:13px;font-weight:700;color:#000;border:1px solid var(--outline-variant);border-radius:var(--r-lg);background:var(--surface-container-low);outline:none}
+.prod-row input{width:100%;padding:6px 8px;font-size:13px;font-weight:700;color:#000;border:2px solid var(--outline-variant);border-radius:var(--r-lg);background:var(--surface-container-low);outline:none;transition:border-color .15s,background .15s}
 .prod-row input:focus{border-color:var(--primary)}
+.prod-row input.has-value{border-color:#00897b;background:#e8f5e9;color:#1b5e20}
+.prod.has-item{border:2.5px solid #00897b;background:#f0faf5}
+.prod.has-item .prod-name{color:#1b5e20}
 .prod .fb span{color:#000;font-weight:800}
 .prod-exc{font-size:10.5px;font-weight:700;color:var(--primary)}
 .chart-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:var(--s-md)}
@@ -1001,7 +1004,7 @@ function renderPedidos(params={}){
     </div>
     <div class="prod-grid mt-md">
       ${items.map(x=>`
-        <div class="prod">
+        <div class="prod ${x.calc.subtotal>0?'has-item':''}" id="card-${x.p.id}">
           <div class="prod-img">${x.p.imagen?`<img src="${x.p.imagen}"/>`:'<span class="ms" style="font-size:32px">cake</span>'}</div>
           <div class="prod-name">${x.p.nombre}</div>
           <div class="prod-price">${money(x.p.precio)} / unidad ${x.p.vendajeActivo?'· <span class="badge badge-warn">Vendaje '+x.p.vendajePct+'%</span>':''}</div>
@@ -1022,11 +1025,29 @@ function renderPedidos(params={}){
       <div class="card-h"><div class="card-t">Resumen del pedido</div></div>
       <div class="card-b">
         <div class="field"><label>Comentario para la factura</label><textarea id="comentario" rows="2" placeholder="Comentario..." oninput="_comentarioPedido=this.value">${_comentarioPedido}</textarea></div>
-        <div class="card mb-md" style="background:var(--surface-container-low)"><div class="card-b flex fb" style="gap:8px">
-          <span><span class="ms" style="vertical-align:middle;color:var(--tertiary)">receipt</span> Mostrar deuda pendiente del cliente en el ticket</span>
-          <label class="switch"><input type="checkbox" id="pedidoMostrarDeuda" ${_pedidoMostrarDeuda?'checked':''} onchange="_pedidoMostrarDeuda=this.checked"/></label>
-          <span class="muted" style="font-size:11px">${deuda>0?`El cliente debe ${money(deuda)}`:deuda<0?`A favor ${money(-deuda)}`:'Sin deuda'}</span>
-        </div></div>
+        ${deuda!==0?`
+        <div class="card mb-md" style="border-left:6px solid ${deuda>0?'#ba1a1a':'#005338'};background:${deuda>0?'#fff4f4':'#f0faf5'}">
+          <div class="card-b">
+            <div style="font-size:13px;font-weight:700;color:${deuda>0?'#ba1a1a':'#005338'};margin-bottom:6px">
+              <span class="ms" style="vertical-align:middle;font-size:18px">${deuda>0?'account_balance_wallet':'savings'}</span>
+              ${deuda>0?'DEUDA DEL CLIENTE':'SALDO A FAVOR DEL CLIENTE'}
+            </div>
+            <div style="font-size:32px;font-weight:900;font-family:var(--font-mono);color:${deuda>0?'#ba1a1a':'#005338'};line-height:1">${money(Math.abs(deuda))}</div>
+            <div style="font-size:11.5px;margin-top:6px;color:${deuda>0?'#ba1a1a':'#005338'}">
+              ${deuda>0?'El cliente tiene una deuda pendiente con la panadería.':'La panadería tiene un saldo pendiente a favor del cliente.'}
+            </div>
+            <div class="flex" style="gap:10px;margin-top:10px;align-items:center">
+              <label class="switch"><input type="checkbox" id="pedidoMostrarDeuda" ${_pedidoMostrarDeuda?'checked':''} onchange="_pedidoMostrarDeuda=this.checked"/></label>
+              <span style="font-size:12px;font-weight:600;color:${deuda>0?'#ba1a1a':'#005338'}">Mostrar en el ticket</span>
+            </div>
+          </div>
+        </div>`:`
+        <div class="card mb-md" style="background:var(--surface-container-low)">
+          <div class="card-b flex fb" style="gap:8px;align-items:center">
+            <span style="font-size:13px;font-weight:600"><span class="ms" style="vertical-align:middle;color:var(--tertiary)">check_circle</span> Sin deuda pendiente</span>
+            <label class="switch"><input type="checkbox" id="pedidoMostrarDeuda" ${_pedidoMostrarDeuda?'checked':''} onchange="_pedidoMostrarDeuda=this.checked"/></label>
+          </div>
+        </div>`}
         <div class="flex fb"><span class="bold">TOTAL DEL PEDIDO</span><span id="totalPedido" class="bold" style="font-size:24px;font-family:var(--font-mono);color:var(--primary)">${money(total)}</span></div>
         <div class="mt-md flex gap" style="flex-wrap:wrap">
           <button class="btn btn-primary" onclick="guardarPedido()"><span class="ms">save</span>Guardar Pedido</button>
@@ -1049,6 +1070,16 @@ function updateItem(pid, field, val){
   const calc = _modoCondicion==='condicion' ? calcCondicion2000(pid,it.cantidad,it.dinero) : calcNormal(pid,it.cantidad,it.dinero);
   const elSub = document.getElementById('sub-'+pid);
   if(elSub) elSub.textContent = money(calc.subtotal);
+  // Pintar la tarjeta y sus inputs de verde si tiene valor, gris si no
+  const elCard = document.getElementById('card-'+pid);
+  if(elCard){
+    const activo = calc.subtotal > 0;
+    elCard.classList.toggle('has-item', activo);
+    elCard.querySelectorAll('.prod-row input').forEach(inp=>{
+      const v = parseNum(inp.value);
+      inp.classList.toggle('has-value', v > 0);
+    });
+  }
   const elVend = document.getElementById('vend-'+pid);
   if(elVend){ const v = (prod.vendajeActivo && prod.vendajeCada>0 && calc.cantidad>0) ? Math.floor(calc.cantidad/prod.vendajeCada) : 0; elVend.innerHTML = v>0 ? `<div class="badge badge-warn">Vendajes: ${v}</div>` : ''; }
   // Recalcular total
