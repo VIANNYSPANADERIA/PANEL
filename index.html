@@ -967,12 +967,18 @@ let _currentCliente = null;
 // Bug #2: flag por pedido para decidir si el ticket incluye o no la deuda del cliente.
 let _pedidoMostrarDeuda = true;
 
+let _pedidoClienteAnterior = null;
 function renderPedidos(params={}){
   if(params.clienteId) _currentCliente = params.clienteId;
   setHeader('Pedidos');
   const cli = DB.clientes.find(c=>c.id===_currentCliente);
   if(!cli){ toast('Seleccione un cliente','error'); go('clientes'); return; }
   const deuda = getDeudaCliente(cli.id);
+  // Al cambiar de cliente: el check se activa SOLO si el cliente tiene deuda/saldo.
+  if(_pedidoClienteAnterior !== cli.id){
+    _pedidoMostrarDeuda = deuda !== 0;
+    _pedidoClienteAnterior = cli.id;
+  }
   const productos = DB.productos.filter(p=>p.activo).sort((a,b)=>a.orden-b.orden)
     .filter(p=>excVisible(p, cli.id));
 
