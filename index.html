@@ -483,9 +483,10 @@ function calcCondicion2000(productoId, cantidad, dinero){
   if(!prod || prod.precio!==2000) return calcNormal(productoId, cantidad, dinero);
   let q = Number(cantidad)||0, m = Number(dinero)||0;
   if(q>0 && m===0){
-    // cantidad -> dinero
-    if([7,8,9].includes(q)) m = 15000;
-    else if(q===3) m = 5000;
+    // cantidad -> dinero. La cantidad se NORMALIZA para que en la factura
+    // 7 u 8 panes aparezcan como 9 x $15.000 (condición 3x5.000).
+    if([7,8,9].includes(q)){ m = 15000; q = 9; }
+    else if(q===3){ m = 5000; q = 3; }
     else m = q*2000;
   } else if(m>0 && q===0){
     if(m===5000) q = 3;
@@ -1695,12 +1696,48 @@ function recalcEfectivoFila(r){
   if(!r) return;
   r.efectivo = Math.max(0, (Number(r.subtotal)||0) - (Number(r.nequi)||0) - (Number(r.bancolombia)||0) - (Number(r.deudaPago)||0) - (Number(r.deuda)||0) + (Number(r.debeCliente)||0) + (Number(r.faltante)||0) + (Number(r.salida)||0));
 }
+/* Cola de guardado de recaudo: agrupa por fila y envía espaciado.
+   Evita el 429 de Appwrite cuando se marcan varias filas seguidas. */
+const _recaudoCola = new Map();   // rowId -> objeto fila a guardar
+let _recaudoTimer = null;
+let _recaudoEnviando = false;
+
+function _encolarRecaudo(r){
+  _recaudoCola.set(r.id, r);
+  if(_recaudoTimer) clearTimeout(_recaudoTimer);
+  _recaudoTimer = setTimeout(_procesarColaRecaudo, 600);  // espera a que dejes de marcar
+}
+
+async function _procesarColaRecaudo(){
+  if(_recaudoEnviando) return;
+  _recaudoEnviando = true;
+  try{
+    // Se procesa la cola de a UNA fila, con pausa entre cada una.
+    while(_recaudoCola.size){
+      const [id, fila] = _recaudoCola.entries().next().value;
+      _recaudoCola.delete(id);
+      try{
+        await appwriteService.editarRecaudo(fila.id, fila);
+      }catch(e){
+        // Si Appwrite devuelve 429, se reencola y se espera más antes de reintentar.
+        if(String(e && e.message || '').includes('429') || (e && e.code===429)){
+          _recaudoCola.set(id, fila);
+          await new Promise(res=>setTimeout(res, 1500));
+        }
+      }
+      await new Promise(res=>setTimeout(res, 250));  // separa las peticiones
+    }
+  } finally {
+    _recaudoEnviando = false;
+  }
+}
+
 function recaudarPedido(id){
   const r = DB.recaudo[_recaudoFecha] && DB.recaudo[_recaudoFecha][id]; if(!r) return;
   r.recaudado = !r.recaudado;
   recalcEfectivoFila(r);
-  appwriteService.editarRecaudo(r.id, r).catch(()=>{});
   saveDB();
+  _encolarRecaudo(r);        // guardado diferido: no satura Appwrite
   toast(r.recaudado ? `Recaudo registrado: ${money(r.subtotal)}` : 'Recaudo retirado', r.recaudado ? 'success' : 'default');
   renderRecaudo();
 }
@@ -1719,8 +1756,8 @@ function updRec(id,campo,val){
       r[lastKey] = r[campo];
     }
   }
-  appwriteService.editarRecaudo(r.id, r).catch(()=>{});
   saveDB();
+  _encolarRecaudo(r);        // guardado diferido: no satura Appwrite
   renderRecaudo();
 }
 function reiniciarRecaudo(){
