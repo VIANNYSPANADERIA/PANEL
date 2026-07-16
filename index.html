@@ -1620,7 +1620,12 @@ async function entrarRecaudo(){
 }
 function renderRecaudo(){
   setHeader('Recaudo de Domiciliarios');
-  const filas = Object.values(DB.recaudo[_recaudoFecha]||{});
+  // Ordenar las filas igual que los clientes en el módulo Clientes (campo `orden`)
+  const filas = Object.values(DB.recaudo[_recaudoFecha]||{}).sort((a,b)=>{
+    const oA = DB.clientes.find(c=>c.id===a.clienteId)?.orden ?? 9999;
+    const oB = DB.clientes.find(c=>c.id===b.clienteId)?.orden ?? 9999;
+    return oA - oB;
+  });
   // Los totales superiores solo suman las filas CONFIRMADAS (recibido=true).
   // Así, al deseleccionar "Recibido" se restan los valores de arriba.
   const confirmadas = filas.filter(f=>f.recibido);
@@ -1676,9 +1681,10 @@ function renderRecaudo(){
             const celdaCartera = saldoCart<0 ? `<span style="background:#ba1a1a;color:#fff;padding:3px 8px;border-radius:6px;font-size:11px;font-weight:700;white-space:nowrap">Debe ${money(-saldoCart)}</span>` : saldoCart>0 ? `<span style="background:#004b98;color:#fff;padding:3px 8px;border-radius:6px;font-size:11px;font-weight:700;white-space:nowrap">Le debo ${money(saldoCart)}</span>` : `<span class="muted" style="font-size:11px">Al día</span>`;
             // Cliente con ubicación GPS
             const cliObj = f.clienteId ? DB.clientes.find(c=>c.id===f.clienteId) : null;
+            const cliColor = cliObj?.color || 'var(--primary)';
             const celdaUbic = (cliObj && cliObj.lat!=null && cliObj.lng!=null) ? `<button class="btn btn-ghost btn-sm" onclick="copiarYabrirUbicacion('${f.clienteId}')" title="Copiar coords y abrir Google Maps"><span class="ms">location_on</span></button>` : `<span class="muted">-</span>`;
-            return `<tr data-id="${f.pedidoId}" style="background:${filaBg}">
-              <td>${f.tipo}</td><td class="bold">${f.cliente}</td>
+            return `<tr data-id="${f.pedidoId}" style="background:${filaBg};border-left:5px solid ${cliColor}">
+              <td>${f.tipo}</td><td class="bold" style="color:${cliColor}">${f.cliente}</td>
               <td class="num">${money(f.subtotal)}</td>
               <td class="center">${celdaCartera}</td>
               <td class="num" style="white-space:nowrap">
@@ -1773,7 +1779,12 @@ function _repintarFilaRecaudo(id){
   const r = DB.recaudo[_recaudoFecha] && DB.recaudo[_recaudoFecha][id]; if(!r) return;
   const tr = document.querySelector(`tr[data-id="${id}"]`);
   if(!tr) return;
+  const cliR = r.clienteId ? DB.clientes.find(c=>c.id===r.clienteId) : null;
+  const colorR = cliR?.color || 'var(--primary)';
   tr.style.background = r.recibido ? '#e6f7ec' : (r.recaudado ? '#ffe0b2' : '#ffffff');
+  tr.style.borderLeft = `5px solid ${colorR}`;
+  const tdNom = tr.querySelector('td.bold');
+  if(tdNom) tdNom.style.color = colorR;
   const btn = tr.querySelector('button[onclick^="recaudarPedido"]');
   if(btn){
     btn.className = `btn ${r.recaudado?'btn-tertiary':'btn-ghost'} btn-sm`;
