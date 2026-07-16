@@ -1659,10 +1659,10 @@ function renderRecaudo(){
     <div class="kpi kpi-fill mb-md" style="background:var(--tertiary);border-color:var(--tertiary)"><div class="kpi-ico"><span class="ms">check_circle</span></div><div class="kpi-l">Total Recaudado (botón Recaudo)</div><div class="kpi-v" style="font-size:24px">${(()=>{ let ex=0; filas.forEach(f=>{ if(f.incluirDeuda){ const sd=f.clienteId?getSaldoCliente(f.clienteId):0; if(sd<0) ex+=Math.abs(sd); else if(sd>0) ex-=sd; } }); return money(tRec+ex); })()}</div></div>
     
     <div class="card mb-md"><div class="card-h"><div class="card-t">Resumen del día</div></div><div class="card-b grid grid-4">
-      <div><div class="muted" style="font-size:11px">Bruto total</div><div class="bold" style="font-family:var(--font-mono)">${money(bruto)}</div></div>
-      <div><div class="muted" style="font-size:11px">Confirmado domiciliarios</div><div class="bold" style="font-family:var(--font-mono)">${money(conf)}</div></div>
-      <div><div class="muted" style="font-size:11px">Faltantes y salidas</div><div class="bold" style="color:var(--error);font-family:var(--font-mono)">${money(falt+sal)}</div></div>
-      <div><div class="muted" style="font-size:11px">Descontado por deudas</div><div class="bold" style="color:var(--error);font-family:var(--font-mono)">${money(desDeu)}</div></div>
+      <div><div class="muted" style="font-size:11px">Bruto total</div><div class="bold" id="res-bruto" style="font-family:var(--font-mono)">${money(bruto)}</div></div>
+      <div><div class="muted" style="font-size:11px">Confirmado domiciliarios</div><div class="bold" id="res-conf" style="font-family:var(--font-mono)">${money(conf)}</div></div>
+      <div><div class="muted" style="font-size:11px">Faltantes y salidas</div><div class="bold" id="res-falt" style="color:var(--error);font-family:var(--font-mono)">${money(falt+sal)}</div></div>
+      <div><div class="muted" style="font-size:11px">Descontado por deudas</div><div class="bold" id="res-desdeu" style="color:var(--error);font-family:var(--font-mono)">${money(desDeu)}</div></div>
     </div></div>
     <div class="tw rec-tw">
       <table class="d">
@@ -1715,7 +1715,18 @@ function renderRecaudo(){
 }
 function recalcEfectivoFila(r){
   if(!r) return;
-  r.efectivo = Math.max(0, (Number(r.subtotal)||0) - (Number(r.nequi)||0) - (Number(r.bancolombia)||0) - (Number(r.deudaPago)||0) - (Number(r.deuda)||0) + (Number(r.debeCliente)||0) + (Number(r.faltante)||0) + (Number(r.salida)||0));
+  // Efectivo = venta + pago de deuda (entra) − lo pagado por otros medios
+  //           − deuda nueva − faltante − salida − saldo a favor entregado al cliente
+  r.efectivo = Math.max(0,
+      (Number(r.subtotal)||0)
+    + (Number(r.deudaPago)||0)   // el cliente paga una deuda vieja: ENTRA efectivo
+    - (Number(r.nequi)||0)
+    - (Number(r.bancolombia)||0)
+    - (Number(r.deuda)||0)        // queda debiendo: NO entra efectivo
+    - (Number(r.faltante)||0)
+    - (Number(r.salida)||0)
+    - (Number(r.debeCliente)||0)  // le devuelvo saldo a favor: SALE efectivo
+  );
 }
 /** Suma de deudas incluidas (checkbox marcado) para el KPI "Total a cobrar". */
 function _calcTotalConDeudas(){
@@ -1792,6 +1803,25 @@ function _repintarFilaRecaudo(id){
   }
   const celEfe = tr.querySelector('td.num.bold');
   if(celEfe) celEfe.textContent = money(r.efectivo);
+  // Repintar la celda Cartera (columna 4) con el saldo actualizado del cliente.
+  const saldoCart = r.clienteId ? getSaldoCliente(r.clienteId) : 0;
+  const tdCart = tr.children[3];
+  if(tdCart){
+    tdCart.innerHTML = saldoCart<0
+      ? `<span style="background:#ba1a1a;color:#fff;padding:3px 8px;border-radius:6px;font-size:11px;font-weight:700;white-space:nowrap">Debe ${money(-saldoCart)}</span>`
+      : saldoCart>0
+      ? `<span style="background:#004b98;color:#fff;padding:3px 8px;border-radius:6px;font-size:11px;font-weight:700;white-space:nowrap">Le debo ${money(saldoCart)}</span>`
+      : `<span class="muted" style="font-size:11px">Al día</span>`;
+  }
+  // Repintar la celda Estado (columna 14) también.
+  const tdEstado = tr.children[13];
+  if(tdEstado){
+    tdEstado.innerHTML = r.deuda>0
+      ? `<span class="badge badge-error">Debe</span>`
+      : r.debeCliente>0
+      ? `<span class="badge badge-warn">Le debo</span>`
+      : `<span class="badge badge-success">Al día</span>`;
+  }
 }
 function _repintarTotalesRecaudo(){
   const filas = Object.values(DB.recaudo[_recaudoFecha]||{});
@@ -1819,6 +1849,15 @@ function _repintarTotalesRecaudo(){
   const fills = document.querySelectorAll('#view .kpi-fill .kpi-v');
   if(fills[0]) fills[0].textContent = money(tEfe+tNeq+tBan+tDeu);
   if(fills[1]) fills[1].textContent = money(tRec + extraDeudas);
+  // Resumen del día
+  const bruto = filasTod.reduce((a,b)=>a+(b.subtotal||0),0);
+  const confMonto = conf.reduce((a,b)=>a+(b.subtotal||0),0);
+  const falt = filasTod.reduce((a,b)=>a+(b.faltante||0),0)+filasTod.reduce((a,b)=>a+(b.salida||0),0);
+  const set = (id,v)=>{ const el=document.getElementById(id); if(el) el.textContent = money(v); };
+  set('res-bruto', bruto);
+  set('res-conf', confMonto);
+  set('res-falt', falt);
+  set('res-desdeu', tDeu);
 }
 function recaudarPedido(id){
   const r = DB.recaudo[_recaudoFecha] && DB.recaudo[_recaudoFecha][id]; if(!r) return;
@@ -1847,7 +1886,14 @@ function updRec(id,campo,val){
   }
   saveDB();
   _encolarRecaudo(r);
-  _repintarFilaRecaudo(id);
+  // Si cambió una deuda, repintar TODAS las filas del mismo cliente (su cartera cambió).
+  if(['deuda','deudaPago','debeCliente'].includes(campo) && r.clienteId){
+    Object.values(DB.recaudo[_recaudoFecha]||{}).forEach(otra=>{
+      if(otra.clienteId===r.clienteId) _repintarFilaRecaudo(otra.pedidoId);
+    });
+  } else {
+    _repintarFilaRecaudo(id);
+  }
   _repintarTotalesRecaudo();
 }
 function reiniciarRecaudo(){
