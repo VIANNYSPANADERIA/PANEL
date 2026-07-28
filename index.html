@@ -414,7 +414,20 @@ function refrescarVistaActiva(){
     'Cartera':'cartera','Nómina':'nomina','Contabilidad':'contabilidad',
     'Costos y Rentabilidad':'costos'};
   const route = map[current];
-  if(route && ROUTES[route]) try{ ROUTES[route](); }catch(e){}
+  if(!route || !ROUTES[route]) return;
+  // Preservar posición de scroll de la tabla de recaudo y del mapa de clientes.
+  const recBox = document.querySelector('.rec-tw');
+  const recScroll = recBox ? recBox.scrollTop : 0;
+  const pageScroll = window.scrollY;
+  const mapaAbierto = (() => { const p = document.getElementById('clientesMapPanel'); return p && !p.classList.contains('is-hidden'); })();
+  try{ ROUTES[route](); }catch(e){}
+  // Restaurar scroll tras el re-render.
+  requestAnimationFrame(()=>{
+    const box2 = document.querySelector('.rec-tw');
+    if(box2 && recScroll) box2.scrollTop = recScroll;
+    if(pageScroll) window.scrollTo(0, pageScroll);
+    if(mapaAbierto && typeof toggleMapaClientes==='function') toggleMapaClientes(true);
+  });
 }
 
 /* === Conectividad: indicador online/offline === */
@@ -574,10 +587,20 @@ let _clientesFecha = todayKey();
 let _dragSrc = null;
 const CLIENT_COLORS = ['#3525cd','#fe932c','#006e4b','#ba1a1a','#d6006e','#004b98','#904d00','#7b1fa2','#00838f','#c2185b','#e65100','#2e7d32'];
 
+let _mapaClientesAbierto = false;
 function renderClientes(){
   setHeader('Clientes');
   renderClientesShell();
   renderClientesCards();
+  _restaurarMapaClientes();
+}
+function _restaurarMapaClientes(){
+  if(_mapaClientesAbierto){
+    const panel = document.getElementById('clientesMapPanel');
+    if(panel && panel.classList.contains('is-hidden')){
+      requestAnimationFrame(()=>toggleMapaClientes(true));
+    }
+  }
 }
 function renderClientesShell(){
   const pedidosDia = DB.pedidos.filter(p=>p.fecha===_clientesFecha);
@@ -858,9 +881,11 @@ function toggleMapaClientes(forced){
   const show = forced===true ? true : panel.classList.contains('is-hidden');
   if(show){
     panel.classList.remove('is-hidden');
+    _mapaClientesAbierto = true;   // recordar estado para sobrevivir re-renders
     setTimeout(initMapaClientes, 120);
   } else {
     panel.classList.add('is-hidden');
+    _mapaClientesAbierto = false;
     if(_cliMapInstance){ try{_cliMapInstance.remove()}catch(e){}; _cliMapInstance=null; }
   }
 }
@@ -1695,7 +1720,7 @@ function renderRecaudo(){
                 <input type="number" value="${f.deuda}" style="width:70px" onchange="updRec('${f.pedidoId}','deuda',this.value)"/>
               </td>
               <td class="center"><button class="btn ${f.recaudado?'btn-tertiary':'btn-ghost'} btn-sm" onclick="recaudarPedido('${f.pedidoId}')" title="Marcar recaudo y sumar al total"><span class="ms">${f.recaudado?'check_circle':'payments'}</span>${f.recaudado?'Recaudado':'Recaudo'}</button></td>
-              <td class="center"><input type="checkbox" ${f.recibido?'checked':''} onchange="updRec('${f.pedidoId}','recibido',this.checked)"/></td>
+              <td class="center"><input type="checkbox" ${f.recibido?'checked':''} onchange="updRecibido('${f.pedidoId}',this.checked)"/></td>
               <td class="num"><input type="number" value="${f.nequi}" style="width:80px" onchange="updRec('${f.pedidoId}','nequi',this.value)"/></td>
               <td class="num"><input type="number" value="${f.bancolombia}" style="width:80px" onchange="updRec('${f.pedidoId}','bancolombia',this.value)"/></td>
               <td class="num"><input type="number" value="${f.deudaPago}" style="width:80px" onchange="updRec('${f.pedidoId}','deudaPago',this.value)"/></td>
@@ -1868,6 +1893,17 @@ function recaudarPedido(id){
   _repintarFilaRecaudo(id);
   _repintarTotalesRecaudo();
   toast(r.recaudado ? `Recaudo registrado: ${money(r.subtotal)}` : 'Recaudo retirado', r.recaudado ? 'success' : 'default');
+}
+/* Marca "Recibido" SIN alterar el estado de "Recaudado" (son independientes). */
+function updRecibido(id, val){
+  const r = DB.recaudo[_recaudoFecha] && DB.recaudo[_recaudoFecha][id]; if(!r) return;
+  r.recibido = val;
+  // recaudado NO se toca: son dos controles independientes.
+  recalcEfectivoFila(r);
+  saveDB();
+  _encolarRecaudo(r);
+  _repintarFilaRecaudo(id);
+  _repintarTotalesRecaudo();
 }
 function updRec(id,campo,val){
   const r = DB.recaudo[_recaudoFecha] && DB.recaudo[_recaudoFecha][id]; if(!r) return;
