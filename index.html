@@ -2260,17 +2260,37 @@ async function _delEmp(id){
   try{ await appwriteService.eliminarEmpleado(id); saveDB(); closeModal(); renderNomina(); toast('Empleado eliminado','success'); }
   catch(e){ toast('No se pudo eliminar','error'); }
 }
+let _calNomYear = null, _calNomMonth = null, _calNomEmp = null;
 function abrirCalendario(empId){
   const e=DB.nomina.empleados.find(x=>x.id===empId);
-  const today=new Date(); const y=today.getFullYear(),m=today.getMonth();
+  if(!e) return;
+  const today=new Date();
+  // Al abrir un empleado distinto, arrancamos en el mes actual.
+  if(_calNomEmp !== empId || _calNomYear === null){
+    _calNomYear = today.getFullYear();
+    _calNomMonth = today.getMonth();
+    _calNomEmp = empId;
+  }
+  const y=_calNomYear, m=_calNomMonth;
   const first=new Date(y,m,1); const last=new Date(y,m+1,0).getDate();
   const dias = ['D','L','M','M','J','V','S'];
+  const MES = new Date(y,m,1).toLocaleDateString('es-CO',{month:'long',year:'numeric'});
   modal(`Calendario - ${e.nombre} (${e.periodo})`,`
-    <div class="bold mb-md">${today.toLocaleDateString('es-CO',{month:'long',year:'numeric'})}</div>
+    <div class="flex fb mb-md" style="align-items:center">
+      <button class="btn btn-ghost btn-sm" onclick="calNomNav('${empId}',-1)"><span class="ms">arrow_back</span></button>
+      <div class="bold" style="text-transform:capitalize">${MES}</div>
+      <button class="btn btn-ghost btn-sm" onclick="calNomNav('${empId}',1)"><span class="ms">arrow_outward</span></button>
+    </div>
     <div class="cal">${dias.map(d=>`<div class="cal-day cal-head">${d}</div>`).join('')}${Array(first.getDay()).fill('<div class="cal-day" style="visibility:hidden"></div>').join('')}${Array.from({length:last},(_,i)=>{const day=i+1;const worked=e.calendario[`${y}-${m}-${day}`];return `<div class="cal-day ${worked?'worked':''}" onclick="toggleDay('${empId}',${y},${m},${day})">${day}</div>`}).join('')}</div>
     <div class="mt-md kpi kpi-fill"><div class="kpi-ico"><span class="ms">payments</span></div><div class="kpi-l">A pagar (días marcados)</div><div class="kpi-v">${money(calcularPagoFinal(e))}</div></div>
-    <div class="muted mt-md">Click en un día para marcar/desmarcar.</div>
+    <div class="muted mt-md">Click en un día para marcar/desmarcar. Usa las flechas para cambiar de mes.</div>
   `);
+}
+function calNomNav(empId, dir){
+  _calNomMonth += dir;
+  if(_calNomMonth < 0){ _calNomMonth = 11; _calNomYear--; }
+  if(_calNomMonth > 11){ _calNomMonth = 0; _calNomYear++; }
+  abrirCalendario(empId);
 }
 async function toggleDay(empId,y,m,day){
   const e=DB.nomina.empleados.find(x=>x.id===empId);
@@ -2871,9 +2891,12 @@ function _calMesDia(m,d){ return `${_cal2(m+1)}-${_cal2(d)}`; }             // m
 function calEventosDe(y,m,d){
   const fecha = _calKey(y,m,d);
   const md = _calMesDia(m,d);
+  const dia2 = _cal2(d);   // solo el día, para eventos mensuales
   return (DB.calendario||[]).filter(e =>
-    (e.tipo==='temporal' && e.fecha===fecha) ||
-    (e.tipo==='fijo' && e.mesdia===md)
+    (e.tipo==='temporal' && e.fecha===fecha) ||           // un solo día
+    (e.tipo==='fijo' && e.mesdia===md) ||                 // anual: mismo día y mes
+    (e.tipo==='mensual' && (e.diames===dia2 ||            // mensual: mismo día, cualquier mes
+      (e.mesdia && e.mesdia.slice(3)===dia2)))            // compat con eventos guardados antes
   ).sort((a,b)=> (a.hora||'99').localeCompare(b.hora||'99'));
 }
 
@@ -2890,7 +2913,7 @@ function renderCalendario(){
   for(let d=1; d<=diasMes; d++){
     const evs = calEventosDe(_calYear,_calMonth,d);
     const chips = evs.slice(0,3).map(e=>
-      `<div class="cal-chip" style="background:${e.color}" title="${e.titulo}">${e.hora?`<b>${e.hora}</b> `:''}${e.titulo}${e.tipo==='fijo'?' ↻':''}</div>`
+      `<div class="cal-chip" style="background:${e.color}" title="${e.titulo}">${e.hora?`<b>${e.hora}</b> `:''}${e.titulo}${(e.tipo==='fijo'||e.tipo==='mensual')?' ↻':''}</div>`
     ).join('');
     const mas = evs.length>3 ? `<div class="cal-more">+${evs.length-3} más</div>` : '';
     celdas += `
@@ -2901,11 +2924,12 @@ function renderCalendario(){
   }
 
   const totalFijos = (DB.calendario||[]).filter(e=>e.tipo==='fijo').length;
+  const totalMensual = (DB.calendario||[]).filter(e=>e.tipo==='mensual').length;
   const totalTemp = (DB.calendario||[]).filter(e=>e.tipo==='temporal').length;
 
   $('#view').innerHTML = `
     <div class="ph">
-      <div><h1>Calendario</h1><div class="sub">Eventos fijos (se repiten cada año) y temporales · ${totalFijos} fijos · ${totalTemp} temporales</div></div>
+      <div><h1>Calendario</h1><div class="sub">Anuales, mensuales y temporales · ${totalFijos} anuales · ${totalMensual} mensuales · ${totalTemp} temporales</div></div>
       <div class="h-spacer"></div>
       <button class="btn btn-primary" onclick="calEventoModal()"><span class="ms">add</span>Nuevo evento</button>
     </div>
@@ -2941,7 +2965,8 @@ function calDiaModal(d){
       <div class="cal-ev-row" style="border-left:5px solid ${e.color}">
         <div style="flex:1">
           <div class="bold">${e.hora?`<span style="color:${e.color}">${e.hora}</span> · `:''}${e.titulo}
-            ${e.tipo==='fijo'?'<span class="badge" style="background:'+e.color+';color:#fff">Fijo ↻</span>':''}
+            ${e.tipo==='fijo'?'<span class="badge" style="background:'+e.color+';color:#fff">Anual ↻</span>':''}
+            ${e.tipo==='mensual'?'<span class="badge" style="background:'+e.color+';color:#fff">Mensual ↻</span>':''}
             <span class="badge">${e.categoria}</span>
           </div>
           ${e.nota?`<div class="muted" style="font-size:12px;margin-top:2px">${e.nota}</div>`:''}
@@ -2968,7 +2993,8 @@ function calEventoModal(id, dia){
       <div class="field"><label>Tipo de evento</label>
         <select id="cv-tipo" onchange="calTipoPreview()">
           <option value="temporal" ${!ev||ev.tipo==='temporal'?'selected':''}>Temporal (un solo día)</option>
-          <option value="fijo" ${ev&&ev.tipo==='fijo'?'selected':''}>Fijo (se repite cada año este día)</option>
+          <option value="mensual" ${ev&&ev.tipo==='mensual'?'selected':''}>Mensual (mismo día de cada mes)</option>
+          <option value="fijo" ${ev&&ev.tipo==='fijo'?'selected':''}>Anual (mismo día y mes cada año)</option>
         </select></div>
       <div class="field"><label>Categoría</label>
         <select id="cv-cat">${CAL_CATEGORIAS.map(c=>`<option ${ev&&ev.categoria===c?'selected':''}>${c}</option>`).join('')}</select></div>
@@ -2996,7 +3022,9 @@ function calTipoPreview(){
   const tipo = document.getElementById('cv-tipo')?.value;
   const el = document.getElementById('cv-preview'); if(!el) return;
   el.innerHTML = tipo==='fijo'
-    ? '↻ Este evento aparecerá <b>todos los años</b> en la misma fecha (mes y día).'
+    ? '↻ Este evento aparecerá <b>todos los años</b> en la misma fecha (mismo mes y día).'
+    : tipo==='mensual'
+    ? '↻ Este evento aparecerá el <b>mismo día de todos los meses</b> (ej: el 5 de cada mes).'
     : 'Este evento aparecerá <b>solo en la fecha seleccionada</b>.';
 }
 
@@ -3011,7 +3039,8 @@ async function calGuardarEvento(id){
     titulo,
     tipo,
     fecha,
-    mesdia: `${partes[1]}-${partes[2]}`,   // mm-dd para los fijos
+    mesdia: `${partes[1]}-${partes[2]}`,   // mm-dd para los eventos anuales (fijo)
+    diames: partes[2],                      // dd para los eventos mensuales
     hora: document.getElementById('cv-hora').value,
     nota: document.getElementById('cv-nota').value.trim(),
     categoria: document.getElementById('cv-cat').value,
