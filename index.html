@@ -10,9 +10,9 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/appwrite@26/dist/iife/sdk.js"></script>
-  <script src="appwriteConfig.js"></script>
-  <script src="appwriteService.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/pocketbase@0.26.2/dist/pocketbase.umd.js"></script>
+  <script src="pocketbaseConfig.js"></script>
+  <script src="pocketbaseService.js"></script>
   <style>
 :root{
   --primary:#3525cd;--on-primary:#fff;--primary-container:#4f46e5;--on-primary-container:#dad7ff;
@@ -216,7 +216,31 @@ table.d tr:hover td{background:var(--surface-container-low)}
 .loc-pin{position:absolute;bottom:8px;left:8px;width:26px;height:26px;border-radius:50%;background:var(--surface-container-lowest);border:1px solid var(--outline-variant);display:grid;place-items:center;color:var(--tertiary);box-shadow:var(--shadow-card);opacity:0;transition:opacity .15s;z-index:3}
 .ccard:hover .loc-pin{opacity:1}
 .rec-secret{opacity:0;background:transparent;border:none;width:26px;height:26px;padding:0;margin:0 0 0 2px;cursor:default;vertical-align:middle}
-  </style>
+  
+/* ===== Calendario ===== */
+.cal-toolbar{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.cal-title{font-size:18px;font-weight:800;color:var(--primary);min-width:180px;text-align:center}
+.cal-grid-head{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-bottom:6px}
+.cal-grid-head>div{text-align:center;font-size:11px;font-weight:700;color:var(--on-surface-variant);text-transform:uppercase;letter-spacing:.04em}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:6px}
+.cal-cell{min-height:96px;background:var(--surface-container-lowest);border:1px solid var(--outline-variant);border-radius:12px;padding:6px;cursor:pointer;transition:border-color .15s,box-shadow .15s;overflow:hidden}
+.cal-cell:hover{border-color:var(--primary);box-shadow:0 2px 8px rgba(53,37,205,.12)}
+.cal-empty{background:transparent;border:none;cursor:default}
+.cal-today{border:2px solid var(--primary);background:#f0f3ff}
+.cal-daynum{font-size:13px;font-weight:800;color:#000;margin-bottom:4px;display:flex;align-items:center;gap:4px}
+.cal-hoy{font-size:9px;background:var(--primary);color:#fff;padding:1px 5px;border-radius:6px;font-weight:700}
+.cal-chips{display:flex;flex-direction:column;gap:3px}
+.cal-chip{font-size:10px;color:#fff;padding:2px 5px;border-radius:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+.cal-more{font-size:9px;color:var(--on-surface-variant);font-weight:700}
+.cal-legend{margin-top:12px;font-size:11px;color:var(--on-surface-variant)}
+.cal-dot{display:inline-block;width:8px;height:8px;border-radius:50%;vertical-align:middle}
+.cal-ev-row{display:flex;align-items:flex-start;gap:8px;padding:8px 10px;background:var(--surface-container-low);border-radius:10px;margin-bottom:8px}
+.cal-colors{display:flex;gap:8px;flex-wrap:wrap}
+.cal-color-opt{width:26px;height:26px;border-radius:50%;cursor:pointer;border:3px solid transparent;transition:transform .1s}
+.cal-color-opt:hover{transform:scale(1.15)}
+.cal-color-opt.sel{border-color:#000;transform:scale(1.15)}
+@media(max-width:640px){.cal-cell{min-height:70px}.cal-chip{font-size:9px}}
+</style>
 </head>
 <body>
 <div class="app-shell">
@@ -272,6 +296,7 @@ const DB = {
     historial: []
   },
   /* Modulo Costos y Rentabilidad */
+  calendario: [],   // {id,titulo,nota,color,hora,categoria,tipo:'fijo'|'temporal',fecha,mesdia}
   costos: {
     insumos: [],      // {id,nombre,categoria,unidadCompra,cantidadComprada,precioCompra,precioBase,proveedor,fechaCompra,observaciones,historial:[]}
     recetas: [],      // {id,productoId,ingredientes:[{insumoId,cantidad}],panesPorLata,pesoPorPan}  <- POR LATA
@@ -412,7 +437,7 @@ function refrescarVistaActiva(){
   const map = {'Clientes':'clientes','Pedidos':'pedidos','Administrar Productos':'productos',
     'Configuración de Factura':'factura','Recaudo de Domiciliarios':'recaudo',
     'Cartera':'cartera','Nómina':'nomina','Contabilidad':'contabilidad',
-    'Costos y Rentabilidad':'costos'};
+    'Costos y Rentabilidad':'costos','Calendario':'calendario'};
   const route = map[current];
   if(!route || !ROUTES[route]) return;
   // Preservar posición de scroll de la tabla de recaudo y del mapa de clientes.
@@ -547,6 +572,7 @@ function renderShell(){
     {route:'nomina',icon:'badge',label:'Nómina'},
     {route:'contabilidad',icon:'monitoring',label:'Contabilidad'},
     {route:'costos',icon:'savings',label:'Costos y Rentabilidad'},
+    {route:'calendario',icon:'calendar_month',label:'Calendario'},
   ];
   $('#sidebar').innerHTML = `
     <div class="sb-brand">
@@ -1187,6 +1213,42 @@ async function guardarPedido(silent){
     }
   }catch(e){ if(!silent) toast('No se pudo guardar el pedido','error'); }
 }
+/* Imprime HTML de ticket usando un IFRAME oculto: no depende de pop-ups,
+   nunca se queda en about:blank y se autolimpia. Es el método fiable. */
+function imprimirPorIframe(htmlCompleto){
+  // Eliminar cualquier iframe de impresión previo que haya quedado.
+  const viejo = document.getElementById('print-frame');
+  if(viejo) viejo.remove();
+
+  const iframe = document.createElement('iframe');
+  iframe.id = 'print-frame';
+  iframe.style.position = 'fixed';
+  iframe.style.right = '0';
+  iframe.style.bottom = '0';
+  iframe.style.width = '0';
+  iframe.style.height = '0';
+  iframe.style.border = '0';
+  document.body.appendChild(iframe);
+
+  const doc = iframe.contentWindow.document;
+  doc.open();
+  doc.write(htmlCompleto);
+  doc.close();
+
+  // Esperar a que el contenido (y fuentes) carguen antes de imprimir.
+  const lanzar = () => {
+    try{
+      iframe.contentWindow.focus();
+      iframe.contentWindow.print();
+    }catch(e){ console.warn('print', e); }
+    // Limpiar el iframe después de imprimir (o de cancelar).
+    setTimeout(()=>{ try{ iframe.remove(); }catch(e){} }, 1500);
+  };
+  // onload asegura que el DOM del iframe esté listo.
+  if(iframe.contentWindow.document.readyState === 'complete') setTimeout(lanzar, 200);
+  else iframe.onload = () => setTimeout(lanzar, 200);
+}
+
 function imprimirTicket(){ generarTicketImpresion(); }
 function obtenerItemsPedidoActual(){
   const productos = DB.productos.filter(p=>p.activo);
@@ -1300,17 +1362,10 @@ function generarTicketImpresion(){
   const numTicket = f.consecutivoTicket - 1;
   const body = componerTicketHTML(items, total, cli?cli.nombre:'', _comentarioPedido, numTicket, _currentCliente);
   const fuente = f.fuente||'monospace';
-  const w = window.open('','_blank','width=400');
-  if(w){
-    w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Ticket</title>
+  imprimirPorIframe(`<!doctype html><html><head><meta charset="utf-8"><title>Ticket</title>
     <style>*{box-sizing:border-box}body{margin:0;padding:0;background:#fff}.ticket{width:80mm;padding:4mm 3mm;margin:0 auto;background:#fff;color:#000;font-family:${fuente}}.cut{border-top:1px dashed #000;margin:4px 0}@media print{body{background:#fff}button{display:none}}</style></head>
-    <body onload="setTimeout(function(){window.print()},300)"><div class="ticket">${body}</div>
-    <script>setTimeout(function(){try{window.print()}catch(e){}},400);window.onafterprint=function(){try{window.close()}catch(e){}}<\/script>
-    </body></html>`);
-    w.document.close();
-    w.focus();
-  }
-  toast('Pedido guardado y ticket enviado','success');
+    <body><div class="ticket">${body}</div></body></html>`);
+  toast('Pedido guardado · imprimiendo ticket','success');
   setTimeout(()=>{ _itemsPedido={}; _comentarioPedido=''; go('clientes'); }, 500);
 }
 // Enter para imprimir cuando esté en módulo pedidos
@@ -1606,8 +1661,7 @@ function generarTicketImpresionPreview(){
   const f = DB.facturaConfig;
   const fuente = f.fuente||'monospace';
   const body = componerTicketHTML(itemsEj, total, 'Pastelería La Palma', 'Llamar al llegar', 1, 'C2');
-  const w = window.open('','_blank','width=400');
-  w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Ticket</title><style>*{box-sizing:border-box}body{margin:0;background:#eee;padding:10px}@media print{body{background:#fff;padding:0}.noprint{display:none}}.ticket{width:80mm;min-height:297mm;padding:4mm 3mm;margin:0 auto;background:#fff;color:#000;font-family:${fuente};box-shadow:0 2px 8px rgba(0,0,0,.15)}.cut{border-top:1px dashed #000;margin:4px 0}.row{display:flex;justify-content:space-between}.nav{display:flex;justify-content:space-between;margin-bottom:8px;align-items:center}button{margin:10px auto;display:block;padding:8px 20px;font-size:13px}</style></head><body><div class="noprint nav"><b>Vista previa del Ticket 80mm</b><button onclick="window.print()">Imprimir</button></div><div class="ticket">${body}</div></body></html>`);
+  imprimirPorIframe(`<!doctype html><html><head><meta charset="utf-8"><title>Ticket</title><style>*{box-sizing:border-box}body{margin:0;background:#fff;padding:0}.ticket{width:80mm;padding:4mm 3mm;margin:0 auto;background:#fff;color:#000;font-family:${fuente}}.cut{border-top:1px dashed #000;margin:4px 0}.row{display:flex;justify-content:space-between}</style></head><body><div class="ticket">${body}</div></body></html>`);
   w.document.close();
 }
 
@@ -2792,6 +2846,195 @@ ROUTES.factura = renderFactura;
 ROUTES.recaudo = entrarRecaudo;
 ROUTES.cartera = renderCartera;
 ROUTES.nomina = renderNomina;
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * MÓDULO CALENDARIO — eventos fijos (anuales) y temporales (un día)
+ * ═══════════════════════════════════════════════════════════════════════════ */
+let _calYear = new Date().getFullYear();
+let _calMonth = new Date().getMonth();   // 0-11
+let _calSelDay = null;
+
+const CAL_MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+const CAL_DIAS = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
+const CAL_CATEGORIAS = ['General','Pago','Cobro','Producción','Compra','Cumpleaños','Festivo','Recordatorio','Reunión'];
+const CAL_COLORS = ['#3525cd','#fe932c','#006e4b','#ba1a1a','#d6006e','#004b98','#7b1fa2','#00838f','#e65100','#2e7d32'];
+
+function _cal2(n){ return String(n).padStart(2,'0'); }
+function _calKey(y,m,d){ return `${y}-${_cal2(m+1)}-${_cal2(d)}`; }        // fecha completa
+function _calMesDia(m,d){ return `${_cal2(m+1)}-${_cal2(d)}`; }             // mes-día (para fijos)
+
+/* Eventos que aplican a una fecha concreta: temporales de esa fecha + fijos de ese mes-día */
+function calEventosDe(y,m,d){
+  const fecha = _calKey(y,m,d);
+  const md = _calMesDia(m,d);
+  return (DB.calendario||[]).filter(e =>
+    (e.tipo==='temporal' && e.fecha===fecha) ||
+    (e.tipo==='fijo' && e.mesdia===md)
+  ).sort((a,b)=> (a.hora||'99').localeCompare(b.hora||'99'));
+}
+
+function renderCalendario(){
+  setHeader('Calendario');
+  const primero = new Date(_calYear, _calMonth, 1);
+  let offset = primero.getDay() - 1; if(offset<0) offset=6;   // lunes=0
+  const diasMes = new Date(_calYear, _calMonth+1, 0).getDate();
+  const hoy = new Date();
+  const esHoy = (d)=> hoy.getFullYear()===_calYear && hoy.getMonth()===_calMonth && hoy.getDate()===d;
+
+  let celdas = '';
+  for(let i=0;i<offset;i++) celdas += `<div class="cal-cell cal-empty"></div>`;
+  for(let d=1; d<=diasMes; d++){
+    const evs = calEventosDe(_calYear,_calMonth,d);
+    const chips = evs.slice(0,3).map(e=>
+      `<div class="cal-chip" style="background:${e.color}" title="${e.titulo}">${e.hora?`<b>${e.hora}</b> `:''}${e.titulo}${e.tipo==='fijo'?' ↻':''}</div>`
+    ).join('');
+    const mas = evs.length>3 ? `<div class="cal-more">+${evs.length-3} más</div>` : '';
+    celdas += `
+      <div class="cal-cell ${esHoy(d)?'cal-today':''}" onclick="calDiaModal(${d})">
+        <div class="cal-daynum">${d}${esHoy(d)?' <span class="cal-hoy">hoy</span>':''}</div>
+        <div class="cal-chips">${chips}${mas}</div>
+      </div>`;
+  }
+
+  const totalFijos = (DB.calendario||[]).filter(e=>e.tipo==='fijo').length;
+  const totalTemp = (DB.calendario||[]).filter(e=>e.tipo==='temporal').length;
+
+  $('#view').innerHTML = `
+    <div class="ph">
+      <div><h1>Calendario</h1><div class="sub">Eventos fijos (se repiten cada año) y temporales · ${totalFijos} fijos · ${totalTemp} temporales</div></div>
+      <div class="h-spacer"></div>
+      <button class="btn btn-primary" onclick="calEventoModal()"><span class="ms">add</span>Nuevo evento</button>
+    </div>
+    <div class="cal-toolbar">
+      <button class="btn btn-ghost" onclick="calNav(-1)"><span class="ms">arrow_back</span></button>
+      <div class="cal-title">${CAL_MESES[_calMonth]} ${_calYear}</div>
+      <button class="btn btn-ghost" onclick="calNav(1)"><span class="ms">arrow_outward</span></button>
+      <button class="btn btn-ghost btn-sm" onclick="calHoy()"><span class="ms">calendar_month</span>Hoy</button>
+    </div>
+    <div class="cal-grid-head">${CAL_DIAS.map(d=>`<div>${d}</div>`).join('')}</div>
+    <div class="cal-grid">${celdas}</div>
+    <div class="cal-legend">
+      <span><span class="cal-dot" style="background:#3525cd"></span> ↻ = evento fijo (se repite cada año)</span>
+    </div>`;
+}
+
+function calNav(dir){
+  _calMonth += dir;
+  if(_calMonth<0){ _calMonth=11; _calYear--; }
+  if(_calMonth>11){ _calMonth=0; _calYear++; }
+  renderCalendario();
+}
+function calHoy(){ const h=new Date(); _calYear=h.getFullYear(); _calMonth=h.getMonth(); renderCalendario(); }
+
+/* Modal con todos los eventos de un día + botón para agregar */
+function calDiaModal(d){
+  _calSelDay = d;
+  const evs = calEventosDe(_calYear,_calMonth,d);
+  const fechaLbl = `${d} de ${CAL_MESES[_calMonth]} de ${_calYear}`;
+  const lista = evs.length===0
+    ? '<div class="empty">Sin eventos este día.</div>'
+    : evs.map(e=>`
+      <div class="cal-ev-row" style="border-left:5px solid ${e.color}">
+        <div style="flex:1">
+          <div class="bold">${e.hora?`<span style="color:${e.color}">${e.hora}</span> · `:''}${e.titulo}
+            ${e.tipo==='fijo'?'<span class="badge" style="background:'+e.color+';color:#fff">Fijo ↻</span>':''}
+            <span class="badge">${e.categoria}</span>
+          </div>
+          ${e.nota?`<div class="muted" style="font-size:12px;margin-top:2px">${e.nota}</div>`:''}
+        </div>
+        <button class="btn btn-ghost btn-sm" onclick="calEventoModal('${e.id}')"><span class="ms">edit</span></button>
+        <button class="btn btn-danger btn-sm" onclick="calDelEvento('${e.id}',${d})"><span class="ms">delete</span></button>
+      </div>`).join('');
+
+  modal(fechaLbl, `
+    <div class="mb-md">${lista}</div>
+    <button class="btn btn-primary" style="width:100%" onclick="calEventoModal(null,${d})"><span class="ms">add</span>Agregar evento a este día</button>
+  `, `<button class="btn btn-ghost" onclick="closeModal()">Cerrar</button>`);
+}
+
+/* Modal de creación/edición de un evento */
+function calEventoModal(id, dia){
+  const ev = id ? (DB.calendario||[]).find(e=>e.id===id) : null;
+  const d = dia || _calSelDay || new Date().getDate();
+  const fechaDefault = _calKey(_calYear,_calMonth,d);
+
+  modal(id?'Editar evento':'Nuevo evento', `
+    <div class="field"><label>Título *</label><input id="cv-titulo" value="${ev?ev.titulo:''}" placeholder="Ej: Pago arriendo, Cumpleaños de..."/></div>
+    <div class="gf">
+      <div class="field"><label>Tipo de evento</label>
+        <select id="cv-tipo" onchange="calTipoPreview()">
+          <option value="temporal" ${!ev||ev.tipo==='temporal'?'selected':''}>Temporal (un solo día)</option>
+          <option value="fijo" ${ev&&ev.tipo==='fijo'?'selected':''}>Fijo (se repite cada año este día)</option>
+        </select></div>
+      <div class="field"><label>Categoría</label>
+        <select id="cv-cat">${CAL_CATEGORIAS.map(c=>`<option ${ev&&ev.categoria===c?'selected':''}>${c}</option>`).join('')}</select></div>
+    </div>
+    <div class="gf">
+      <div class="field"><label>Fecha</label><input id="cv-fecha" type="date" value="${ev&&ev.fecha?ev.fecha:fechaDefault}"/></div>
+      <div class="field"><label>Hora (opcional)</label><input id="cv-hora" type="time" value="${ev?ev.hora:''}"/></div>
+    </div>
+    <div class="field"><label>Nota (opcional)</label><textarea id="cv-nota" rows="2" placeholder="Detalles del evento...">${ev?ev.nota:''}</textarea></div>
+    <div class="field"><label>Color</label>
+      <div class="cal-colors">${CAL_COLORS.map(c=>`<span class="cal-color-opt ${(ev?ev.color:CAL_COLORS[0])===c?'sel':''}" style="background:${c}" onclick="calPickColor('${c}')" data-c="${c}"></span>`).join('')}</div>
+      <input type="hidden" id="cv-color" value="${ev?ev.color:CAL_COLORS[0]}"/>
+    </div>
+    <div id="cv-preview" class="muted" style="font-size:12px;margin-top:6px"></div>
+  `, `<button class="btn btn-ghost" onclick="closeModal()">Cancelar</button>
+      <button class="btn btn-primary" onclick="calGuardarEvento('${id||''}')">Guardar</button>`);
+  calTipoPreview();
+}
+
+function calPickColor(c){
+  const el = document.getElementById('cv-color'); if(el) el.value=c;
+  document.querySelectorAll('.cal-color-opt').forEach(o=>o.classList.toggle('sel', o.dataset.c===c));
+}
+function calTipoPreview(){
+  const tipo = document.getElementById('cv-tipo')?.value;
+  const el = document.getElementById('cv-preview'); if(!el) return;
+  el.innerHTML = tipo==='fijo'
+    ? '↻ Este evento aparecerá <b>todos los años</b> en la misma fecha (mes y día).'
+    : 'Este evento aparecerá <b>solo en la fecha seleccionada</b>.';
+}
+
+async function calGuardarEvento(id){
+  const titulo = document.getElementById('cv-titulo').value.trim();
+  if(!titulo){ toast('El título es obligatorio','error'); return; }
+  const tipo = document.getElementById('cv-tipo').value;
+  const fecha = document.getElementById('cv-fecha').value;
+  if(!fecha){ toast('Selecciona una fecha','error'); return; }
+  const partes = fecha.split('-');   // yyyy-mm-dd
+  const data = {
+    titulo,
+    tipo,
+    fecha,
+    mesdia: `${partes[1]}-${partes[2]}`,   // mm-dd para los fijos
+    hora: document.getElementById('cv-hora').value,
+    nota: document.getElementById('cv-nota').value.trim(),
+    categoria: document.getElementById('cv-cat').value,
+    color: document.getElementById('cv-color').value
+  };
+  try{
+    await appwriteService.guardarEvento(id?{id,...data}:data);
+    saveDB(); closeModal(); renderCalendario(); toast('Evento guardado','success');
+  }catch(e){ /* toast ya mostrado */ }
+}
+
+function calDelEvento(id, dia){
+  const ev = (DB.calendario||[]).find(e=>e.id===id);
+  modal('Eliminar evento', `<p>¿Eliminar <b>${ev?ev.titulo:'este evento'}</b>?${ev&&ev.tipo==='fijo'?' Dejará de aparecer todos los años.':''}</p>`,
+    `<button class="btn btn-ghost" onclick="closeModal()">Cancelar</button>
+     <button class="btn btn-danger" onclick="calDelEventoOk('${id}',${dia||'null'})">Eliminar</button>`);
+}
+async function calDelEventoOk(id, dia){
+  try{
+    await appwriteService.eliminarEvento(id);
+    saveDB(); closeModal(); renderCalendario();
+    toast('Evento eliminado','success');
+  }catch(e){ /* toast ya mostrado */ }
+}
+
+ROUTES.calendario = renderCalendario;
+
 ROUTES.contabilidad = renderConta;
 
 renderShell();
