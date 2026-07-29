@@ -1289,7 +1289,11 @@ function componerTicketHTML(items, total, cliNombre, comentario, numTicket, clie
     }
     if(key==='separador') b += cut;
     if(key==='numTicket' && f.mostrarNumTicket!==false) b += `<div ${sty(f.tamInfo||11,f.negInfo,f.alineaInfo||'center')}>${esc(f.prefijoTicket||'TICKET #')}${numT}</div>`;
-    /* Bug #3: la fecha NO se agrega a la factura de venta, por decisión del usuario. */
+    // Fecha del día bajo el número de ticket (sin hora, formato es-CO: dd/mm/aaaa)
+    if(key==='numTicket' && f.mostrarNumTicket!==false){
+      const fechaHoy = new Date().toLocaleDateString('es-CO', {day:'2-digit', month:'2-digit', year:'numeric'});
+      b += `<div ${sty(f.tamInfo||11, f.negInfo, f.alineaInfo||'center')}>${fechaHoy}</div>`;
+    }
     if(key==='cliente' && f.mostrarCliente!==false){
       const aliCli = f.alineaCliente || 'center';
       b += `<div ${sty(f.tamCliente||13,f.negCliente!==false,aliCli,null,'margin:2px 0')}>Cliente: ${esc(cliNombre||'-')}</div>`;
