@@ -1827,10 +1827,43 @@ function _calcTotalConDeudas(){
 }
 function toggleIncluirDeuda(pedidoId, val){
   const r = DB.recaudo[_recaudoFecha] && DB.recaudo[_recaudoFecha][pedidoId]; if(!r) return;
-  r.incluirDeuda = val;
-  saveDB();
-  _encolarRecaudo(r);
-  _repintarTotalesRecaudo();
+  if(!val){
+    // Desmarcar: quitar directamente sin preguntar
+    r.incluirDeuda = false;
+    r.medioDeuda = null;
+    saveDB(); _encolarRecaudo(r); _repintarTotalesRecaudo();
+    const cb = document.querySelector(`input[onchange*="toggleIncluirDeuda('${pedidoId}'"]`);
+    if(cb) cb.checked = false;
+    return;
+  }
+  // Marcar: preguntar cómo se recibe el pago de la deuda
+  const saldo = r.clienteId ? getSaldoCliente(r.clienteId) : 0;
+  const montoTxt = money(Math.abs(saldo));
+  modal('¿Cómo pagó la deuda?', `
+    <p>El cliente pagará <b>${montoTxt}</b> de deuda.</p>
+    <p class="mt-md">¿Cómo se recibe ese pago?</p>
+    <div class="flex gap mt-md" style="flex-direction:column">
+      <button class="btn btn-primary" style="width:100%" onclick="confirmarMedioDeuda('${pedidoId}','efectivo')"><span class="ms">payments</span> Efectivo</button>
+      <button class="btn btn-secondary" style="width:100%" onclick="confirmarMedioDeuda('${pedidoId}','nequi')"><span class="ms">smartphone</span> Nequi</button>
+      <button class="btn btn-secondary" style="width:100%" onclick="confirmarMedioDeuda('${pedidoId}','bancolombia')"><span class="ms">account_balance</span> Bancolombia</button>
+      <button class="btn btn-ghost" style="width:100%" onclick="confirmarMedioDeuda('${pedidoId}','otro')"><span class="ms">credit_card</span> Otra transferencia</button>
+    </div>
+  `, '<button class="btn btn-ghost" onclick="cancelarMedioDeuda(\'' + pedidoId + '\')">Cancelar</button>');
+}
+function cancelarMedioDeuda(pedidoId){
+  // Al cancelar, dejar el checkbox desmarcado
+  const cb = document.querySelector(`input[onchange*="toggleIncluirDeuda('${pedidoId}'"]`);
+  if(cb) cb.checked = false;
+  closeModal();
+}
+function confirmarMedioDeuda(pedidoId, medio){
+  const r = DB.recaudo[_recaudoFecha] && DB.recaudo[_recaudoFecha][pedidoId]; if(!r) return;
+  r.incluirDeuda = true;
+  r.medioDeuda = medio;
+  saveDB(); _encolarRecaudo(r); _repintarTotalesRecaudo();
+  closeModal();
+  const nombres = {efectivo:'Efectivo', nequi:'Nequi', bancolombia:'Bancolombia', otro:'Transferencia'};
+  toast('Deuda incluida · '+(nombres[medio]||medio), 'success');
 }
 /* Cola de guardado de recaudo: agrupa por fila y envía espaciado.
    Evita el 429 de Appwrite cuando se marcan varias filas seguidas. */
@@ -2680,9 +2713,21 @@ function pintarGraficos(){
 
 function valCat(c){return DB.conta.movimientos.filter(m=>m.categoria===c.nombre).reduce((a,b)=>a+b.valor,0);}
 async function guardarMov(){
-  const data={tipo:$('#mv-tipo').value,categoria:$('#mv-cat').value,valor:Number($('#mv-val').value)||0,descripcion:$('#mv-desc').value,fecha:$('#mv-fecha').value};
-  if(data.valor<=0){toast('Valor inválido','error');return;}
-  try{ await appwriteService.guardarMovimientoContable({id:uid('MV'),...data}); saveDB(); toast('Movimiento registrado','success');renderConta(); }
+  const tipo = $('#mv-tipo').value;
+  const cat  = $('#mv-cat').value;
+  const val  = Number($('#mv-val').value)||0;
+  const desc = $('#mv-desc').value;
+  const fecha= $('#mv-fecha').value;
+  if(val<=0){ toast('Valor inválido','error'); return; }
+  try{
+    await appwriteService.guardarMovimientoContable({id:uid('MV'),tipo,categoria:cat,valor:val,descripcion:desc,fecha});
+    saveDB();
+    toast('Movimiento registrado · '+tipo+' '+money(val),'success');
+    // Limpiar SOLO valor y descripción. Conservar tipo, categoría y fecha.
+    if($('#mv-val')) $('#mv-val').value = '';
+    if($('#mv-desc')) $('#mv-desc').value = '';
+    if($('#mv-val')) $('#mv-val').focus();
+  }
   catch(e){ toast('No se pudo registrar el movimiento','error'); }
 }
 function editMov(id){
