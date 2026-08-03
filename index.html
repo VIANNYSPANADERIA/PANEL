@@ -2425,9 +2425,9 @@ function renderConta(){
   if(_contaTab==='resumen'){
     body=`
       <div class="grid grid-4 mb-md">
-        <div class="kpi kpi-fill"><div class="kpi-ico"><span class="ms">trending_up</span></div><div class="kpi-l">Ingresos</div><div class="kpi-v">${money(ing)}</div></div>
-        <div class="kpi"><div class="kpi-ico kpi-ico-e"><span class="ms">trending_down</span></div><div class="kpi-l">Gastos</div><div class="kpi-v">${money(gas)}</div></div>
-        <div class="kpi ${bal>=0?'':'kpi-fill'}"><div class="kpi-ico kpi-ico-t"><span class="ms">balance</span></div><div class="kpi-l">Balance</div><div class="kpi-v" style="color:${bal>=0?'var(--tertiary)':'var(--error)'}">${money(bal)}</div></div>
+        <div class="kpi kpi-fill"><div class="kpi-ico"><span class="ms">trending_up</span></div><div class="kpi-l">Ingresos</div><div class="kpi-v" id="conta-ing">${money(ing)}</div></div>
+        <div class="kpi"><div class="kpi-ico kpi-ico-e"><span class="ms">trending_down</span></div><div class="kpi-l">Gastos</div><div class="kpi-v" id="conta-gas">${money(gas)}</div></div>
+        <div class="kpi ${bal>=0?'':'kpi-fill'}"><div class="kpi-ico kpi-ico-t"><span class="ms">balance</span></div><div class="kpi-l">Balance</div><div class="kpi-v" id="conta-bal" style="color:${bal>=0?'var(--tertiary)':'var(--error)'}">${money(bal)}</div></div>
         <div class="kpi"><div class="kpi-ico kpi-ico-p"><span class="ms">list_alt</span></div><div class="kpi-l">Movimientos</div><div class="kpi-v">${movs.length}</div></div>
       </div>
       <div class="card"><div class="card-h"><div class="card-t">Últimos movimientos</div></div><div class="card-b"><table class="d"><thead><tr><th>Fecha</th><th>Tipo</th><th>Descripción</th><th>Categoría</th><th>Valor</th></tr></thead><tbody>${movs.slice(-10).reverse().map(m=>`<tr><td>${m.fecha}</td><td><span class="badge ${m.tipo==='Ingreso'?'badge-success':'badge-error'}">${m.tipo}</span></td><td>${m.descripcion}</td><td>${m.categoria}</td><td class="num bold">${money(m.valor)}</td></tr>`).join('')||'<tr><td colspan="5" class="empty">Sin movimientos</td></tr>'}</tbody></table></div></div>
