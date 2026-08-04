@@ -1798,17 +1798,17 @@ function renderRecaudo(){
 }
 function recalcEfectivoFila(r){
   if(!r) return;
-  // Efectivo = venta + pago de deuda (entra) − lo pagado por otros medios
-  //           − deuda nueva − faltante − salida − saldo a favor entregado al cliente
+  // Efectivo físico que recibe el domiciliario:
+  //   venta + pago de deuda en efectivo (entra) − lo pagado por otros medios − deuda nueva − faltante − salida
+  // "Le debo" (debeCliente) NO resta aquí: es un ajuste de cartera, no una salida de caja del día.
   r.efectivo = Math.max(0,
       (Number(r.subtotal)||0)
-    + (Number(r.deudaPago)||0)   // el cliente paga una deuda vieja: ENTRA efectivo
+    + (Number(r.deudaPago)||0)   // el cliente paga una deuda vieja EN EFECTIVO: ENTRA efectivo
     - (Number(r.nequi)||0)
     - (Number(r.bancolombia)||0)
     - (Number(r.deuda)||0)        // queda debiendo: NO entra efectivo
     - (Number(r.faltante)||0)
     - (Number(r.salida)||0)
-    - (Number(r.debeCliente)||0)  // le devuelvo saldo a favor: SALE efectivo
   );
 }
 /** Suma de deudas incluidas (checkbox marcado) para el KPI "Total a cobrar". */
@@ -1828,42 +1828,80 @@ function _calcTotalConDeudas(){
 function toggleIncluirDeuda(pedidoId, val){
   const r = DB.recaudo[_recaudoFecha] && DB.recaudo[_recaudoFecha][pedidoId]; if(!r) return;
   if(!val){
-    // Desmarcar: quitar directamente sin preguntar
+    // Desmarcar: revertir el pago de deuda que se había aplicado
+    if(r.medioDeuda && r._montoDeudaAplicado){
+      const monto = r._montoDeudaAplicado;
+      const medio = r.medioDeuda;
+      if(medio==='efectivo') r.deudaPago = Math.max(0,(Number(r.deudaPago)||0)-monto);
+      else if(medio==='nequi') r.nequi = Math.max(0,(Number(r.nequi)||0)-monto);
+      else if(medio==='bancolombia') r.bancolombia = Math.max(0,(Number(r.bancolombia)||0)-monto);
+      // revertir el movimiento en cartera
+      if(r.clienteId) registrarMovCartera(r.clienteId,'deuda',monto,`Reversa pago deuda ${_recaudoFecha}`);
+    }
     r.incluirDeuda = false;
     r.medioDeuda = null;
-    saveDB(); _encolarRecaudo(r); _repintarTotalesRecaudo();
+    r._montoDeudaAplicado = 0;
+    recalcEfectivoFila(r);
+    saveDB(); _encolarRecaudo(r); _repintarFilaRecaudo(pedidoId); _repintarTotalesRecaudo();
     const cb = document.querySelector(`input[onchange*="toggleIncluirDeuda('${pedidoId}'"]`);
     if(cb) cb.checked = false;
     return;
   }
-  // Marcar: preguntar cómo se recibe el pago de la deuda
+  // Marcar: preguntar CUÁNTO pagó y por qué medio
   const saldo = r.clienteId ? getSaldoCliente(r.clienteId) : 0;
-  const montoTxt = money(Math.abs(saldo));
-  modal('¿Cómo pagó la deuda?', `
-    <p>El cliente pagará <b>${montoTxt}</b> de deuda.</p>
-    <p class="mt-md">¿Cómo se recibe ese pago?</p>
+  const debe = saldo < 0 ? Math.abs(saldo) : 0;       // el cliente ME debe
+  const leDebo = saldo > 0 ? saldo : 0;                // YO le debo al cliente
+  const sugerido = debe > 0 ? debe : (leDebo>0?leDebo:0);
+  const contexto = debe>0
+    ? `El cliente <b>debe ${money(debe)}</b>. ¿Cuánto abona hoy y cómo?`
+    : leDebo>0
+    ? `Tú le debes <b>${money(leDebo)}</b> a este cliente. Se descontará de lo que le debes.`
+    : `Este cliente está al día. Puedes registrar un abono igualmente.`;
+
+  modal('Pago de deuda', `
+    <p>${contexto}</p>
+    <div class="field mt-md"><label>Monto que paga</label>
+      <input id="dp-monto" type="number" value="${sugerido||''}" placeholder="Ej: 10000" style="font-size:16px"/></div>
+    <p class="mt-md bold">¿Cómo se recibe?</p>
     <div class="flex gap mt-md" style="flex-direction:column">
-      <button class="btn btn-primary" style="width:100%" onclick="confirmarMedioDeuda('${pedidoId}','efectivo')"><span class="ms">payments</span> Efectivo</button>
+      <button class="btn btn-primary" style="width:100%" onclick="confirmarMedioDeuda('${pedidoId}','efectivo')"><span class="ms">payments</span> Efectivo (suma al efectivo del día)</button>
       <button class="btn btn-secondary" style="width:100%" onclick="confirmarMedioDeuda('${pedidoId}','nequi')"><span class="ms">smartphone</span> Nequi</button>
       <button class="btn btn-secondary" style="width:100%" onclick="confirmarMedioDeuda('${pedidoId}','bancolombia')"><span class="ms">account_balance</span> Bancolombia</button>
-      <button class="btn btn-ghost" style="width:100%" onclick="confirmarMedioDeuda('${pedidoId}','otro')"><span class="ms">credit_card</span> Otra transferencia</button>
     </div>
   `, '<button class="btn btn-ghost" onclick="cancelarMedioDeuda(\'' + pedidoId + '\')">Cancelar</button>');
+  setTimeout(()=>{ const el=document.getElementById('dp-monto'); if(el){ el.focus(); el.select(); } }, 60);
 }
 function cancelarMedioDeuda(pedidoId){
-  // Al cancelar, dejar el checkbox desmarcado
   const cb = document.querySelector(`input[onchange*="toggleIncluirDeuda('${pedidoId}'"]`);
   if(cb) cb.checked = false;
   closeModal();
 }
 function confirmarMedioDeuda(pedidoId, medio){
   const r = DB.recaudo[_recaudoFecha] && DB.recaudo[_recaudoFecha][pedidoId]; if(!r) return;
+  const monto = Number(document.getElementById('dp-monto').value)||0;
+  if(monto<=0){ toast('Ingresa un monto válido','error'); return; }
+
   r.incluirDeuda = true;
   r.medioDeuda = medio;
-  saveDB(); _encolarRecaudo(r); _repintarTotalesRecaudo();
+  r._montoDeudaAplicado = monto;
+
+  // Escribir el monto en el campo correcto de la fila según el medio
+  if(medio==='efectivo'){
+    r.deudaPago = (Number(r.deudaPago)||0) + monto;    // ENTRA efectivo → suma al efectivo del día
+  } else if(medio==='nequi'){
+    r.nequi = (Number(r.nequi)||0) + monto;            // entra por Nequi → suma arriba en Nequi
+  } else if(medio==='bancolombia'){
+    r.bancolombia = (Number(r.bancolombia)||0) + monto;// entra por Bancolombia → suma arriba
+  }
+
+  // Registrar en cartera: el cliente pagó, baja su deuda (o si yo le debía, baja lo que le debo)
+  if(r.clienteId) registrarMovCartera(r.clienteId,'pago_deuda',monto,`Pago deuda (${medio}) ${_recaudoFecha}`);
+
+  recalcEfectivoFila(r);
+  saveDB(); _encolarRecaudo(r); _repintarFilaRecaudo(pedidoId); _repintarTotalesRecaudo();
   closeModal();
-  const nombres = {efectivo:'Efectivo', nequi:'Nequi', bancolombia:'Bancolombia', otro:'Transferencia'};
-  toast('Deuda incluida · '+(nombres[medio]||medio), 'success');
+  const nombres = {efectivo:'Efectivo', nequi:'Nequi', bancolombia:'Bancolombia'};
+  toast(`${money(monto)} de deuda · ${nombres[medio]||medio}`, 'success');
 }
 /* Cola de guardado de recaudo: agrupa por fila y envía espaciado.
    Evita el 429 de Appwrite cuando se marcan varias filas seguidas. */
