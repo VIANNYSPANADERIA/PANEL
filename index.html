@@ -1980,30 +1980,31 @@ function _repintarFilaRecaudo(id){
 function _repintarTotalesRecaudo(){
   const filas = Object.values(DB.recaudo[_recaudoFecha]||{});
   const conf = filas.filter(f=>f.recibido);
-  const tEfe = conf.reduce((a,b)=>a+(b.efectivo||0),0);
-  const tNeq = conf.reduce((a,b)=>a+(b.nequi||0),0);
-  const tBan = conf.reduce((a,b)=>a+(b.bancolombia||0),0);
-  const tDeu = conf.reduce((a,b)=>a+(b.deudaPago||0),0);
+  // Los KPIs de arriba suman: filas confirmadas (recibido) + cualquier pago de deuda
+  // registrado por el checkbox (aunque la fila no esté marcada como recibida).
+  const sumaCampo = (campo) => {
+    let t = 0;
+    for(const f of filas){
+      const esPagoDeuda = f.incluirDeuda && f.medioDeuda;
+      if(f.recibido || esPagoDeuda) t += (Number(f[campo])||0);
+    }
+    return t;
+  };
+  const tEfe = sumaCampo('efectivo');
+  const tNeq = sumaCampo('nequi');
+  const tBan = sumaCampo('bancolombia');
+  const tDeu = sumaCampo('deudaPago');
   const tRec = filas.filter(f=>f.recaudado).reduce((a,b)=>a+(b.subtotal||0),0);
   const kpis = document.querySelectorAll('#view .grid.grid-4 .kpi .kpi-v');
   if(kpis[0]) kpis[0].textContent = money(tEfe);
   if(kpis[1]) kpis[1].textContent = money(tNeq);
   if(kpis[2]) kpis[2].textContent = money(tBan);
   if(kpis[3]) kpis[3].textContent = money(tDeu);
-  // Deudas marcadas con checkbox se suman en el botón Recaudo (verde)
-  const filasTod = Object.values(DB.recaudo[_recaudoFecha]||{});
-  let extraDeudas = 0;
-  for(const f of filasTod){
-    if(f.incluirDeuda){
-      const sd = f.clienteId ? getSaldoCliente(f.clienteId) : 0;
-      if(sd < 0) extraDeudas += Math.abs(sd);
-      else if(sd > 0) extraDeudas -= sd;
-    }
-  }
   const fills = document.querySelectorAll('#view .kpi-fill .kpi-v');
   if(fills[0]) fills[0].textContent = money(tEfe+tNeq+tBan+tDeu);
-  if(fills[1]) fills[1].textContent = money(tRec + extraDeudas);
+  if(fills[1]) fills[1].textContent = money(tRec);
   // Resumen del día
+  const filasTod = filas;
   const bruto = filasTod.reduce((a,b)=>a+(b.subtotal||0),0);
   const confMonto = conf.reduce((a,b)=>a+(b.subtotal||0),0);
   const falt = filasTod.reduce((a,b)=>a+(b.faltante||0),0)+filasTod.reduce((a,b)=>a+(b.salida||0),0);
