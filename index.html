@@ -1799,8 +1799,8 @@ function renderRecaudo(){
 function recalcEfectivoFila(r){
   if(!r) return;
   // Efectivo físico que recibe el domiciliario:
-  //   venta + pago de deuda en efectivo (entra) − lo pagado por otros medios − deuda nueva − faltante − salida
-  // "Le debo" (debeCliente) NO resta aquí: es un ajuste de cartera, no una salida de caja del día.
+  //   venta + pago de deuda en efectivo (entra) − otros medios − deuda nueva − faltante − salida
+  //   − debeCliente (descuento en efectivo de lo que yo le debo al cliente)
   r.efectivo = Math.max(0,
       (Number(r.subtotal)||0)
     + (Number(r.deudaPago)||0)   // el cliente paga una deuda vieja EN EFECTIVO: ENTRA efectivo
@@ -1809,6 +1809,7 @@ function recalcEfectivoFila(r){
     - (Number(r.deuda)||0)        // queda debiendo: NO entra efectivo
     - (Number(r.faltante)||0)
     - (Number(r.salida)||0)
+    - (Number(r.debeCliente)||0)  // descuento por lo que le debo al cliente (opción 5 efectivo)
   );
 }
 /** Suma de deudas incluidas (checkbox marcado) para el KPI "Total a cobrar". */
@@ -1954,13 +1955,181 @@ function recaudarPedido(id){
 /* Marca "Recibido" SIN alterar el estado de "Recaudado" (son independientes). */
 function updRecibido(id, val){
   const r = DB.recaudo[_recaudoFecha] && DB.recaudo[_recaudoFecha][id]; if(!r) return;
-  r.recibido = val;
-  // recaudado NO se toca: son dos controles independientes.
+  if(!val){
+    // Desmarcar: quitar recibido sin más
+    r.recibido = false;
+    recalcEfectivoFila(r);
+    saveDB(); _encolarRecaudo(r); _repintarFilaRecaudo(id); _repintarTotalesRecaudo();
+    return;
+  }
+  // Marcar: abrir modal con opciones de cómo se recibió el pago
+  abrirModalRecibido(id);
+}
+
+/* Modal de opciones al marcar Recibido */
+function abrirModalRecibido(pedidoId){
+  const r = DB.recaudo[_recaudoFecha] && DB.recaudo[_recaudoFecha][pedidoId]; if(!r) return;
+  const saldo = r.clienteId ? getSaldoCliente(r.clienteId) : 0;
+  const clienteDebe = saldo < 0 ? Math.abs(saldo) : 0;   // el cliente ME debe
+  const yoLeDebo   = saldo > 0 ? saldo : 0;               // YO le debo al cliente
+  const cli = r.clienteId ? DB.clientes.find(c=>c.id===r.clienteId) : null;
+  const nombre = cli ? cli.nombre : (r.cliente||'Cliente');
+
+  let botonDeuda = '';
+  if(clienteDebe > 0){
+    botonDeuda = `
+      <button class="btn btn-secondary" style="width:100%" onclick="recibidoPagarDeuda('${pedidoId}')">
+        <span class="ms">volunteer_activism</span> Registrar pago de deuda (${money(clienteDebe)})
+      </button>`;
+  }
+  let botonLeDebo = '';
+  if(yoLeDebo > 0){
+    botonLeDebo = `
+      <button class="btn btn-ghost" style="width:100%;border:1px solid var(--error);color:var(--error)" onclick="recibidoDescontarLeDebo('${pedidoId}')">
+        <span class="ms">remove_circle</span> Descontar lo que le debo (${money(yoLeDebo)})
+      </button>`;
+  }
+
+  modal(`Registrar cobro · ${nombre}`, `
+    <p>Factura del día: <b>${money(r.subtotal||0)}</b></p>
+    <p class="mt-md bold">¿Cómo se recibió el pago del pedido?</p>
+    <div class="flex gap mt-md" style="flex-direction:column">
+      <button class="btn btn-primary" style="width:100%" onclick="recibidoMedio('${pedidoId}','efectivo')"><span class="ms">payments</span> Efectivo</button>
+      <button class="btn btn-secondary" style="width:100%" onclick="recibidoMedio('${pedidoId}','nequi')"><span class="ms">smartphone</span> Nequi</button>
+      <button class="btn btn-secondary" style="width:100%" onclick="recibidoMedio('${pedidoId}','bancolombia')"><span class="ms">account_balance</span> Bancolombia</button>
+      ${botonDeuda}
+      ${botonLeDebo}
+    </div>
+  `, '<button class="btn btn-ghost" onclick="cancelarRecibido(\'' + pedidoId + '\')">Cancelar</button>');
+}
+
+function cancelarRecibido(pedidoId){
+  const cb = document.querySelector(`input[onchange*="updRecibido('${pedidoId}'"]`);
+  if(cb) cb.checked = false;
+  closeModal();
+}
+
+/* Opción 1-3: cobro del pedido por efectivo / nequi / bancolombia */
+function recibidoMedio(pedidoId, medio){
+  const r = DB.recaudo[_recaudoFecha] && DB.recaudo[_recaudoFecha][pedidoId]; if(!r) return;
+  if(medio === 'efectivo'){
+    // Efectivo: solo marcar recibido. El efectivo se calcula solo (subtotal − otros medios).
+    r.recibido = true;
+    recalcEfectivoFila(r);
+    saveDB(); _encolarRecaudo(r); _repintarFilaRecaudo(pedidoId); _repintarTotalesRecaudo();
+    closeModal();
+    toast('Cobro en efectivo registrado','success');
+    return;
+  }
+  // Nequi o Bancolombia: pedir monto
+  const campo = medio;   // 'nequi' | 'bancolombia'
+  const nombreMedio = medio==='nequi'?'Nequi':'Bancolombia';
+  modal(`Pago por ${nombreMedio}`, `
+    <p>¿Cuánto pagó por <b>${nombreMedio}</b>?</p>
+    <div class="field mt-md"><label>Monto</label>
+      <input id="rm-monto" type="number" value="${r.subtotal||''}" style="font-size:16px"/></div>
+  `, `<button class="btn btn-ghost" onclick="abrirModalRecibido('${pedidoId}')">Atrás</button>
+      <button class="btn btn-primary" onclick="recibidoMedioConfirm('${pedidoId}','${campo}')">Confirmar</button>`);
+  setTimeout(()=>{ const el=document.getElementById('rm-monto'); if(el){ el.focus(); el.select(); } }, 60);
+}
+function recibidoMedioConfirm(pedidoId, campo){
+  const r = DB.recaudo[_recaudoFecha] && DB.recaudo[_recaudoFecha][pedidoId]; if(!r) return;
+  const monto = Number(document.getElementById('rm-monto').value)||0;
+  if(monto<=0){ toast('Ingresa un monto válido','error'); return; }
+  r[campo] = (Number(r[campo])||0) + monto;   // escribe en la columna correspondiente
+  r.recibido = true;
   recalcEfectivoFila(r);
-  saveDB();
-  _encolarRecaudo(r);
-  _repintarFilaRecaudo(id);
-  _repintarTotalesRecaudo();
+  saveDB(); _encolarRecaudo(r); _repintarFilaRecaudo(pedidoId); _repintarTotalesRecaudo();
+  closeModal();
+  toast(`${money(monto)} registrado por ${campo==='nequi'?'Nequi':'Bancolombia'}`,'success');
+}
+
+/* Opción 4: registrar pago de deuda (cliente me debe) */
+function recibidoPagarDeuda(pedidoId){
+  const r = DB.recaudo[_recaudoFecha] && DB.recaudo[_recaudoFecha][pedidoId]; if(!r) return;
+  const saldo = r.clienteId ? getSaldoCliente(r.clienteId) : 0;
+  const debe = saldo < 0 ? Math.abs(saldo) : 0;
+  modal('Pago de deuda', `
+    <p>El cliente debe <b>${money(debe)}</b>. ¿Cómo paga la deuda?</p>
+    <div class="flex gap mt-md" style="flex-direction:column">
+      <button class="btn btn-primary" style="width:100%" onclick="recibidoDeudaMedio('${pedidoId}','efectivo')"><span class="ms">payments</span> Efectivo</button>
+      <button class="btn btn-secondary" style="width:100%" onclick="recibidoDeudaMedio('${pedidoId}','nequi')"><span class="ms">smartphone</span> Nequi</button>
+      <button class="btn btn-secondary" style="width:100%" onclick="recibidoDeudaMedio('${pedidoId}','bancolombia')"><span class="ms">account_balance</span> Bancolombia</button>
+    </div>
+  `, `<button class="btn btn-ghost" onclick="abrirModalRecibido('${pedidoId}')">Atrás</button>`);
+}
+function recibidoDeudaMedio(pedidoId, medio){
+  const r = DB.recaudo[_recaudoFecha] && DB.recaudo[_recaudoFecha][pedidoId]; if(!r) return;
+  const saldo = r.clienteId ? getSaldoCliente(r.clienteId) : 0;
+  const debe = saldo < 0 ? Math.abs(saldo) : 0;
+  const nombreMedio = medio==='efectivo'?'Efectivo':medio==='nequi'?'Nequi':'Bancolombia';
+  modal(`Pago de deuda · ${nombreMedio}`, `
+    <p>¿Cuánto abona de la deuda por <b>${nombreMedio}</b>?</p>
+    <div class="field mt-md"><label>Monto de la deuda</label>
+      <input id="rd-monto" type="number" value="${debe||''}" style="font-size:16px"/></div>
+  `, `<button class="btn btn-ghost" onclick="recibidoPagarDeuda('${pedidoId}')">Atrás</button>
+      <button class="btn btn-primary" onclick="recibidoDeudaConfirm('${pedidoId}','${medio}')">Confirmar</button>`);
+  setTimeout(()=>{ const el=document.getElementById('rd-monto'); if(el){ el.focus(); el.select(); } }, 60);
+}
+function recibidoDeudaConfirm(pedidoId, medio){
+  const r = DB.recaudo[_recaudoFecha] && DB.recaudo[_recaudoFecha][pedidoId]; if(!r) return;
+  const monto = Number(document.getElementById('rd-monto').value)||0;
+  if(monto<=0){ toast('Ingresa un monto válido','error'); return; }
+  // Aplicar al campo correcto según el medio
+  if(medio==='efectivo'){
+    r.deudaPago = (Number(r.deudaPago)||0) + monto;   // suma en PAGO DEUDAS y efectivo
+  } else if(medio==='nequi'){
+    r.nequi = (Number(r.nequi)||0) + monto;
+  } else if(medio==='bancolombia'){
+    r.bancolombia = (Number(r.bancolombia)||0) + monto;
+  }
+  // Registrar en cartera: baja la deuda del cliente
+  if(r.clienteId) registrarMovCartera(r.clienteId,'pago_deuda',monto,`Pago deuda (${medio}) ${_recaudoFecha}`);
+  r.recibido = true;
+  recalcEfectivoFila(r);
+  saveDB(); _encolarRecaudo(r); _repintarFilaRecaudo(pedidoId); _repintarTotalesRecaudo();
+  closeModal();
+  toast(`Deuda: ${money(monto)} por ${medio==='efectivo'?'Efectivo':medio==='nequi'?'Nequi':'Bancolombia'}`,'success');
+}
+
+/* Opción 5: descontar lo que YO le debo al cliente, de la factura del día */
+function recibidoDescontarLeDebo(pedidoId){
+  const r = DB.recaudo[_recaudoFecha] && DB.recaudo[_recaudoFecha][pedidoId]; if(!r) return;
+  const saldo = r.clienteId ? getSaldoCliente(r.clienteId) : 0;
+  const leDebo = saldo > 0 ? saldo : 0;
+  modal('Descontar de la factura', `
+    <p>Le debes <b>${money(leDebo)}</b> a este cliente.</p>
+    <p class="mt-md">Este valor se descuenta de la factura del día. ¿De qué medio de pago se descuenta?</p>
+    <div class="field mt-md"><label>Monto a descontar</label>
+      <input id="rld-monto" type="number" value="${leDebo||''}" style="font-size:16px"/></div>
+    <div class="flex gap mt-md" style="flex-direction:column">
+      <button class="btn btn-primary" style="width:100%" onclick="recibidoLeDeboConfirm('${pedidoId}','efectivo')"><span class="ms">payments</span> Descontar del efectivo</button>
+      <button class="btn btn-secondary" style="width:100%" onclick="recibidoLeDeboConfirm('${pedidoId}','nequi')"><span class="ms">smartphone</span> Descontar de Nequi</button>
+      <button class="btn btn-secondary" style="width:100%" onclick="recibidoLeDeboConfirm('${pedidoId}','bancolombia')"><span class="ms">account_balance</span> Descontar de Bancolombia</button>
+    </div>
+  `, `<button class="btn btn-ghost" onclick="abrirModalRecibido('${pedidoId}')">Atrás</button>`);
+  setTimeout(()=>{ const el=document.getElementById('rld-monto'); if(el){ el.focus(); el.select(); } }, 60);
+}
+function recibidoLeDeboConfirm(pedidoId, medio){
+  const r = DB.recaudo[_recaudoFecha] && DB.recaudo[_recaudoFecha][pedidoId]; if(!r) return;
+  const monto = Number(document.getElementById('rld-monto').value)||0;
+  if(monto<=0){ toast('Ingresa un monto válido','error'); return; }
+  // Restar del medio elegido (es un descuento en la factura del día)
+  if(medio==='nequi'){
+    r.nequi = Math.max(0,(Number(r.nequi)||0) - monto);
+  } else if(medio==='bancolombia'){
+    r.bancolombia = Math.max(0,(Number(r.bancolombia)||0) - monto);
+  } else {
+    // efectivo: usamos debeCliente que ya reduce en la fila
+    r.debeCliente = (Number(r.debeCliente)||0) + monto;
+  }
+  // En cartera: baja lo que yo le debo al cliente
+  if(r.clienteId) registrarMovCartera(r.clienteId,'debo_cliente',-monto,`Descuento le debo (${medio}) ${_recaudoFecha}`);
+  r.recibido = true;
+  recalcEfectivoFila(r);
+  saveDB(); _encolarRecaudo(r); _repintarFilaRecaudo(pedidoId); _repintarTotalesRecaudo();
+  closeModal();
+  toast(`Descontado ${money(monto)} de ${medio}`,'success');
 }
 function updRec(id,campo,val){
   const r = DB.recaudo[_recaudoFecha] && DB.recaudo[_recaudoFecha][id]; if(!r) return;
