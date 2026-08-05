@@ -1827,81 +1827,10 @@ function _calcTotalConDeudas(){
 }
 function toggleIncluirDeuda(pedidoId, val){
   const r = DB.recaudo[_recaudoFecha] && DB.recaudo[_recaudoFecha][pedidoId]; if(!r) return;
-  if(!val){
-    // Desmarcar: revertir el pago de deuda que se había aplicado
-    if(r.medioDeuda && r._montoDeudaAplicado){
-      const monto = r._montoDeudaAplicado;
-      const medio = r.medioDeuda;
-      if(medio==='efectivo') r.deudaPago = Math.max(0,(Number(r.deudaPago)||0)-monto);
-      else if(medio==='nequi') r.nequi = Math.max(0,(Number(r.nequi)||0)-monto);
-      else if(medio==='bancolombia') r.bancolombia = Math.max(0,(Number(r.bancolombia)||0)-monto);
-      // revertir el movimiento en cartera
-      if(r.clienteId) registrarMovCartera(r.clienteId,'deuda',monto,`Reversa pago deuda ${_recaudoFecha}`);
-    }
-    r.incluirDeuda = false;
-    r.medioDeuda = null;
-    r._montoDeudaAplicado = 0;
-    recalcEfectivoFila(r);
-    saveDB(); _encolarRecaudo(r); _repintarFilaRecaudo(pedidoId); _repintarTotalesRecaudo();
-    const cb = document.querySelector(`input[onchange*="toggleIncluirDeuda('${pedidoId}'"]`);
-    if(cb) cb.checked = false;
-    return;
-  }
-  // Marcar: preguntar CUÁNTO pagó y por qué medio
-  const saldo = r.clienteId ? getSaldoCliente(r.clienteId) : 0;
-  const debe = saldo < 0 ? Math.abs(saldo) : 0;       // el cliente ME debe
-  const leDebo = saldo > 0 ? saldo : 0;                // YO le debo al cliente
-  const sugerido = debe > 0 ? debe : (leDebo>0?leDebo:0);
-  const contexto = debe>0
-    ? `El cliente <b>debe ${money(debe)}</b>. ¿Cuánto abona hoy y cómo?`
-    : leDebo>0
-    ? `Tú le debes <b>${money(leDebo)}</b> a este cliente. Se descontará de lo que le debes.`
-    : `Este cliente está al día. Puedes registrar un abono igualmente.`;
-
-  modal('Pago de deuda', `
-    <p>${contexto}</p>
-    <div class="field mt-md"><label>Monto que paga</label>
-      <input id="dp-monto" type="number" value="${sugerido||''}" placeholder="Ej: 10000" style="font-size:16px"/></div>
-    <p class="mt-md bold">¿Cómo se recibe?</p>
-    <div class="flex gap mt-md" style="flex-direction:column">
-      <button class="btn btn-primary" style="width:100%" onclick="confirmarMedioDeuda('${pedidoId}','efectivo')"><span class="ms">payments</span> Efectivo (suma al efectivo del día)</button>
-      <button class="btn btn-secondary" style="width:100%" onclick="confirmarMedioDeuda('${pedidoId}','nequi')"><span class="ms">smartphone</span> Nequi</button>
-      <button class="btn btn-secondary" style="width:100%" onclick="confirmarMedioDeuda('${pedidoId}','bancolombia')"><span class="ms">account_balance</span> Bancolombia</button>
-    </div>
-  `, '<button class="btn btn-ghost" onclick="cancelarMedioDeuda(\'' + pedidoId + '\')">Cancelar</button>');
-  setTimeout(()=>{ const el=document.getElementById('dp-monto'); if(el){ el.focus(); el.select(); } }, 60);
-}
-function cancelarMedioDeuda(pedidoId){
-  const cb = document.querySelector(`input[onchange*="toggleIncluirDeuda('${pedidoId}'"]`);
-  if(cb) cb.checked = false;
-  closeModal();
-}
-function confirmarMedioDeuda(pedidoId, medio){
-  const r = DB.recaudo[_recaudoFecha] && DB.recaudo[_recaudoFecha][pedidoId]; if(!r) return;
-  const monto = Number(document.getElementById('dp-monto').value)||0;
-  if(monto<=0){ toast('Ingresa un monto válido','error'); return; }
-
-  r.incluirDeuda = true;
-  r.medioDeuda = medio;
-  r._montoDeudaAplicado = monto;
-
-  // Escribir el monto en el campo correcto de la fila según el medio
-  if(medio==='efectivo'){
-    r.deudaPago = (Number(r.deudaPago)||0) + monto;    // ENTRA efectivo → suma al efectivo del día
-  } else if(medio==='nequi'){
-    r.nequi = (Number(r.nequi)||0) + monto;            // entra por Nequi → suma arriba en Nequi
-  } else if(medio==='bancolombia'){
-    r.bancolombia = (Number(r.bancolombia)||0) + monto;// entra por Bancolombia → suma arriba
-  }
-
-  // Registrar en cartera: el cliente pagó, baja su deuda (o si yo le debía, baja lo que le debo)
-  if(r.clienteId) registrarMovCartera(r.clienteId,'pago_deuda',monto,`Pago deuda (${medio}) ${_recaudoFecha}`);
-
-  recalcEfectivoFila(r);
-  saveDB(); _encolarRecaudo(r); _repintarFilaRecaudo(pedidoId); _repintarTotalesRecaudo();
-  closeModal();
-  const nombres = {efectivo:'Efectivo', nequi:'Nequi', bancolombia:'Bancolombia'};
-  toast(`${money(monto)} de deuda · ${nombres[medio]||medio}`, 'success');
+  r.incluirDeuda = val;
+  saveDB();
+  _encolarRecaudo(r);
+  _repintarTotalesRecaudo();
 }
 /* Cola de guardado de recaudo: agrupa por fila y envía espaciado.
    Evita el 429 de Appwrite cuando se marcan varias filas seguidas. */
@@ -1980,34 +1909,32 @@ function _repintarFilaRecaudo(id){
 function _repintarTotalesRecaudo(){
   const filas = Object.values(DB.recaudo[_recaudoFecha]||{});
   const conf = filas.filter(f=>f.recibido);
-  // Los KPIs de arriba suman: filas confirmadas (recibido) + cualquier pago de deuda
-  // registrado por el checkbox (aunque la fila no esté marcada como recibida).
-  const sumaCampo = (campo) => {
-    let t = 0;
-    for(const f of filas){
-      const esPagoDeuda = f.incluirDeuda && f.medioDeuda;
-      if(f.recibido || esPagoDeuda) t += (Number(f[campo])||0);
-    }
-    return t;
-  };
-  const tEfe = sumaCampo('efectivo');
-  const tNeq = sumaCampo('nequi');
-  const tBan = sumaCampo('bancolombia');
-  const tDeu = sumaCampo('deudaPago');
+  const tEfe = conf.reduce((a,b)=>a+(b.efectivo||0),0);
+  const tNeq = conf.reduce((a,b)=>a+(b.nequi||0),0);
+  const tBan = conf.reduce((a,b)=>a+(b.bancolombia||0),0);
+  const tDeu = conf.reduce((a,b)=>a+(b.deudaPago||0),0);
   const tRec = filas.filter(f=>f.recaudado).reduce((a,b)=>a+(b.subtotal||0),0);
   const kpis = document.querySelectorAll('#view .grid.grid-4 .kpi .kpi-v');
   if(kpis[0]) kpis[0].textContent = money(tEfe);
   if(kpis[1]) kpis[1].textContent = money(tNeq);
   if(kpis[2]) kpis[2].textContent = money(tBan);
   if(kpis[3]) kpis[3].textContent = money(tDeu);
+  // Deudas marcadas con checkbox se suman al Total Recaudado (botón Recaudo)
+  let extraDeudas = 0;
+  for(const f of filas){
+    if(f.incluirDeuda){
+      const sd = f.clienteId ? getSaldoCliente(f.clienteId) : 0;
+      if(sd < 0) extraDeudas += Math.abs(sd);   // el cliente debe → suma
+      else if(sd > 0) extraDeudas -= sd;         // yo le debo → resta
+    }
+  }
   const fills = document.querySelectorAll('#view .kpi-fill .kpi-v');
   if(fills[0]) fills[0].textContent = money(tEfe+tNeq+tBan+tDeu);
-  if(fills[1]) fills[1].textContent = money(tRec);
+  if(fills[1]) fills[1].textContent = money(tRec + extraDeudas);
   // Resumen del día
-  const filasTod = filas;
-  const bruto = filasTod.reduce((a,b)=>a+(b.subtotal||0),0);
+  const bruto = filas.reduce((a,b)=>a+(b.subtotal||0),0);
   const confMonto = conf.reduce((a,b)=>a+(b.subtotal||0),0);
-  const falt = filasTod.reduce((a,b)=>a+(b.faltante||0),0)+filasTod.reduce((a,b)=>a+(b.salida||0),0);
+  const falt = filas.reduce((a,b)=>a+(b.faltante||0),0)+filas.reduce((a,b)=>a+(b.salida||0),0);
   const set = (id,v)=>{ const el=document.getElementById(id); if(el) el.textContent = money(v); };
   set('res-bruto', bruto);
   set('res-conf', confMonto);
