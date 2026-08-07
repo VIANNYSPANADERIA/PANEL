@@ -1885,6 +1885,16 @@ function _repintarFilaRecaudo(id){
     btn.className = `btn ${r.recaudado?'btn-tertiary':'btn-ghost'} btn-sm`;
     btn.innerHTML = `<span class="ms">${r.recaudado?'check_circle':'payments'}</span>${r.recaudado?'Recaudado':'Recaudo'}`;
   }
+  // Sincronizar el checkbox de RECIBIDO con el estado real (evita que quede a medias)
+  const cbRec = tr.querySelector('input[onchange*="updRecibido"]');
+  if(cbRec) cbRec.checked = !!r.recibido;
+  // Actualizar los inputs numéricos SIN pisar el que el usuario está editando ahora
+  const activo = document.activeElement;
+  const setInput = (campo) => {
+    const inp = tr.querySelector(`input[onchange*="updRec('${id}','${campo}'"]`);
+    if(inp && inp !== activo) inp.value = (Number(r[campo])||0);
+  };
+  ['nequi','bancolombia','deudaPago','debeCliente','deuda','faltante','salida'].forEach(setInput);
   const celEfe = tr.querySelector('td.num.bold');
   if(celEfe) celEfe.textContent = money(r.efectivo);
   // Repintar la celda Cartera (columna 4) con el saldo actualizado del cliente.
@@ -2049,14 +2059,35 @@ function recibidoPagarDeuda(pedidoId){
   const r = DB.recaudo[_recaudoFecha] && DB.recaudo[_recaudoFecha][pedidoId]; if(!r) return;
   const saldo = r.clienteId ? getSaldoCliente(r.clienteId) : 0;
   const debe = saldo < 0 ? Math.abs(saldo) : 0;
+  // Primero preguntar: ¿pagó solo la deuda o también el pedido del día?
+  modal('¿Qué pagó el cliente?', `
+    <p>El cliente debe <b>${money(debe)}</b> y su pedido de hoy es <b>${money(r.subtotal||0)}</b>.</p>
+    <p class="mt-md bold">¿Qué está pagando?</p>
+    <div class="flex gap mt-md" style="flex-direction:column">
+      <button class="btn btn-primary" style="width:100%" onclick="recibidoPagarDeuda2('${pedidoId}','solo')">
+        <span class="ms">volunteer_activism</span> Solo la deuda (no cuenta el pedido de hoy)
+      </button>
+      <button class="btn btn-secondary" style="width:100%" onclick="recibidoPagarDeuda2('${pedidoId}','todo')">
+        <span class="ms">done_all</span> Pedido de hoy + deuda (canceló todo)
+      </button>
+    </div>
+  `, `<button class="btn btn-ghost" onclick="abrirModalRecibido('${pedidoId}')">Atrás</button>`);
+}
+function recibidoPagarDeuda2(pedidoId, modo){
+  const r = DB.recaudo[_recaudoFecha] && DB.recaudo[_recaudoFecha][pedidoId]; if(!r) return;
+  r._modoPagoDeuda = modo;   // 'solo' = no cuenta pedido | 'todo' = pedido + deuda
+  const saldo = r.clienteId ? getSaldoCliente(r.clienteId) : 0;
+  const debe = saldo < 0 ? Math.abs(saldo) : 0;
   modal('Pago de deuda', `
-    <p>El cliente debe <b>${money(debe)}</b>. ¿Cómo paga la deuda?</p>
+    <p>${modo==='solo'?'El cliente paga SOLO la deuda (el pedido de hoy no se cobra).':'El cliente cancela el pedido de hoy Y la deuda.'}</p>
+    <p class="mt-md">Deuda a abonar: <b>${money(debe)}</b></p>
+    <p class="mt-md bold">¿Cómo paga la deuda?</p>
     <div class="flex gap mt-md" style="flex-direction:column">
       <button class="btn btn-primary" style="width:100%" onclick="recibidoDeudaMedio('${pedidoId}','efectivo')"><span class="ms">payments</span> Efectivo</button>
       <button class="btn btn-secondary" style="width:100%" onclick="recibidoDeudaMedio('${pedidoId}','nequi')"><span class="ms">smartphone</span> Nequi</button>
       <button class="btn btn-secondary" style="width:100%" onclick="recibidoDeudaMedio('${pedidoId}','bancolombia')"><span class="ms">account_balance</span> Bancolombia</button>
     </div>
-  `, `<button class="btn btn-ghost" onclick="abrirModalRecibido('${pedidoId}')">Atrás</button>`);
+  `, `<button class="btn btn-ghost" onclick="recibidoPagarDeuda('${pedidoId}')">Atrás</button>`);
 }
 function recibidoDeudaMedio(pedidoId, medio){
   const r = DB.recaudo[_recaudoFecha] && DB.recaudo[_recaudoFecha][pedidoId]; if(!r) return;
@@ -2067,7 +2098,7 @@ function recibidoDeudaMedio(pedidoId, medio){
     <p>¿Cuánto abona de la deuda por <b>${nombreMedio}</b>?</p>
     <div class="field mt-md"><label>Monto de la deuda</label>
       <input id="rd-monto" type="number" value="${debe||''}" style="font-size:16px"/></div>
-  `, `<button class="btn btn-ghost" onclick="recibidoPagarDeuda('${pedidoId}')">Atrás</button>
+  `, `<button class="btn btn-ghost" onclick="recibidoPagarDeuda2('${pedidoId}','${r._modoPagoDeuda||'todo'}')">Atrás</button>
       <button class="btn btn-primary" onclick="recibidoDeudaConfirm('${pedidoId}','${medio}')">Confirmar</button>`);
   setTimeout(()=>{ const el=document.getElementById('rd-monto'); if(el){ el.focus(); el.select(); } }, 60);
 }
@@ -2075,9 +2106,13 @@ function recibidoDeudaConfirm(pedidoId, medio){
   const r = DB.recaudo[_recaudoFecha] && DB.recaudo[_recaudoFecha][pedidoId]; if(!r) return;
   const monto = Number(document.getElementById('rd-monto').value)||0;
   if(monto<=0){ toast('Ingresa un monto válido','error'); return; }
-  // Aplicar al campo correcto según el medio
+  // Si pagó SOLO la deuda, el pedido de hoy no se cuenta como venta del día.
+  if(r._modoPagoDeuda === 'solo'){
+    r.deuda = (Number(r.subtotal)||0);   // el pedido de hoy queda como deuda nueva (no entra efectivo)
+  }
+  // Aplicar el pago de la deuda vieja al campo correcto según el medio
   if(medio==='efectivo'){
-    r.deudaPago = (Number(r.deudaPago)||0) + monto;   // suma en PAGO DEUDAS y efectivo
+    r.deudaPago = (Number(r.deudaPago)||0) + monto;   // SUMA en PAGO DEUDAS y efectivo
   } else if(medio==='nequi'){
     r.nequi = (Number(r.nequi)||0) + monto;
   } else if(medio==='bancolombia'){
