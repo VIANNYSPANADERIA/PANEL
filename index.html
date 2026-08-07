@@ -1781,7 +1781,11 @@ function renderRecaudo(){
               <td class="center"><input type="checkbox" ${f.recibido?'checked':''} onchange="updRecibido('${f.pedidoId}',this.checked)"/></td>
               <td class="num"><input type="number" value="${f.nequi}" style="width:80px" onchange="updRec('${f.pedidoId}','nequi',this.value)"/></td>
               <td class="num"><input type="number" value="${f.bancolombia}" style="width:80px" onchange="updRec('${f.pedidoId}','bancolombia',this.value)"/></td>
-              <td class="num"><input type="number" value="${f.deudaPago}" style="width:80px" onchange="updRec('${f.pedidoId}','deudaPago',this.value)"/></td>
+              <td class="num" style="text-align:center">
+                ${(Number(f.deudaPago)||0)>0
+                  ? `<button class="btn btn-tertiary btn-sm" onclick="abrirModalPagoDeuda('${f.pedidoId}')" style="white-space:nowrap"><span class="ms">check</span>${money(f.deudaPago)}</button>`
+                  : `<button class="btn btn-ghost btn-sm" onclick="abrirModalPagoDeuda('${f.pedidoId}')" style="white-space:nowrap"><span class="ms">add</span>Pago deuda</button>`}
+              </td>
               <td class="num"><input type="number" value="${f.debeCliente}" style="width:80px" onchange="updRec('${f.pedidoId}','debeCliente',this.value)"/></td>
               <td class="num"><input type="number" value="${f.faltante}" style="width:70px" onchange="updRec('${f.pedidoId}','faltante',this.value)"/></td>
               <td class="num"><input type="number" value="${f.salida}" style="width:70px" onchange="updRec('${f.pedidoId}','salida',this.value)"/></td>
@@ -1796,6 +1800,123 @@ function renderRecaudo(){
     </div>
   `;
 }
+/* ===== Modal PAGO DEUDA (columna) — medio, valor y cálculo sobra/falta ===== */
+function abrirModalPagoDeuda(pedidoId){
+  const r = DB.recaudo[_recaudoFecha] && DB.recaudo[_recaudoFecha][pedidoId]; if(!r) return;
+  const saldo = r.clienteId ? getSaldoCliente(r.clienteId) : 0;
+  const debe = saldo < 0 ? Math.abs(saldo) : 0;       // el cliente ME debe
+  const leDebo = saldo > 0 ? saldo : 0;                // YO le debo
+  const cli = r.clienteId ? DB.clientes.find(c=>c.id===r.clienteId) : null;
+  const nombre = cli ? cli.nombre : (r.cliente||'Cliente');
+  const ctx = debe>0 ? `El cliente debe <b>${money(debe)}</b>.`
+            : leDebo>0 ? `Tú le debes <b>${money(leDebo)}</b>.`
+            : `Cliente al día.`;
+  const yaPago = Number(r.deudaPago)||0;
+  modal(`Pago de deuda · ${nombre}`, `
+    <p>${ctx}</p>
+    ${yaPago>0?`<p class="mt-md muted">Ya registrado: ${money(yaPago)} (${r.deudaPagoMedio||'efectivo'}). Se reemplazará.</p>`:''}
+    <p class="mt-md bold">¿De dónde proviene el pago?</p>
+    <div class="flex gap mt-md" style="flex-direction:column">
+      <button class="btn btn-primary" style="width:100%" onclick="pagoDeudaMedio('${pedidoId}','efectivo')"><span class="ms">payments</span> Efectivo</button>
+      <button class="btn btn-secondary" style="width:100%" onclick="pagoDeudaMedio('${pedidoId}','nequi')"><span class="ms">smartphone</span> Nequi</button>
+      <button class="btn btn-secondary" style="width:100%" onclick="pagoDeudaMedio('${pedidoId}','bancolombia')"><span class="ms">account_balance</span> Bancolombia</button>
+    </div>
+    ${yaPago>0?`<button class="btn btn-ghost mt-md" style="width:100%;border:1px solid var(--error);color:var(--error)" onclick="pagoDeudaBorrar('${pedidoId}')"><span class="ms">delete</span> Quitar este pago</button>`:''}
+  `, '<button class="btn btn-ghost" onclick="closeModal()">Cerrar</button>');
+}
+function pagoDeudaMedio(pedidoId, medio){
+  const r = DB.recaudo[_recaudoFecha] && DB.recaudo[_recaudoFecha][pedidoId]; if(!r) return;
+  const saldo = r.clienteId ? getSaldoCliente(r.clienteId) : 0;
+  const debe = saldo < 0 ? Math.abs(saldo) : 0;
+  const nombreMedio = medio==='efectivo'?'Efectivo':medio==='nequi'?'Nequi':'Bancolombia';
+  modal(`Pago de deuda · ${nombreMedio}`, `
+    <p>¿Cuánto pagó el cliente por <b>${nombreMedio}</b>?</p>
+    <div class="field mt-md"><label>Valor pagado</label>
+      <input id="pd-valor" type="number" value="${debe||''}" placeholder="Ej: 20000" style="font-size:16px"/></div>
+    <div id="pd-preview" class="muted mt-md" style="font-size:12px"></div>
+  `, `<button class="btn btn-ghost" onclick="abrirModalPagoDeuda('${pedidoId}')">Atrás</button>
+      <button class="btn btn-primary" onclick="pagoDeudaConfirm('${pedidoId}','${medio}')">Confirmar</button>`);
+  setTimeout(()=>{
+    const el=document.getElementById('pd-valor');
+    if(el){ el.focus(); el.select();
+      const upd=()=>{
+        const v=Number(el.value)||0;
+        const prev=document.getElementById('pd-preview');
+        if(!prev) return;
+        if(debe>0 && v>debe) prev.innerHTML=`El cliente paga de más: le quedarás debiendo <b style="color:#004b98">${money(v-debe)}</b>.`;
+        else if(debe>0 && v<debe) prev.innerHTML=`Queda debiendo <b style="color:#ba1a1a">${money(debe-v)}</b>.`;
+        else if(debe>0 && v===debe) prev.innerHTML=`Paga exacto. Queda al día.`;
+        else prev.innerHTML='';
+      };
+      el.oninput=upd; upd();
+    }
+  }, 60);
+}
+function pagoDeudaConfirm(pedidoId, medio){
+  const r = DB.recaudo[_recaudoFecha] && DB.recaudo[_recaudoFecha][pedidoId]; if(!r) return;
+  const valor = Number(document.getElementById('pd-valor').value)||0;
+  if(valor<=0){ toast('Ingresa un valor válido','error'); return; }
+
+  // Revertir un pago anterior de esta fila (si lo había) antes de aplicar el nuevo
+  _revertirPagoDeudaFila(r);
+
+  const saldo = r.clienteId ? getSaldoCliente(r.clienteId) : 0;
+  const debe = saldo < 0 ? Math.abs(saldo) : 0;   // cuánto debía el cliente ANTES de este pago
+
+  // Guardar el pago
+  r.deudaPago = valor;
+  r.deudaPagoMedio = medio;
+  // Reflejar en el canal correspondiente
+  if(medio==='nequi') r.nequi = (Number(r.nequi)||0) + valor;
+  else if(medio==='bancolombia') r.bancolombia = (Number(r.bancolombia)||0) + valor;
+  // (efectivo lo suma el KPI vía deudaPagoMedio)
+
+  // Cartera: el cliente abona su deuda
+  if(r.clienteId) registrarMovCartera(r.clienteId,'pago_deuda',valor,`Pago deuda (${medio}) ${_recaudoFecha}`);
+
+  // Si pagó de MÁS, el excedente es un saldo a favor del cliente (yo le debo)
+  const excedente = valor - debe;
+  if(debe>0 && excedente>0 && r.clienteId){
+    registrarMovCartera(r.clienteId,'debo_cliente',excedente,`Sobrepago deuda ${_recaudoFecha}`);
+  }
+
+  r.recibido = true;
+  recalcEfectivoFila(r);
+  saveDB(); _encolarRecaudo(r);
+  // repintar todas las filas del cliente (cambió su cartera)
+  if(r.clienteId){
+    Object.values(DB.recaudo[_recaudoFecha]||{}).forEach(o=>{ if(o.clienteId===r.clienteId) _repintarFilaRecaudo(o.pedidoId); });
+  } else _repintarFilaRecaudo(pedidoId);
+  _repintarTotalesRecaudo();
+  closeModal();
+  let msg = `Pago ${money(valor)} · ${medio}`;
+  if(debe>0 && excedente>0) msg += ` · le quedas debiendo ${money(excedente)}`;
+  else if(debe>0 && valor<debe) msg += ` · aún debe ${money(debe-valor)}`;
+  toast(msg,'success');
+}
+function pagoDeudaBorrar(pedidoId){
+  const r = DB.recaudo[_recaudoFecha] && DB.recaudo[_recaudoFecha][pedidoId]; if(!r) return;
+  _revertirPagoDeudaFila(r);
+  r.deudaPago = 0; r.deudaPagoMedio = null;
+  recalcEfectivoFila(r);
+  saveDB(); _encolarRecaudo(r);
+  if(r.clienteId){
+    Object.values(DB.recaudo[_recaudoFecha]||{}).forEach(o=>{ if(o.clienteId===r.clienteId) _repintarFilaRecaudo(o.pedidoId); });
+  } else _repintarFilaRecaudo(pedidoId);
+  _repintarTotalesRecaudo();
+  closeModal();
+  toast('Pago de deuda quitado','default');
+}
+/* Revierte en cartera y en los canales el pago de deuda ya aplicado a la fila */
+function _revertirPagoDeudaFila(r){
+  const prev = Number(r.deudaPago)||0;
+  if(prev<=0) return;
+  const medio = r.deudaPagoMedio || 'efectivo';
+  if(medio==='nequi') r.nequi = Math.max(0,(Number(r.nequi)||0)-prev);
+  else if(medio==='bancolombia') r.bancolombia = Math.max(0,(Number(r.bancolombia)||0)-prev);
+  if(r.clienteId) registrarMovCartera(r.clienteId,'deuda',prev,`Reversa pago deuda ${_recaudoFecha}`);
+}
+
 function recalcEfectivoFila(r){
   if(!r) return;
   // Efectivo del PEDIDO (venta del día). NO incluye el pago de deuda vieja:
