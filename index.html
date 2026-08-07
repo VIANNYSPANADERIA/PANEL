@@ -1919,9 +1919,11 @@ function _repintarTotalesRecaudo(){
   const filas = Object.values(DB.recaudo[_recaudoFecha]||{});
   const conf = filas.filter(f=>f.recibido);
   // EFECTIVO del día = efectivo de los pedidos + deudas pagadas EN EFECTIVO
+  // (si un registro viejo tiene deudaPago sin medio, se asume efectivo)
   const tEfe = conf.reduce((a,b)=>{
     let e = (Number(b.efectivo)||0);
-    if(b.deudaPagoMedio === 'efectivo') e += (Number(b.deudaPago)||0);
+    const medio = b.deudaPagoMedio || (Number(b.deudaPago)>0 ? 'efectivo' : null);
+    if(medio === 'efectivo') e += (Number(b.deudaPago)||0);
     return a + e;
   },0);
   // NEQUI del día = nequi de pedidos + deudas pagadas por nequi (el nequi ya incluye ambos)
@@ -2171,6 +2173,10 @@ function recibidoLeDeboConfirm(pedidoId, medio){
 function updRec(id,campo,val){
   const r = DB.recaudo[_recaudoFecha] && DB.recaudo[_recaudoFecha][id]; if(!r) return;
   r[campo] = (campo==='entregado'||campo==='recibido'||campo==='observacion') ? val : (parseNum(val));
+  // Si se escribe directo en la columna PAGO DEUDA, asumimos efectivo (para que sume en efectivo).
+  if(campo==='deudaPago'){
+    r.deudaPagoMedio = (r[campo] > 0) ? (r.deudaPagoMedio || 'efectivo') : null;
+  }
   recalcEfectivoFila(r);
   if(['deuda','deudaPago','debeCliente'].includes(campo) && r.clienteId){
     const lastKey = '_last_' + campo;
