@@ -1798,18 +1798,16 @@ function renderRecaudo(){
 }
 function recalcEfectivoFila(r){
   if(!r) return;
-  // Efectivo físico que recibe el domiciliario:
-  //   venta + pago de deuda en efectivo (entra) − otros medios − deuda nueva − faltante − salida
-  //   − debeCliente (descuento en efectivo de lo que yo le debo al cliente)
+  // Efectivo del PEDIDO (venta del día). NO incluye el pago de deuda vieja:
+  // ese se maneja aparte en deudaPago para no contarlo dos veces en los totales.
   r.efectivo = Math.max(0,
       (Number(r.subtotal)||0)
-    + (Number(r.deudaPago)||0)   // el cliente paga una deuda vieja EN EFECTIVO: ENTRA efectivo
     - (Number(r.nequi)||0)
     - (Number(r.bancolombia)||0)
-    - (Number(r.deuda)||0)        // queda debiendo: NO entra efectivo
+    - (Number(r.deuda)||0)        // el pedido queda debiendo: NO entra efectivo
     - (Number(r.faltante)||0)
     - (Number(r.salida)||0)
-    - (Number(r.debeCliente)||0)  // descuento por lo que le debo al cliente (opción 5 efectivo)
+    - (Number(r.debeCliente)||0)  // descuento por lo que le debo al cliente (efectivo)
   );
 }
 /** Suma de deudas incluidas (checkbox marcado) para el KPI "Total a cobrar". */
@@ -1920,28 +1918,28 @@ function _repintarFilaRecaudo(id){
 function _repintarTotalesRecaudo(){
   const filas = Object.values(DB.recaudo[_recaudoFecha]||{});
   const conf = filas.filter(f=>f.recibido);
-  const tEfe = conf.reduce((a,b)=>a+(b.efectivo||0),0);
-  const tNeq = conf.reduce((a,b)=>a+(b.nequi||0),0);
-  const tBan = conf.reduce((a,b)=>a+(b.bancolombia||0),0);
-  const tDeu = conf.reduce((a,b)=>a+(b.deudaPago||0),0);
+  // EFECTIVO del día = efectivo de los pedidos + deudas pagadas EN EFECTIVO
+  const tEfe = conf.reduce((a,b)=>{
+    let e = (Number(b.efectivo)||0);
+    if(b.deudaPagoMedio === 'efectivo') e += (Number(b.deudaPago)||0);
+    return a + e;
+  },0);
+  // NEQUI del día = nequi de pedidos + deudas pagadas por nequi (el nequi ya incluye ambos)
+  const tNeq = conf.reduce((a,b)=>a+(Number(b.nequi)||0),0);
+  const tBan = conf.reduce((a,b)=>a+(Number(b.bancolombia)||0),0);
+  // PAGOS DEUDAS = todo lo abonado a deudas viejas (efectivo + transferencia)
+  const tDeu = conf.reduce((a,b)=>a+(Number(b.deudaPago)||0),0);
   const tRec = filas.filter(f=>f.recaudado).reduce((a,b)=>a+(b.subtotal||0),0);
   const kpis = document.querySelectorAll('#view .grid.grid-4 .kpi .kpi-v');
   if(kpis[0]) kpis[0].textContent = money(tEfe);
   if(kpis[1]) kpis[1].textContent = money(tNeq);
   if(kpis[2]) kpis[2].textContent = money(tBan);
   if(kpis[3]) kpis[3].textContent = money(tDeu);
-  // Deudas marcadas con checkbox se suman al Total Recaudado (botón Recaudo)
-  let extraDeudas = 0;
-  for(const f of filas){
-    if(f.incluirDeuda){
-      const sd = f.clienteId ? getSaldoCliente(f.clienteId) : 0;
-      if(sd < 0) extraDeudas += Math.abs(sd);   // el cliente debe → suma
-      else if(sd > 0) extraDeudas -= sd;         // yo le debo → resta
-    }
-  }
+  // TOTAL GENERAL = efectivo + nequi + bancolombia (el deudaPago YA está dentro de cada medio,
+  // no se suma aparte para evitar el doble conteo).
   const fills = document.querySelectorAll('#view .kpi-fill .kpi-v');
-  if(fills[0]) fills[0].textContent = money(tEfe+tNeq+tBan+tDeu);
-  if(fills[1]) fills[1].textContent = money(tRec + extraDeudas);
+  if(fills[0]) fills[0].textContent = money(tEfe + tNeq + tBan);
+  if(fills[1]) fills[1].textContent = money(tRec);
   // Resumen del día
   const bruto = filas.reduce((a,b)=>a+(b.subtotal||0),0);
   const confMonto = conf.reduce((a,b)=>a+(b.subtotal||0),0);
@@ -2106,19 +2104,23 @@ function recibidoDeudaConfirm(pedidoId, medio){
   const r = DB.recaudo[_recaudoFecha] && DB.recaudo[_recaudoFecha][pedidoId]; if(!r) return;
   const monto = Number(document.getElementById('rd-monto').value)||0;
   if(monto<=0){ toast('Ingresa un monto válido','error'); return; }
-  // Si pagó SOLO la deuda, el pedido de hoy no se cuenta como venta del día.
+  // Si pagó SOLO la deuda, el pedido de hoy NO se cobra: queda como deuda nueva.
   if(r._modoPagoDeuda === 'solo'){
-    r.deuda = (Number(r.subtotal)||0);   // el pedido de hoy queda como deuda nueva (no entra efectivo)
+    r.deuda = (Number(r.subtotal)||0);   // anula el efectivo del pedido
+    // registrar en cartera que el pedido de hoy queda debiendo
+    if(r.clienteId) registrarMovCartera(r.clienteId,'deuda',(Number(r.subtotal)||0),`Pedido a crédito ${_recaudoFecha}`);
   }
-  // Aplicar el pago de la deuda vieja al campo correcto según el medio
-  if(medio==='efectivo'){
-    r.deudaPago = (Number(r.deudaPago)||0) + monto;   // SUMA en PAGO DEUDAS y efectivo
-  } else if(medio==='nequi'){
+  // Guardar el pago de deuda vieja y su medio
+  r.deudaPago = (Number(r.deudaPago)||0) + monto;
+  r.deudaPagoMedio = medio;   // 'efectivo' | 'nequi' | 'bancolombia'
+  // Si fue por transferencia, ese dinero también entra por ese canal
+  if(medio==='nequi'){
     r.nequi = (Number(r.nequi)||0) + monto;
   } else if(medio==='bancolombia'){
     r.bancolombia = (Number(r.bancolombia)||0) + monto;
   }
-  // Registrar en cartera: baja la deuda del cliente
+  // (si es efectivo, el KPI de efectivo ya lo suma vía deudaPagoMedio)
+  // Registrar en cartera: baja la deuda vieja del cliente
   if(r.clienteId) registrarMovCartera(r.clienteId,'pago_deuda',monto,`Pago deuda (${medio}) ${_recaudoFecha}`);
   r.recibido = true;
   recalcEfectivoFila(r);
