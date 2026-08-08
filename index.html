@@ -367,18 +367,22 @@ let _saveTimer = null;
 let _lastSavedJson = '';    // cache para detectar cambios reales vs writes no-op
 let _lastSavedInit = false;
 
-/* === isUserEditing: detecta si hay un modal abierto o input con foco ===
-   Evita que el Realtime re-renderice y pisotee formularios a mitad de edición. */
+/* === isUserEditing: detecta si el usuario está trabajando y NO se debe repintar.
+   Bloquea si: hay un input/select con foco, un modal abierto, o hay cambios de
+   recaudo pendientes de guardar en la cola (evita que el realtime revierta datos). */
 function isUserEditing(){
-  // Solo se bloquea el repintado si el cursor esta DENTRO de un campo editable.
-  // Tener un modal abierto ya no congela la vista: el modal vive en #modalRoot,
-  // fuera de #view, asi que repintar #view es seguro y mantiene el sync en vivo.
   const a = document.activeElement;
   if(a){
     const tag = (a.tagName || '').toLowerCase();
     if(tag==='input' || tag==='textarea' || tag==='select') return true;
     if(a.isContentEditable) return true;
   }
+  // Modal abierto = usuario en medio de una acción
+  const modalRoot = document.getElementById('modalRoot');
+  if(modalRoot && modalRoot.children.length > 0) return true;
+  // Cambios de recaudo pendientes de guardar/confirmar en la cola
+  if(typeof _recaudoCola !== 'undefined' && _recaudoCola.size > 0) return true;
+  if(typeof _recaudoEnviando !== 'undefined' && _recaudoEnviando) return true;
   return false;
 }
 
@@ -1771,11 +1775,11 @@ function renderRecaudo(){
               <td class="num">${money(f.subtotal)}</td>
               <td class="center">${celdaCartera}</td>
               <td class="num" style="white-space:nowrap">
-                <input type="checkbox" title="Incluir deuda del cliente en el total a cobrar"
+                <input type="checkbox" title="Incluir la deuda de este cliente en el Total Recaudado"
                   ${f.incluirDeuda?'checked':''}
                   onchange="toggleIncluirDeuda('${f.pedidoId}',this.checked)"
                   style="margin-right:4px;cursor:pointer;width:15px;height:15px;vertical-align:middle"/>
-                <input type="number" value="${f.deuda}" style="width:70px" onchange="updRec('${f.pedidoId}','deuda',this.value)"/>
+                <input type="number" value="${f.deuda}" style="width:70px" title="Lo que el cliente queda debiendo hoy" onchange="updRec('${f.pedidoId}','deuda',this.value)"/>
               </td>
               <td class="center"><button class="btn ${f.recaudado?'btn-tertiary':'btn-ghost'} btn-sm" onclick="recaudarPedido('${f.pedidoId}')" title="Marcar recaudo y sumar al total"><span class="ms">${f.recaudado?'check_circle':'payments'}</span>${f.recaudado?'Recaudado':'Recaudo'}</button></td>
               <td class="center"><input type="checkbox" ${f.recibido?'checked':''} onchange="updRecibido('${f.pedidoId}',this.checked)"/></td>
@@ -1950,6 +1954,7 @@ function toggleIncluirDeuda(pedidoId, val){
   r.incluirDeuda = val;
   saveDB();
   _encolarRecaudo(r);
+  _repintarFilaRecaudo(pedidoId);
   _repintarTotalesRecaudo();
 }
 /* Cola de guardado de recaudo: agrupa por fila y envía espaciado.
@@ -1961,7 +1966,7 @@ let _recaudoEnviando = false;
 function _encolarRecaudo(r){
   _recaudoCola.set(r.id, r);
   if(_recaudoTimer) clearTimeout(_recaudoTimer);
-  _recaudoTimer = setTimeout(_procesarColaRecaudo, 600);  // espera a que dejes de marcar
+  _recaudoTimer = setTimeout(_procesarColaRecaudo, 300);  // espera breve a que dejes de escribir
 }
 
 async function _procesarColaRecaudo(){
@@ -2007,6 +2012,9 @@ function _repintarFilaRecaudo(id){
   // Sincronizar el checkbox de RECIBIDO con el estado real (evita que quede a medias)
   const cbRec = tr.querySelector('input[onchange*="updRecibido"]');
   if(cbRec) cbRec.checked = !!r.recibido;
+  // Sincronizar el checkbox de INCLUIR DEUDA
+  const cbDeu = tr.querySelector('input[onchange*="toggleIncluirDeuda"]');
+  if(cbDeu) cbDeu.checked = !!r.incluirDeuda;
   // Actualizar los inputs numéricos SIN pisar el que el usuario está editando ahora
   const activo = document.activeElement;
   const setInput = (campo) => {
@@ -2060,9 +2068,18 @@ function _repintarTotalesRecaudo(){
   if(kpis[3]) kpis[3].textContent = money(tDeu);
   // TOTAL GENERAL = efectivo + nequi + bancolombia (el deudaPago YA está dentro de cada medio,
   // no se suma aparte para evitar el doble conteo).
+  // Total Recaudado (botón) + deudas incluidas con el checkbox de la columna Deuda
+  let extraDeudas = 0;
+  for(const f of filas){
+    if(f.incluirDeuda){
+      const sd = f.clienteId ? getSaldoCliente(f.clienteId) : 0;
+      if(sd < 0) extraDeudas += Math.abs(sd);   // el cliente debe → suma
+      else if(sd > 0) extraDeudas -= sd;         // yo le debo → resta
+    }
+  }
   const fills = document.querySelectorAll('#view .kpi-fill .kpi-v');
   if(fills[0]) fills[0].textContent = money(tEfe + tNeq + tBan);
-  if(fills[1]) fills[1].textContent = money(tRec);
+  if(fills[1]) fills[1].textContent = money(tRec + extraDeudas);
   // Resumen del día
   const bruto = filas.reduce((a,b)=>a+(b.subtotal||0),0);
   const confMonto = conf.reduce((a,b)=>a+(b.subtotal||0),0);
