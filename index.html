@@ -444,6 +444,16 @@ function refrescarVistaActiva(){
     'Costos y Rentabilidad':'costos','Calendario':'calendario'};
   const route = map[current];
   if(!route || !ROUTES[route]) return;
+  // En RECAUDO: no re-renderizar toda la tabla (causa parpadeo de KPIs).
+  // Solo refrescar los totales y las filas existentes sin reconstruir el DOM.
+  if(route === 'recaudo'){
+    try{
+      const filas = Object.values(DB.recaudo[_recaudoFecha]||{});
+      filas.forEach(f=>{ if(f.pedidoId) _repintarFilaRecaudo(f.pedidoId); });
+      _repintarTotalesRecaudo();
+    }catch(e){}
+    return;
+  }
   // Preservar posición de scroll de la tabla de recaudo y del mapa de clientes.
   const recBox = document.querySelector('.rec-tw');
   const recScroll = recBox ? recBox.scrollTop : 0;
