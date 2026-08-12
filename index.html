@@ -3292,16 +3292,18 @@ function _cal2(n){ return String(n).padStart(2,'0'); }
 function _calKey(y,m,d){ return `${y}-${_cal2(m+1)}-${_cal2(d)}`; }        // fecha completa
 function _calMesDia(m,d){ return `${_cal2(m+1)}-${_cal2(d)}`; }             // mes-día (para fijos)
 
-/* Eventos que aplican a una fecha concreta: temporales de esa fecha + fijos de ese mes-día */
+/* Eventos que aplican a una fecha concreta: temporales, mensuales, anuales y semanales */
 function calEventosDe(y,m,d){
   const fecha = _calKey(y,m,d);
   const md = _calMesDia(m,d);
-  const dia2 = _cal2(d);   // solo el día, para eventos mensuales
+  const dia2 = _cal2(d);              // solo el día, para eventos mensuales
+  const diaSemana = new Date(y,m,d).getDay();  // 0=domingo … 6=sábado, para semanales
   return (DB.calendario||[]).filter(e =>
     (e.tipo==='temporal' && e.fecha===fecha) ||           // un solo día
     (e.tipo==='fijo' && e.mesdia===md) ||                 // anual: mismo día y mes
     (e.tipo==='mensual' && (e.diames===dia2 ||            // mensual: mismo día, cualquier mes
-      (e.mesdia && e.mesdia.slice(3)===dia2)))            // compat con eventos guardados antes
+      (e.mesdia && e.mesdia.slice(3)===dia2))) ||
+    (e.tipo==='semanal' && Number(e.diaSemana)===diaSemana) // semanal: todos los (miércoles, etc.)
   ).sort((a,b)=> (a.hora||'99').localeCompare(b.hora||'99'));
 }
 
@@ -3318,7 +3320,7 @@ function renderCalendario(){
   for(let d=1; d<=diasMes; d++){
     const evs = calEventosDe(_calYear,_calMonth,d);
     const chips = evs.slice(0,3).map(e=>
-      `<div class="cal-chip" style="background:${e.color}" title="${e.titulo}">${e.hora?`<b>${e.hora}</b> `:''}${e.titulo}${(e.tipo==='fijo'||e.tipo==='mensual')?' ↻':''}</div>`
+      `<div class="cal-chip" style="background:${e.color}" title="${e.titulo}">${e.hora?`<b>${e.hora}</b> `:''}${e.titulo}${(e.tipo==='fijo'||e.tipo==='mensual'||e.tipo==='semanal')?' ↻':''}</div>`
     ).join('');
     const mas = evs.length>3 ? `<div class="cal-more">+${evs.length-3} más</div>` : '';
     celdas += `
@@ -3330,11 +3332,12 @@ function renderCalendario(){
 
   const totalFijos = (DB.calendario||[]).filter(e=>e.tipo==='fijo').length;
   const totalMensual = (DB.calendario||[]).filter(e=>e.tipo==='mensual').length;
+  const totalSemanal = (DB.calendario||[]).filter(e=>e.tipo==='semanal').length;
   const totalTemp = (DB.calendario||[]).filter(e=>e.tipo==='temporal').length;
 
   $('#view').innerHTML = `
     <div class="ph">
-      <div><h1>Calendario</h1><div class="sub">Anuales, mensuales y temporales · ${totalFijos} anuales · ${totalMensual} mensuales · ${totalTemp} temporales</div></div>
+      <div><h1>Calendario</h1><div class="sub">Semanales, mensuales, anuales y temporales · ${totalSemanal} semanales · ${totalMensual} mensuales · ${totalFijos} anuales · ${totalTemp} temporales</div></div>
       <div class="h-spacer"></div>
       <button class="btn btn-primary" onclick="calEventoModal()"><span class="ms">add</span>Nuevo evento</button>
     </div>
@@ -3372,6 +3375,7 @@ function calDiaModal(d){
           <div class="bold">${e.hora?`<span style="color:${e.color}">${e.hora}</span> · `:''}${e.titulo}
             ${e.tipo==='fijo'?'<span class="badge" style="background:'+e.color+';color:#fff">Anual ↻</span>':''}
             ${e.tipo==='mensual'?'<span class="badge" style="background:'+e.color+';color:#fff">Mensual ↻</span>':''}
+            ${e.tipo==='semanal'?'<span class="badge" style="background:'+e.color+';color:#fff">Semanal ↻</span>':''}
             <span class="badge">${e.categoria}</span>
           </div>
           ${e.nota?`<div class="muted" style="font-size:12px;margin-top:2px">${e.nota}</div>`:''}
@@ -3398,6 +3402,7 @@ function calEventoModal(id, dia){
       <div class="field"><label>Tipo de evento</label>
         <select id="cv-tipo" onchange="calTipoPreview()">
           <option value="temporal" ${!ev||ev.tipo==='temporal'?'selected':''}>Temporal (un solo día)</option>
+          <option value="semanal" ${ev&&ev.tipo==='semanal'?'selected':''}>Semanal (todos los mismos días de la semana)</option>
           <option value="mensual" ${ev&&ev.tipo==='mensual'?'selected':''}>Mensual (mismo día de cada mes)</option>
           <option value="fijo" ${ev&&ev.tipo==='fijo'?'selected':''}>Anual (mismo día y mes cada año)</option>
         </select></div>
@@ -3405,7 +3410,7 @@ function calEventoModal(id, dia){
         <select id="cv-cat">${CAL_CATEGORIAS.map(c=>`<option ${ev&&ev.categoria===c?'selected':''}>${c}</option>`).join('')}</select></div>
     </div>
     <div class="gf">
-      <div class="field"><label>Fecha</label><input id="cv-fecha" type="date" value="${ev&&ev.fecha?ev.fecha:fechaDefault}"/></div>
+      <div class="field"><label>Fecha</label><input id="cv-fecha" type="date" value="${ev&&ev.fecha?ev.fecha:fechaDefault}" onchange="calTipoPreview()"/></div>
       <div class="field"><label>Hora (opcional)</label><input id="cv-hora" type="time" value="${ev?ev.hora:''}"/></div>
     </div>
     <div class="field"><label>Nota (opcional)</label><textarea id="cv-nota" rows="2" placeholder="Detalles del evento...">${ev?ev.nota:''}</textarea></div>
@@ -3426,10 +3431,16 @@ function calPickColor(c){
 function calTipoPreview(){
   const tipo = document.getElementById('cv-tipo')?.value;
   const el = document.getElementById('cv-preview'); if(!el) return;
+  const fecha = document.getElementById('cv-fecha')?.value;
+  const DIAS = ['domingo','lunes','martes','miércoles','jueves','viernes','sábado'];
+  let diaNom = '';
+  if(fecha){ const p=fecha.split('-'); diaNom = DIAS[new Date(+p[0],+p[1]-1,+p[2]).getDay()]; }
   el.innerHTML = tipo==='fijo'
     ? '↻ Este evento aparecerá <b>todos los años</b> en la misma fecha (mismo mes y día).'
     : tipo==='mensual'
     ? '↻ Este evento aparecerá el <b>mismo día de todos los meses</b> (ej: el 5 de cada mes).'
+    : tipo==='semanal'
+    ? `↻ Este evento aparecerá <b>todos los ${diaNom||'días de la semana'}</b> (según la fecha que elijas).`
     : 'Este evento aparecerá <b>solo en la fecha seleccionada</b>.';
 }
 
@@ -3440,12 +3451,14 @@ async function calGuardarEvento(id){
   const fecha = document.getElementById('cv-fecha').value;
   if(!fecha){ toast('Selecciona una fecha','error'); return; }
   const partes = fecha.split('-');   // yyyy-mm-dd
+  const diaSemana = new Date(+partes[0], +partes[1]-1, +partes[2]).getDay();  // 0-6
   const data = {
     titulo,
     tipo,
     fecha,
     mesdia: `${partes[1]}-${partes[2]}`,   // mm-dd para los eventos anuales (fijo)
     diames: partes[2],                      // dd para los eventos mensuales
+    diaSemana: diaSemana,                   // 0-6 para los eventos semanales
     hora: document.getElementById('cv-hora').value,
     nota: document.getElementById('cv-nota').value.trim(),
     categoria: document.getElementById('cv-cat').value,
