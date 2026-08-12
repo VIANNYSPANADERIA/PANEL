@@ -1825,31 +1825,44 @@ function abrirModalPagoDeuda(pedidoId){
   const ctx = debe>0 ? `El cliente debe <b>${money(debe)}</b>.`
             : leDebo>0 ? `Tú le debes <b>${money(leDebo)}</b>.`
             : `Cliente al día.`;
-  const yaPago = Number(r.deudaPago)||0;
+  // Lista de pagos ya registrados en esta fila
+  const pagos = Array.isArray(r.pagosDeuda) ? r.pagosDeuda : [];
+  const totalPagado = pagos.reduce((a,p)=>a+(Number(p.monto)||0),0);
+  const nombresMedio = {efectivo:'Efectivo', nequi:'Nequi', bancolombia:'Bancolombia'};
+  let listaPagos = '';
+  if(pagos.length){
+    listaPagos = `<div class="mt-md"><b>Pagos registrados:</b></div>` +
+      pagos.map((p,i)=>`
+        <div class="flex fb" style="align-items:center;background:var(--surface-container-low);padding:6px 10px;border-radius:8px;margin-top:6px">
+          <span>${money(p.monto)} · ${nombresMedio[p.medio]||p.medio}</span>
+          <button class="btn btn-ghost btn-sm" style="color:var(--error)" onclick="pagoDeudaQuitar('${pedidoId}',${i})"><span class="ms">delete</span></button>
+        </div>`).join('') +
+      `<div class="flex fb mt-md bold" style="border-top:1px solid var(--outline-variant);padding-top:8px"><span>Total abonado:</span><span>${money(totalPagado)}</span></div>`;
+  }
   modal(`Pago de deuda · ${nombre}`, `
     <p>${ctx}</p>
-    ${yaPago>0?`<p class="mt-md muted">Ya registrado: ${money(yaPago)} (${r.deudaPagoMedio||'efectivo'}). Se reemplazará.</p>`:''}
-    <p class="mt-md bold">¿De dónde proviene el pago?</p>
+    ${listaPagos}
+    <p class="mt-md bold">Agregar un pago:</p>
     <div class="flex gap mt-md" style="flex-direction:column">
       <button class="btn btn-primary" style="width:100%" onclick="pagoDeudaMedio('${pedidoId}','efectivo')"><span class="ms">payments</span> Efectivo</button>
       <button class="btn btn-secondary" style="width:100%" onclick="pagoDeudaMedio('${pedidoId}','nequi')"><span class="ms">smartphone</span> Nequi</button>
       <button class="btn btn-secondary" style="width:100%" onclick="pagoDeudaMedio('${pedidoId}','bancolombia')"><span class="ms">account_balance</span> Bancolombia</button>
     </div>
-    ${yaPago>0?`<button class="btn btn-ghost mt-md" style="width:100%;border:1px solid var(--error);color:var(--error)" onclick="pagoDeudaBorrar('${pedidoId}')"><span class="ms">delete</span> Quitar este pago</button>`:''}
   `, '<button class="btn btn-ghost" onclick="closeModal()">Cerrar</button>');
 }
 function pagoDeudaMedio(pedidoId, medio){
   const r = DB.recaudo[_recaudoFecha] && DB.recaudo[_recaudoFecha][pedidoId]; if(!r) return;
   const saldo = r.clienteId ? getSaldoCliente(r.clienteId) : 0;
-  const debe = saldo < 0 ? Math.abs(saldo) : 0;
+  const debe = saldo < 0 ? Math.abs(saldo) : 0;   // lo que aún debe
   const nombreMedio = medio==='efectivo'?'Efectivo':medio==='nequi'?'Nequi':'Bancolombia';
   modal(`Pago de deuda · ${nombreMedio}`, `
-    <p>¿Cuánto pagó el cliente por <b>${nombreMedio}</b>?</p>
-    <div class="field mt-md"><label>Valor pagado</label>
+    <p>Deuda actual: <b>${money(debe)}</b></p>
+    <p class="mt-md">¿Cuánto pagó por <b>${nombreMedio}</b>?</p>
+    <div class="field mt-md"><label>Valor de este abono</label>
       <input id="pd-valor" type="number" value="${debe||''}" placeholder="Ej: 20000" style="font-size:16px"/></div>
     <div id="pd-preview" class="muted mt-md" style="font-size:12px"></div>
   `, `<button class="btn btn-ghost" onclick="abrirModalPagoDeuda('${pedidoId}')">Atrás</button>
-      <button class="btn btn-primary" onclick="pagoDeudaConfirm('${pedidoId}','${medio}')">Confirmar</button>`);
+      <button class="btn btn-primary" onclick="pagoDeudaConfirm('${pedidoId}','${medio}')">Agregar pago</button>`);
   setTimeout(()=>{
     const el=document.getElementById('pd-valor');
     if(el){ el.focus(); el.select();
@@ -1857,8 +1870,8 @@ function pagoDeudaMedio(pedidoId, medio){
         const v=Number(el.value)||0;
         const prev=document.getElementById('pd-preview');
         if(!prev) return;
-        if(debe>0 && v>debe) prev.innerHTML=`El cliente paga de más: le quedarás debiendo <b style="color:#004b98">${money(v-debe)}</b>.`;
-        else if(debe>0 && v<debe) prev.innerHTML=`Queda debiendo <b style="color:#ba1a1a">${money(debe-v)}</b>.`;
+        if(debe>0 && v>debe) prev.innerHTML=`Paga de más: le quedarás debiendo <b style="color:#004b98">${money(v-debe)}</b>.`;
+        else if(debe>0 && v<debe) prev.innerHTML=`Quedará debiendo <b style="color:#ba1a1a">${money(debe-v)}</b>.`;
         else if(debe>0 && v===debe) prev.innerHTML=`Paga exacto. Queda al día.`;
         else prev.innerHTML='';
       };
@@ -1871,64 +1884,76 @@ function pagoDeudaConfirm(pedidoId, medio){
   const valor = Number(document.getElementById('pd-valor').value)||0;
   if(valor<=0){ toast('Ingresa un valor válido','error'); return; }
 
-  // Revertir un pago anterior de esta fila (si lo había) antes de aplicar el nuevo
-  _revertirPagoDeudaFila(r);
-
   const saldo = r.clienteId ? getSaldoCliente(r.clienteId) : 0;
-  const debe = saldo < 0 ? Math.abs(saldo) : 0;   // cuánto debía el cliente ANTES de este pago
+  const debe = saldo < 0 ? Math.abs(saldo) : 0;   // cuánto debía ANTES de este abono
 
-  // Guardar el pago
-  r.deudaPago = valor;
-  r.deudaPagoMedio = medio;
-  // Reflejar en el canal correspondiente
+  // Acumular el pago en el array de pagos de la fila
+  if(!Array.isArray(r.pagosDeuda)) r.pagosDeuda = [];
+  r.pagosDeuda.push({ monto: valor, medio: medio });
+  // Recalcular campos derivados desde el array
+  _recalcPagosDeuda(r);
+
+  // Reflejar este abono en el canal correspondiente
   if(medio==='nequi') r.nequi = (Number(r.nequi)||0) + valor;
   else if(medio==='bancolombia') r.bancolombia = (Number(r.bancolombia)||0) + valor;
-  // (efectivo lo suma el KPI vía deudaPagoMedio)
 
   // Cartera: el cliente abona su deuda
   if(r.clienteId) registrarMovCartera(r.clienteId,'pago_deuda',valor,`Pago deuda (${medio}) ${_recaudoFecha}`);
-
-  // Si pagó de MÁS, el excedente es un saldo a favor del cliente (yo le debo)
+  // Si con este abono pagó de más, el excedente queda a favor del cliente
   const excedente = valor - debe;
   if(debe>0 && excedente>0 && r.clienteId){
     registrarMovCartera(r.clienteId,'debo_cliente',excedente,`Sobrepago deuda ${_recaudoFecha}`);
   }
 
-  // El pago de deuda NO marca "Recibido": eso es del pedido del día, es independiente.
   recalcEfectivoFila(r);
   saveDB(); _encolarRecaudo(r);
-  // repintar todas las filas del cliente (cambió su cartera)
   if(r.clienteId){
     Object.values(DB.recaudo[_recaudoFecha]||{}).forEach(o=>{ if(o.clienteId===r.clienteId) _repintarFilaRecaudo(o.pedidoId); });
   } else _repintarFilaRecaudo(pedidoId);
   _repintarTotalesRecaudo();
-  closeModal();
-  let msg = `Pago ${money(valor)} · ${medio}`;
-  if(debe>0 && excedente>0) msg += ` · le quedas debiendo ${money(excedente)}`;
-  else if(debe>0 && valor<debe) msg += ` · aún debe ${money(debe-valor)}`;
-  toast(msg,'success');
+  toast(`Abono ${money(valor)} · ${medio}`,'success');
+  // Volver al modal principal para ver el pago reflejado y poder agregar otro
+  abrirModalPagoDeuda(pedidoId);
 }
-function pagoDeudaBorrar(pedidoId){
+/* Quita un pago puntual del array */
+function pagoDeudaQuitar(pedidoId, idx){
   const r = DB.recaudo[_recaudoFecha] && DB.recaudo[_recaudoFecha][pedidoId]; if(!r) return;
-  _revertirPagoDeudaFila(r);
-  r.deudaPago = 0; r.deudaPagoMedio = null;
+  if(!Array.isArray(r.pagosDeuda) || !r.pagosDeuda[idx]) return;
+  const p = r.pagosDeuda[idx];
+  // Revertir su efecto en el canal y en cartera
+  if(p.medio==='nequi') r.nequi = Math.max(0,(Number(r.nequi)||0)-p.monto);
+  else if(p.medio==='bancolombia') r.bancolombia = Math.max(0,(Number(r.bancolombia)||0)-p.monto);
+  if(r.clienteId) registrarMovCartera(r.clienteId,'deuda',p.monto,`Reversa abono deuda ${_recaudoFecha}`);
+  r.pagosDeuda.splice(idx,1);
+  _recalcPagosDeuda(r);
   recalcEfectivoFila(r);
   saveDB(); _encolarRecaudo(r);
   if(r.clienteId){
     Object.values(DB.recaudo[_recaudoFecha]||{}).forEach(o=>{ if(o.clienteId===r.clienteId) _repintarFilaRecaudo(o.pedidoId); });
   } else _repintarFilaRecaudo(pedidoId);
   _repintarTotalesRecaudo();
-  closeModal();
-  toast('Pago de deuda quitado','default');
+  toast('Abono quitado','default');
+  abrirModalPagoDeuda(pedidoId);
 }
-/* Revierte en cartera y en los canales el pago de deuda ya aplicado a la fila */
+/* Recalcula deudaPago (total) y deudaPagoMedio desde el array de pagos.
+   deudaPago = suma de todos. Para el efectivo, deudaPagoEfectivo = suma de los en efectivo. */
+function _recalcPagosDeuda(r){
+  const pagos = Array.isArray(r.pagosDeuda) ? r.pagosDeuda : [];
+  r.deudaPago = pagos.reduce((a,p)=>a+(Number(p.monto)||0),0);
+  r.deudaPagoEfectivo = pagos.filter(p=>p.medio==='efectivo').reduce((a,p)=>a+(Number(p.monto)||0),0);
+  // medio "resumen": si hay al menos uno en efectivo lo marcamos, para compat
+  r.deudaPagoMedio = r.deudaPagoEfectivo>0 ? 'efectivo' : (pagos[0] ? pagos[0].medio : null);
+}
+/* Revierte TODO el pago de deuda de la fila (compat / reset) */
 function _revertirPagoDeudaFila(r){
-  const prev = Number(r.deudaPago)||0;
-  if(prev<=0) return;
-  const medio = r.deudaPagoMedio || 'efectivo';
-  if(medio==='nequi') r.nequi = Math.max(0,(Number(r.nequi)||0)-prev);
-  else if(medio==='bancolombia') r.bancolombia = Math.max(0,(Number(r.bancolombia)||0)-prev);
-  if(r.clienteId) registrarMovCartera(r.clienteId,'deuda',prev,`Reversa pago deuda ${_recaudoFecha}`);
+  const pagos = Array.isArray(r.pagosDeuda) ? r.pagosDeuda : [];
+  for(const p of pagos){
+    if(p.medio==='nequi') r.nequi = Math.max(0,(Number(r.nequi)||0)-p.monto);
+    else if(p.medio==='bancolombia') r.bancolombia = Math.max(0,(Number(r.bancolombia)||0)-p.monto);
+    if(r.clienteId) registrarMovCartera(r.clienteId,'deuda',p.monto,`Reversa pago deuda ${_recaudoFecha}`);
+  }
+  r.pagosDeuda = [];
+  r.deudaPago = 0; r.deudaPagoEfectivo = 0; r.deudaPagoMedio = null;
 }
 
 function recalcEfectivoFila(r){
@@ -1942,7 +1967,7 @@ function recalcEfectivoFila(r){
     - (Number(r.deuda)||0)        // el pedido queda debiendo: NO entra efectivo
     - (Number(r.faltante)||0)
     - (Number(r.salida)||0)
-    - (Number(r.debeCliente)||0)  // descuento por lo que le debo al cliente (efectivo)
+    + (Number(r.debeCliente)||0)  // "Le debo": es plata de MÁS que quedó, SUMA al efectivo
   );
 }
 /** Suma de deudas incluidas (checkbox marcado) para el KPI "Total a cobrar". */
@@ -2025,6 +2050,20 @@ function _repintarFilaRecaudo(id){
   // Sincronizar el checkbox de INCLUIR DEUDA
   const cbDeu = tr.querySelector('input[onchange*="toggleIncluirDeuda"]');
   if(cbDeu) cbDeu.checked = !!r.incluirDeuda;
+  // Actualizar el botón de PAGO DEUDA (verde con el total si hay abonos)
+  const btnPago = tr.querySelector('button[onclick^="abrirModalPagoDeuda"]');
+  if(btnPago){
+    const tot = Number(r.deudaPago)||0;
+    if(tot>0){
+      btnPago.className = 'btn btn-tertiary btn-sm';
+      btnPago.style.whiteSpace = 'nowrap';
+      btnPago.innerHTML = `<span class="ms">check</span>${money(tot)}`;
+    } else {
+      btnPago.className = 'btn btn-ghost btn-sm';
+      btnPago.style.whiteSpace = 'nowrap';
+      btnPago.innerHTML = `<span class="ms">add</span>Pago deuda`;
+    }
+  }
   // Actualizar los inputs numéricos SIN pisar el que el usuario está editando ahora
   const activo = document.activeElement;
   const setInput = (campo) => {
@@ -2057,27 +2096,29 @@ function _repintarFilaRecaudo(id){
 function _repintarTotalesRecaudo(){
   const filas = Object.values(DB.recaudo[_recaudoFecha]||{});
   const conf = filas.filter(f=>f.recibido);
-  // EFECTIVO del día = efectivo de los pedidos + deudas pagadas EN EFECTIVO
-  // (si un registro viejo tiene deudaPago sin medio, se asume efectivo)
-  const tEfe = conf.reduce((a,b)=>{
-    let e = (Number(b.efectivo)||0);
-    const medio = b.deudaPagoMedio || (Number(b.deudaPago)>0 ? 'efectivo' : null);
-    if(medio === 'efectivo') e += (Number(b.deudaPago)||0);
-    return a + e;
-  },0);
-  // NEQUI del día = nequi de pedidos + deudas pagadas por nequi (el nequi ya incluye ambos)
-  const tNeq = conf.reduce((a,b)=>a+(Number(b.nequi)||0),0);
-  const tBan = conf.reduce((a,b)=>a+(Number(b.bancolombia)||0),0);
-  // PAGOS DEUDAS = todo lo abonado a deudas viejas (efectivo + transferencia)
-  const tDeu = conf.reduce((a,b)=>a+(Number(b.deudaPago)||0),0);
+  // Un abono de deuda cuenta aunque la fila NO esté "recibida" (es independiente del pedido).
+  const conDeuda = filas.filter(f=>(Number(f.deudaPago)||0)>0);
+  const filasEfe = [...new Set([...conf, ...conDeuda])];
+  // EFECTIVO del día = efectivo de pedidos confirmados + abonos de deuda en efectivo
+  let tEfe = 0;
+  for(const b of filasEfe){
+    if(b.recibido) tEfe += (Number(b.efectivo)||0);   // efectivo del pedido solo si está recibido
+    // abonos de deuda en efectivo (siempre, estén o no recibidos)
+    if(typeof b.deudaPagoEfectivo === 'number') tEfe += b.deudaPagoEfectivo;
+    else if(b.deudaPagoMedio === 'efectivo') tEfe += (Number(b.deudaPago)||0);
+    else if(!b.deudaPagoMedio && Number(b.deudaPago)>0) tEfe += (Number(b.deudaPago)||0);
+  }
+  // NEQUI y BANCOLOMBIA: suma de todas las filas con esos valores (pedido o deuda)
+  const tNeq = filasEfe.reduce((a,b)=>a+(Number(b.nequi)||0),0);
+  const tBan = filasEfe.reduce((a,b)=>a+(Number(b.bancolombia)||0),0);
+  // PAGOS DEUDAS = todo lo abonado a deudas viejas
+  const tDeu = filas.reduce((a,b)=>a+(Number(b.deudaPago)||0),0);
   const tRec = filas.filter(f=>f.recaudado).reduce((a,b)=>a+(b.subtotal||0),0);
   const kpis = document.querySelectorAll('#view .grid.grid-4 .kpi .kpi-v');
   if(kpis[0]) kpis[0].textContent = money(tEfe);
   if(kpis[1]) kpis[1].textContent = money(tNeq);
   if(kpis[2]) kpis[2].textContent = money(tBan);
   if(kpis[3]) kpis[3].textContent = money(tDeu);
-  // TOTAL GENERAL = efectivo + nequi + bancolombia (el deudaPago YA está dentro de cada medio,
-  // no se suma aparte para evitar el doble conteo).
   // Total Recaudado (botón) + deudas incluidas con el checkbox de la columna Deuda
   let extraDeudas = 0;
   for(const f of filas){
