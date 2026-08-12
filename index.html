@@ -3303,7 +3303,11 @@ function calEventosDe(y,m,d){
     (e.tipo==='fijo' && e.mesdia===md) ||                 // anual: mismo día y mes
     (e.tipo==='mensual' && (e.diames===dia2 ||            // mensual: mismo día, cualquier mes
       (e.mesdia && e.mesdia.slice(3)===dia2))) ||
-    (e.tipo==='semanal' && Number(e.diaSemana)===diaSemana) // semanal: todos los (miércoles, etc.)
+    (e.tipo==='semanal' && (
+      (e.diaSemana!=null && Number(e.diaSemana)===diaSemana) ||
+      // Fallback: si no se guardó diaSemana, se deriva de la fecha original del evento
+      (e.diaSemana==null && e.fecha && (()=>{ const p=e.fecha.split('-'); return new Date(+p[0],+p[1]-1,+p[2]).getDay()===diaSemana; })())
+    )) // semanal: todos los mismos días de la semana, para siempre
   ).sort((a,b)=> (a.hora||'99').localeCompare(b.hora||'99'));
 }
 
