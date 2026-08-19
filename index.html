@@ -240,6 +240,30 @@ table.d tr:hover td{background:var(--surface-container-low)}
 .cal-color-opt:hover{transform:scale(1.15)}
 .cal-color-opt.sel{border-color:#000;transform:scale(1.15)}
 @media(max-width:640px){.cal-cell{min-height:70px}.cal-chip{font-size:9px}}
+
+/* ===== Registrar Movimiento (rediseño) ===== */
+.reg-toggle{display:flex;gap:10px;margin-bottom:4px}
+.reg-tbtn{flex:1;display:flex;align-items:center;justify-content:center;gap:8px;padding:16px;font-size:16px;font-weight:700;border:2px solid var(--outline-variant);border-radius:14px;background:var(--surface-container-lowest);color:var(--on-surface-variant);cursor:pointer;transition:all .15s}
+.reg-tbtn .ms{font-size:22px}
+.reg-tbtn.reg-ingreso.active{border-color:#006e4b;background:#e8f5e9;color:#006e4b}
+.reg-tbtn.reg-gasto.active{border-color:#ba1a1a;background:#ffdad6;color:#ba1a1a}
+.reg-label{display:block;font-size:12px;font-weight:600;color:var(--on-surface-variant);text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px}
+.reg-cats{display:flex;flex-wrap:wrap;gap:8px}
+.reg-cat{padding:10px 14px;font-size:14px;font-weight:600;border:2px solid var(--outline-variant);border-radius:12px;background:var(--surface-container-lowest);color:var(--on-surface);cursor:pointer;transition:all .12s}
+.reg-cat:hover{border-color:var(--primary)}
+.reg-cat.active{border-color:var(--primary);background:var(--primary);color:#fff}
+.reg-valor-wrap{display:flex;align-items:center;border:2px solid var(--outline-variant);border-radius:14px;background:var(--surface-container-lowest);padding:0 16px;transition:border-color .15s}
+.reg-valor-wrap:focus-within{border-color:var(--primary)}
+.reg-peso{font-size:28px;font-weight:800;color:var(--on-surface-variant);margin-right:8px}
+.reg-valor{flex:1;border:none;background:transparent;outline:none;font-size:32px;font-weight:800;font-family:var(--font-mono);color:#000;padding:14px 0}
+.reg-guardar{width:100%;margin-top:20px;padding:16px;font-size:16px;display:flex;align-items:center;justify-content:center;gap:8px}
+.reg-guardar .ms{font-size:20px}
+.reg-mov{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--outline-variant)}
+.reg-mov:last-child{border-bottom:none}
+.reg-mov-ico{width:40px;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0}
+.reg-mov-ico.ing{background:#e8f5e9}
+.reg-mov-ico.gas{background:#ffdad6}
+@media(max-width:640px){.reg-valor{font-size:26px}.reg-tbtn{font-size:14px;padding:12px}}
 </style>
 </head>
 <body>
@@ -452,6 +476,12 @@ function refrescarVistaActiva(){
       filas.forEach(f=>{ if(f.pedidoId) _repintarFilaRecaudo(f.pedidoId); });
       _repintarTotalesRecaudo();
     }catch(e){}
+    return;
+  }
+  // En CONTABILIDAD pestaña Registrar: no re-renderizar (borraría lo que escribes).
+  // Solo refrescar la lista de últimos movimientos.
+  if(route === 'contabilidad' && typeof _contaTab!=='undefined' && _contaTab==='registrar'){
+    try{ _refrescarUltimosMov(); }catch(e){}
     return;
   }
   // Preservar posición de scroll de la tabla de recaudo y del mapa de clientes.
@@ -2826,18 +2856,58 @@ function renderConta(){
       <div class="card"><div class="card-h"><div class="card-t">Últimos movimientos</div></div><div class="card-b"><table class="d"><thead><tr><th>Fecha</th><th>Tipo</th><th>Descripción</th><th>Categoría</th><th>Valor</th></tr></thead><tbody>${movs.slice(-10).reverse().map(m=>`<tr><td>${m.fecha}</td><td><span class="badge ${m.tipo==='Ingreso'?'badge-success':'badge-error'}">${m.tipo}</span></td><td>${m.descripcion}</td><td>${m.categoria}</td><td class="num bold">${money(m.valor)}</td></tr>`).join('')||'<tr><td colspan="5" class="empty">Sin movimientos</td></tr>'}</tbody></table></div></div>
     `;
   } else if(_contaTab==='registrar'){
+    const catsIngreso = DB.conta.categorias.filter(c=>c.tipo==='Ingreso');
+    const catsGasto   = DB.conta.categorias.filter(c=>c.tipo==='Gasto');
+    const emoji = (nom)=>_emojiCategoria(nom);
+    const ultimos = [...DB.conta.movimientos].sort((a,b)=>(b.fecha||'').localeCompare(a.fecha||'')||(b.id||'').localeCompare(a.id||'')).slice(0,6);
     body=`
       <div class="card"><div class="card-b">
-        <div class="gf3">
-          <div class="field"><label>Tipo</label><select id="mv-tipo"><option>Ingreso</option><option>Gasto</option></select></div>
-          <div class="field"><label>Categoría</label><select id="mv-cat">${DB.conta.categorias.map(c=>`<option value="${c.nombre}" data-tipo="${c.tipo}">${c.nombre}</option>`).join('')}</select></div>
-          <div class="field"><label>Valor</label><input id="mv-val" type="number"/></div>
+        <!-- Selector Ingreso / Gasto grande -->
+        <div class="reg-toggle">
+          <button type="button" id="reg-btn-ingreso" class="reg-tbtn reg-ingreso active" onclick="regSetTipo('Ingreso')">
+            <span class="ms">trending_up</span> Ingreso
+          </button>
+          <button type="button" id="reg-btn-gasto" class="reg-tbtn reg-gasto" onclick="regSetTipo('Gasto')">
+            <span class="ms">trending_down</span> Gasto
+          </button>
         </div>
-        <div class="gf">
-          <div class="field"><label>Descripción</label><input id="mv-desc"/></div>
+        <input type="hidden" id="mv-tipo" value="Ingreso"/>
+
+        <!-- Categorías como chips con emoji, filtradas por tipo -->
+        <label class="reg-label mt-md">Categoría</label>
+        <div id="reg-cats" class="reg-cats">
+          ${catsIngreso.map((c,i)=>`<button type="button" class="reg-cat ${i===0?'active':''}" data-cat="${c.nombre}" onclick="regSetCat(this)">${emoji(c.nombre)} ${c.nombre}</button>`).join('')}
+        </div>
+        <input type="hidden" id="mv-cat" value="${catsIngreso[0]?catsIngreso[0].nombre:''}"/>
+
+        <!-- Valor grande -->
+        <label class="reg-label mt-md">Valor</label>
+        <div class="reg-valor-wrap">
+          <span class="reg-peso">$</span>
+          <input id="mv-val" type="number" inputmode="numeric" placeholder="0" class="reg-valor" autocomplete="off"/>
+        </div>
+
+        <div class="gf mt-md">
+          <div class="field"><label>Descripción (opcional)</label><input id="mv-desc" placeholder="Ej: Venta del día" autocomplete="off"/></div>
           <div class="field"><label>Fecha</label><input id="mv-fecha" type="date" value="${todayKey()}"/></div>
         </div>
-        <button class="btn btn-primary" onclick="guardarMov()">Registrar Movimiento</button>
+        <button class="btn btn-primary reg-guardar" onclick="guardarMov()"><span class="ms">check_circle</span> Registrar Movimiento</button>
+      </div></div>
+
+      <!-- Últimos movimientos para verificar sin cambiar de pestaña -->
+      <div class="card mt-md"><div class="card-b">
+        <div class="bold mb-md">Últimos movimientos</div>
+        <div id="reg-ultimos">
+          ${ultimos.length===0?'<div class="muted">Aún no hay movimientos.</div>':ultimos.map(m=>`
+            <div class="reg-mov">
+              <div class="reg-mov-ico ${m.tipo==='Ingreso'?'ing':'gas'}">${emoji(m.categoria)}</div>
+              <div style="flex:1">
+                <div class="bold">${m.categoria}${m.descripcion?` · <span class="muted" style="font-weight:400">${m.descripcion}</span>`:''}</div>
+                <div class="muted" style="font-size:11px">${m.fecha||''}</div>
+              </div>
+              <div class="bold" style="color:${m.tipo==='Ingreso'?'var(--tertiary)':'var(--error)'}">${m.tipo==='Ingreso'?'+':'−'}${money(m.valor)}</div>
+            </div>`).join('')}
+        </div>
       </div></div>
     `;
   } else if(_contaTab==='historial'){
@@ -3072,13 +3142,64 @@ function pintarGraficos(){
 }
 
 function valCat(c){return DB.conta.movimientos.filter(m=>m.categoria===c.nombre).reduce((a,b)=>a+b.valor,0);}
+/* ===== Formulario Registrar Movimiento (nuevo diseño) ===== */
+const _EMOJI_CAT = {
+  'ventas':'🛒','venta':'🛒','panadería':'🍞','panaderia':'🍞','reparto':'🛵',
+  'nequi':'📱','bancolombia':'🏦','efectivo':'💵','caja':'💰','transferencia':'💳',
+  'insumos':'🌾','harina':'🌾','servicios':'💡','energía':'⚡','energia':'⚡',
+  'agua':'🚿','gas':'🔥','internet':'🌐','arriendo':'🏠','salarios':'👥','nómina':'👥',
+  'nomina':'👥','transporte':'🛵','gasolina':'⛽','mantenimiento':'🔧','impuestos':'📋',
+  'retiro':'🤑','préstamo':'🏧','prestamo':'🏧','otros':'📦','deuda':'📌','pago':'✅'
+};
+function _emojiCategoria(nombre){
+  if(!nombre) return '📦';
+  const n = nombre.toLowerCase();
+  for(const k in _EMOJI_CAT){ if(n.includes(k)) return _EMOJI_CAT[k]; }
+  return '📦';
+}
+function regSetTipo(tipo){
+  const el = document.getElementById('mv-tipo'); if(el) el.value = tipo;
+  document.getElementById('reg-btn-ingreso')?.classList.toggle('active', tipo==='Ingreso');
+  document.getElementById('reg-btn-gasto')?.classList.toggle('active', tipo==='Gasto');
+  // Re-pintar SOLO las categorías del tipo elegido (sin tocar valor/descripción escritos)
+  const cats = DB.conta.categorias.filter(c=>c.tipo===tipo);
+  const cont = document.getElementById('reg-cats');
+  if(cont){
+    cont.innerHTML = cats.map((c,i)=>`<button type="button" class="reg-cat ${i===0?'active':''}" data-cat="${c.nombre}" onclick="regSetCat(this)">${_emojiCategoria(c.nombre)} ${c.nombre}</button>`).join('');
+  }
+  const hid = document.getElementById('mv-cat');
+  if(hid) hid.value = cats[0]?cats[0].nombre:'';
+}
+function regSetCat(btn){
+  document.querySelectorAll('#reg-cats .reg-cat').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  const hid = document.getElementById('mv-cat');
+  if(hid) hid.value = btn.dataset.cat;
+}
+/* Refresca solo la lista de "Últimos movimientos" sin re-renderizar el formulario */
+function _refrescarUltimosMov(){
+  const cont = document.getElementById('reg-ultimos');
+  if(!cont) return;
+  const ultimos = [...DB.conta.movimientos].sort((a,b)=>(b.fecha||'').localeCompare(a.fecha||'')||(b.id||'').localeCompare(a.id||'')).slice(0,6);
+  cont.innerHTML = ultimos.length===0?'<div class="muted">Aún no hay movimientos.</div>':ultimos.map(m=>`
+    <div class="reg-mov">
+      <div class="reg-mov-ico ${m.tipo==='Ingreso'?'ing':'gas'}">${_emojiCategoria(m.categoria)}</div>
+      <div style="flex:1">
+        <div class="bold">${m.categoria}${m.descripcion?` · <span class="muted" style="font-weight:400">${m.descripcion}</span>`:''}</div>
+        <div class="muted" style="font-size:11px">${m.fecha||''}</div>
+      </div>
+      <div class="bold" style="color:${m.tipo==='Ingreso'?'var(--tertiary)':'var(--error)'}">${m.tipo==='Ingreso'?'+':'−'}${money(m.valor)}</div>
+    </div>`).join('');
+}
+
 async function guardarMov(){
   const tipo = $('#mv-tipo').value;
   const cat  = $('#mv-cat').value;
   const val  = Number($('#mv-val').value)||0;
   const desc = $('#mv-desc').value;
   const fecha= $('#mv-fecha').value;
-  if(val<=0){ toast('Valor inválido','error'); return; }
+  if(val<=0){ toast('Ingresa un valor válido','error'); if($('#mv-val'))$('#mv-val').focus(); return; }
+  if(!cat){ toast('Selecciona una categoría','error'); return; }
   try{
     await appwriteService.guardarMovimientoContable({id:uid('MV'),tipo,categoria:cat,valor:val,descripcion:desc,fecha});
     saveDB();
@@ -3087,6 +3208,7 @@ async function guardarMov(){
     if($('#mv-val')) $('#mv-val').value = '';
     if($('#mv-desc')) $('#mv-desc').value = '';
     if($('#mv-val')) $('#mv-val').focus();
+    _refrescarUltimosMov();   // muestra el nuevo movimiento sin borrar el formulario
   }
   catch(e){ toast('No se pudo registrar el movimiento','error'); }
 }
