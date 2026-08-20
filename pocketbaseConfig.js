@@ -6,7 +6,7 @@
 'use strict';
 
 const PB_CONFIG = Object.freeze({
-  // URL de tu PocketBase con SSL (Caddy + DuckDNS). NO uses la IP con :8090 (no tiene https).
+  // URL de tu PocketBase. Cuando tengas SSL, cámbiala a https://tu-dominio
   url: 'https://viannyspanaderia.duckdns.org',
 
   // Credenciales del usuario del ERP (creado en PocketBase → users)
@@ -15,7 +15,7 @@ const PB_CONFIG = Object.freeze({
   timeoutMs: 15000,
   pageSize: 500,
   cacheTtlMs: 30000,
-  echoGraceMs: 4000,
+  echoGraceMs: 1500,
   resyncMs: 25000,
   debug: false
 });
