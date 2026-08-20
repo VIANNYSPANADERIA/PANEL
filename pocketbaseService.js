@@ -543,6 +543,9 @@ function _aplicarEvento(table, ev) {
       const f = obj?.fecha;
       const pid = obj?.pedidoId;
       if (!f || !pid) break;
+      // Si esta fila tiene cambios locales pendientes de guardar, NO la sobrescribas
+      // (evita que el realtime revierta lo que el usuario acaba de marcar/escribir).
+      if (typeof window._recaudoCola !== 'undefined' && window._recaudoCola && window._recaudoCola.has(pid)) break;
       if (accion === 'delete') { if (DB.recaudo[f]) delete DB.recaudo[f][pid]; }
       else { (DB.recaudo[f] ??= {})[pid] = obj; }
       break;
