@@ -1927,13 +1927,9 @@ function pagoDeudaConfirm(pedidoId, medio){
   if(medio==='nequi') r.nequi = (Number(r.nequi)||0) + valor;
   else if(medio==='bancolombia') r.bancolombia = (Number(r.bancolombia)||0) + valor;
 
-  // Cartera: el cliente abona su deuda
+  // Cartera: el cliente abona su deuda. El abono completo ya deja el saldo a favor
+  // si pagó de más (no se registra el excedente aparte para no duplicarlo).
   if(r.clienteId) registrarMovCartera(r.clienteId,'pago_deuda',valor,`Pago deuda (${medio}) ${_recaudoFecha}`);
-  // Si con este abono pagó de más, el excedente queda a favor del cliente
-  const excedente = valor - debe;
-  if(debe>0 && excedente>0 && r.clienteId){
-    registrarMovCartera(r.clienteId,'debo_cliente',excedente,`Sobrepago deuda ${_recaudoFecha}`);
-  }
 
   recalcEfectivoFila(r);
   saveDB(); _encolarRecaudo(r);
@@ -2025,6 +2021,7 @@ function toggleIncluirDeuda(pedidoId, val){
 /* Cola de guardado de recaudo: agrupa por fila y envía espaciado.
    Evita el 429 de Appwrite cuando se marcan varias filas seguidas. */
 const _recaudoCola = new Map();   // rowId -> objeto fila a guardar
+window._recaudoCola = _recaudoCola;   // visible para el servicio (protege del realtime)
 let _recaudoTimer = null;
 let _recaudoEnviando = false;
 
@@ -2536,12 +2533,13 @@ async function registrarMovCartera(clienteId,tipo,valor,observacion=''){
 }
 function renderCartera(){
   setHeader('Cartera');
-  const clientesConMov = DB.clientes.filter(c=>DB.cartera.some(m=>m.clienteId===c.id) || c.saldoInicial);
+  // Solo clientes con saldo distinto de 0 (los que están al día no aparecen)
+  const clientesConMov = DB.clientes.filter(c=>Math.round(getSaldoCliente(c.id))!==0);
   const carteraTotal = clientesConMov.reduce((a,c)=>a+Math.abs(getSaldoCliente(c.id)),0);
   const porCobrar = clientesConMov.reduce((a,c)=>{const s=getSaldoCliente(c.id);return a+(s<0?Math.abs(s):0)},0);
   const porPagar = clientesConMov.reduce((a,c)=>{const s=getSaldoCliente(c.id);return a+(s>0?s:0)},0);
   $('#view').innerHTML = `
-    <div class="ph"><div><h1>Cartera</h1><div class="sub">Control de deudas integrado con Recaudo y Pedidos</div></div>
+    <div class="ph"><div><h1>Cartera</h1><div class="sub">Solo clientes con saldo pendiente · integrado con Recaudo y Pedidos</div></div>
       <div class="h-spacer"></div>
       <button class="btn btn-primary" onclick="saldoInicialModal()"><span class="ms">payments</span>Establecer Saldo Inicial</button>
       <button class="btn btn-ghost" onclick="historialGeneralModal()"><span class="ms">history</span>Historial General</button>
@@ -2553,7 +2551,7 @@ function renderCartera(){
       <div class="kpi"><div class="kpi-ico kpi-ico-t"><span class="ms">arrow_downward</span></div><div class="kpi-l">Por Pagar</div><div class="kpi-v">${money(porPagar)}</div></div>
     </div>
     <div class="tw"><table class="d"><thead><tr><th>Cliente</th><th>Me debe</th><th>Le debo</th><th>Saldo</th><th>Último movimiento</th><th></th></tr></thead><tbody>
-      ${clientesConMov.length===0?`<tr><td colspan="6" class="empty">Sin movimientos</td></tr>`:clientesConMov.map(c=>{
+      ${clientesConMov.length===0?`<tr><td colspan="6" class="empty">Todos los clientes están al día 🎉</td></tr>`:clientesConMov.map(c=>{
         const s=getSaldoCliente(c.id);
         const meDebe = s<0?Math.abs(s):0, leDebo = s>0?s:0;
         const ult = DB.cartera.filter(m=>m.clienteId===c.id).pop();
