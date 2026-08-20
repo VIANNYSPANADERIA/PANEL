@@ -7,7 +7,7 @@
 
 const PB_CONFIG = Object.freeze({
   // URL de tu PocketBase. Cuando tengas SSL, cámbiala a https://tu-dominio
-  url: 'https://viannyspanaderia.duckdns.org',
+  url: 'https://169.58.91.90:8090',
 
   // Credenciales del usuario del ERP (creado en PocketBase → users)
   // Se usan para iniciar sesión automáticamente si no hay sesión.
@@ -15,7 +15,7 @@ const PB_CONFIG = Object.freeze({
   timeoutMs: 15000,
   pageSize: 500,
   cacheTtlMs: 30000,
-  echoGraceMs: 1500,
+  echoGraceMs: 4000,
   resyncMs: 25000,
   debug: false
 });
