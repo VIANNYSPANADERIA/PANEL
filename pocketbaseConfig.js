@@ -6,8 +6,8 @@
 'use strict';
 
 const PB_CONFIG = Object.freeze({
-  // URL de tu PocketBase. Cuando tengas SSL, cámbiala a https://tu-dominio
-  url: 'https://169.58.91.90:8090',
+  // URL de tu PocketBase con SSL (Caddy + DuckDNS). NO uses la IP con :8090 (no tiene https).
+  url: 'https://viannyspanaderia.duckdns.org',
 
   // Credenciales del usuario del ERP (creado en PocketBase → users)
   // Se usan para iniciar sesión automáticamente si no hay sesión.
