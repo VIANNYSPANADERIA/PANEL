@@ -401,6 +401,9 @@ function isUserEditing(){
     if(tag==='input' || tag==='textarea' || tag==='select') return true;
     if(a.isContentEditable) return true;
   }
+  // Grace period: hasta 1.2s después de la última tecla, seguimos "editando".
+  // Evita que un re-render llegue justo entre teclas y se coma un número.
+  if(typeof _ultimaTecla !== 'undefined' && (Date.now() - _ultimaTecla) < 1200) return true;
   // Modal abierto = usuario en medio de una acción
   const modalRoot = document.getElementById('modalRoot');
   if(modalRoot && modalRoot.children.length > 0) return true;
@@ -409,15 +412,25 @@ function isUserEditing(){
   if(typeof _recaudoEnviando !== 'undefined' && _recaudoEnviando) return true;
   return false;
 }
+// Marca de tiempo de la última tecla escrita en cualquier input.
+let _ultimaTecla = 0;
+document.addEventListener('input', ()=>{ _ultimaTecla = Date.now(); }, true);
+document.addEventListener('keydown', ()=>{ _ultimaTecla = Date.now(); }, true);
 
-/* === saveDB: SOLO cache local. Ya NO empuja un JSON global a la nube.
-   Las mutaciones persistentes se hacen vía appwriteService.guardarXXX(). */
-function saveDB(){
-  let newJson;
-  try{ newJson = JSON.stringify(DB); }catch(e){ console.warn('No se pudo serializar DB:', e); return; }
-  try{ localStorage.setItem(DB_KEY, newJson); }catch(e){ console.warn('No se pudo guardar local:', e); }
-  _lastSavedJson = newJson;
-  _lastSavedInit = true;
+/* === saveDB: SOLO cache local, con debounce para no bloquear la UI.
+   Serializar todo el DB en cada tecla causa latencia; lo agrupamos a 400ms. === */
+let _saveDBTimer = null;
+function saveDB(inmediato){
+  if(_saveDBTimer){ clearTimeout(_saveDBTimer); _saveDBTimer = null; }
+  const hacer = ()=>{
+    let newJson;
+    try{ newJson = JSON.stringify(DB); }catch(e){ console.warn('No se pudo serializar DB:', e); return; }
+    try{ localStorage.setItem(DB_KEY, newJson); }catch(e){ console.warn('No se pudo guardar local:', e); }
+    _lastSavedJson = newJson;
+    _lastSavedInit = true;
+  };
+  if(inmediato){ hacer(); return; }
+  _saveDBTimer = setTimeout(hacer, 400);
 }
 
 /* === getDBSnapshot: devuelve una copia del DB en memoria (para backups) === */
@@ -1773,6 +1786,7 @@ function renderRecaudo(){
       <div class="h-spacer"></div>
       <input type="date" id="rec-fecha" value="${_recaudoFecha}" onchange="_recaudoFecha=this.value;entrarRecaudo()"/>
       <button class="btn btn-ghost btn-sm" onclick="entrarRecaudo()"><span class="ms">refresh</span>Actualizar</button>
+      <button class="btn btn-secondary btn-sm" onclick="abrirModalPagarDeudaCartera()"><span class="ms">volunteer_activism</span>Pagar deuda (cartera)</button>
       <button class="btn btn-danger btn-sm" onclick="reiniciarRecaudo()"><span class="ms">restart_alt</span>Reiniciar día</button>
       <button class="btn btn-secondary btn-sm" onclick="exportarRecaudoExcel()"><span class="ms">download</span>Exportar Excel</button>
     </div>
@@ -1986,6 +2000,59 @@ function _revertirPagoDeudaFila(r){
   r.deudaPago = 0; r.deudaPagoEfectivo = 0; r.deudaPagoMedio = null;
 }
 
+/* ===== Pagar deuda de un cliente de cartera (sin pedido del día) ===== */
+function abrirModalPagarDeudaCartera(){
+  // Clientes que deben (saldo negativo)
+  const deudores = DB.clientes
+    .map(c=>({c, saldo:getSaldoCliente(c.id)}))
+    .filter(x=>x.saldo<0)
+    .sort((a,b)=>a.saldo-b.saldo);
+  if(deudores.length===0){
+    modal('Pagar deuda','<p class="muted">Ningún cliente tiene deuda pendiente. 🎉</p>','<button class="btn btn-ghost" onclick="closeModal()">Cerrar</button>');
+    return;
+  }
+  const cards = deudores.map(x=>`
+    <button class="btn btn-ghost" style="width:100%;justify-content:space-between;margin-bottom:8px;text-align:left" onclick="pagarDeudaCarteraMedio('${x.c.id}')">
+      <span>${x.c.nombre}</span>
+      <span class="badge badge-error">Debe ${money(-x.saldo)}</span>
+    </button>`).join('');
+  modal('Pagar deuda de un cliente', `
+    <div class="muted mb-md">Selecciona el cliente que va a abonar su deuda (no necesita pedido hoy).</div>
+    ${cards}
+  `, '<button class="btn btn-ghost" onclick="closeModal()">Cerrar</button>', 'modal-lg');
+}
+function pagarDeudaCarteraMedio(clienteId){
+  const c = DB.clientes.find(x=>x.id===clienteId); if(!c) return;
+  const debe = Math.abs(getSaldoCliente(clienteId));
+  modal(`Pago de deuda · ${c.nombre}`, `
+    <p>Debe <b>${money(debe)}</b>. ¿Cómo paga?</p>
+    <div class="field mt-md"><label>Monto a abonar</label>
+      <input id="pdc-monto" type="number" value="${debe}" style="font-size:16px"/></div>
+    <div class="flex gap mt-md" style="flex-direction:column">
+      <button class="btn btn-primary" style="width:100%" onclick="pagarDeudaCarteraConfirm('${clienteId}','efectivo')"><span class="ms">payments</span> Efectivo</button>
+      <button class="btn btn-secondary" style="width:100%" onclick="pagarDeudaCarteraConfirm('${clienteId}','nequi')"><span class="ms">smartphone</span> Nequi</button>
+      <button class="btn btn-secondary" style="width:100%" onclick="pagarDeudaCarteraConfirm('${clienteId}','bancolombia')"><span class="ms">account_balance</span> Bancolombia</button>
+    </div>
+  `, `<button class="btn btn-ghost" onclick="abrirModalPagarDeudaCartera()">Atrás</button>`);
+  setTimeout(()=>{ const el=document.getElementById('pdc-monto'); if(el){el.focus();el.select();} },60);
+}
+async function pagarDeudaCarteraConfirm(clienteId, medio){
+  const monto = Number(document.getElementById('pdc-monto').value)||0;
+  if(monto<=0){ toast('Monto inválido','error'); return; }
+  // Registra el pago en cartera (baja la deuda del cliente)
+  await registrarMovCartera(clienteId,'pago_deuda',monto,`Pago deuda directo (${medio}) ${_recaudoFecha}`);
+  // Registrar en contabilidad como ingreso del día (para que se refleje en el efectivo/nequi/banco)
+  const cat = medio==='efectivo'?'Efectivo': medio==='nequi'?'Nequi':'Bancolombia';
+  try{
+    await appwriteService.guardarMovimientoContable({id:uid('MV'),tipo:'Ingreso',categoria:'Pago deuda cliente',valor:monto,descripcion:`${(DB.clientes.find(c=>c.id===clienteId)||{}).nombre||''} · ${cat}`,fecha:_recaudoFecha});
+  }catch(e){}
+  saveDB(); closeModal();
+  // Repintar filas del recaudo por si el cliente aparece
+  Object.values(DB.recaudo[_recaudoFecha]||{}).forEach(o=>{ if(o.clienteId===clienteId) _repintarFilaRecaudo(o.pedidoId); });
+  _repintarTotalesRecaudo();
+  toast(`Deuda abonada: ${money(monto)} · ${cat}`,'success');
+}
+
 function recalcEfectivoFila(r){
   if(!r) return;
   // Efectivo del PEDIDO (venta del día). NO incluye el pago de deuda vieja:
@@ -1997,7 +2064,8 @@ function recalcEfectivoFila(r){
     - (Number(r.deuda)||0)        // el pedido queda debiendo: NO entra efectivo
     - (Number(r.faltante)||0)
     - (Number(r.salida)||0)
-    + (Number(r.debeCliente)||0)  // "Le debo": es plata de MÁS que quedó, SUMA al efectivo
+    + (Number(r.debeCliente)||0)  // "Le debo": plata de MÁS que quedó hoy, SUMA
+    - (Number(r.descuentoLeDebo)||0)  // descuento por saldo a favor usado (día siguiente), RESTA
   );
 }
 /** Suma de deudas incluidas (checkbox marcado) para el KPI "Total a cobrar". */
@@ -2365,20 +2433,23 @@ function recibidoLeDeboConfirm(pedidoId, medio){
   const r = DB.recaudo[_recaudoFecha] && DB.recaudo[_recaudoFecha][pedidoId]; if(!r) return;
   const monto = Number(document.getElementById('rld-monto').value)||0;
   if(monto<=0){ toast('Ingresa un monto válido','error'); return; }
-  // Restar del medio elegido (es un descuento en la factura del día)
+  // Descuento en la factura del día: RESTA del medio elegido.
   if(medio==='nequi'){
     r.nequi = Math.max(0,(Number(r.nequi)||0) - monto);
   } else if(medio==='bancolombia'){
     r.bancolombia = Math.max(0,(Number(r.bancolombia)||0) - monto);
   } else {
-    // efectivo: usamos debeCliente que ya reduce en la fila
-    r.debeCliente = (Number(r.debeCliente)||0) + monto;
+    // efectivo: usamos descuentoLeDebo que RESTA del efectivo en la fórmula
+    r.descuentoLeDebo = (Number(r.descuentoLeDebo)||0) + monto;
   }
-  // En cartera: baja lo que yo le debo al cliente
+  // En cartera: baja lo que yo le debo al cliente (usé el saldo a favor)
   if(r.clienteId) registrarMovCartera(r.clienteId,'debo_cliente',-monto,`Descuento le debo (${medio}) ${_recaudoFecha}`);
   r.recibido = true;
   recalcEfectivoFila(r);
-  saveDB(); _encolarRecaudo(r); _repintarFilaRecaudo(pedidoId); _repintarTotalesRecaudo();
+  saveDB(); _encolarRecaudo(r);
+  if(r.clienteId){ Object.values(DB.recaudo[_recaudoFecha]||{}).forEach(o=>{ if(o.clienteId===r.clienteId) _repintarFilaRecaudo(o.pedidoId); }); }
+  else _repintarFilaRecaudo(pedidoId);
+  _repintarTotalesRecaudo();
   closeModal();
   toast(`Descontado ${money(monto)} de ${medio}`,'success');
 }
@@ -2921,7 +2992,13 @@ function renderConta(){
         <div class="kpi"><div class="kpi-l">Registros</div><div class="kpi-v">${movs.length}</div></div>
       </div>
       <div class="tw"><table class="d"><thead><tr><th>Fecha</th><th>Tipo</th><th>Descripción</th><th>Categoría</th><th>Valor</th><th></th></tr></thead><tbody>
-        ${movs.length===0?'<tr><td colspan="6" class="empty">Sin movimientos</td></tr>':movs.map(m=>`<tr><td>${m.fecha}</td><td><span class="badge ${m.tipo==='Ingreso'?'badge-success':'badge-error'}">${m.tipo}</span></td><td>${m.descripcion}</td><td>${m.categoria}</td><td class="num bold">${money(m.valor)}</td><td><button class="btn btn-ghost btn-sm" onclick="editMov('${m.id}')"><span class="ms">edit</span></button><button class="btn btn-danger btn-sm" onclick="delMov('${m.id}')"><span class="ms">delete</span></button></td></tr>`).join('')}
+        ${movs.length===0?'<tr><td colspan="6" class="empty">Sin movimientos</td></tr>':[...movs].sort((a,b)=>{
+          const fc = (b.fecha||'').localeCompare(a.fecha||'');   // fecha más reciente primero
+          if(fc!==0) return fc;
+          // misma fecha: Ingresos antes que Gastos
+          if(a.tipo!==b.tipo) return a.tipo==='Ingreso'?-1:1;
+          return (b.id||'').localeCompare(a.id||'');
+        }).map(m=>`<tr><td>${m.fecha}</td><td><span class="badge ${m.tipo==='Ingreso'?'badge-success':'badge-error'}">${m.tipo}</span></td><td>${m.descripcion}</td><td>${m.categoria}</td><td class="num bold">${money(m.valor)}</td><td><button class="btn btn-ghost btn-sm" onclick="editMov('${m.id}')"><span class="ms">edit</span></button><button class="btn btn-danger btn-sm" onclick="delMov('${m.id}')"><span class="ms">delete</span></button></td></tr>`).join('')}
       </tbody></table></div>
       <button class="btn btn-secondary mt-md" onclick="exportarContaCSV()"><span class="ms">download</span>Exportar CSV</button>
     `;
