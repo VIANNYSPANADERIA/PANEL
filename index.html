@@ -1754,10 +1754,12 @@ async function sincronizarRecaudoDia(fecha){
       r[p.id].subtotal = p.total;
       r[p.id].cliente = (DB.clientes.find(c=>c.id===p.clienteId)||{}).nombre || r[p.id].cliente;
       if(r[p.id].recaudado===undefined) r[p.id].recaudado=false;
-      if(cambioSub){
-        recalcEfectivoFila(r[p.id]);   // el pedido cambió: el efectivo (remanente) también
-        if(r[p.id].id) _encolarRecaudo(r[p.id]);
-      }
+      // Siempre se recalcula (no solo si cambió el pedido): así una fila vieja
+      // que haya quedado con un "efectivo" desactualizado (por ejemplo $0 de
+      // antes de este ajuste) se corrige sola al entrar al módulo, sin
+      // depender de que el usuario toque algo primero.
+      recalcEfectivoFila(r[p.id]);
+      if(cambioSub && r[p.id].id) _encolarRecaudo(r[p.id]);
     }
   }
 }
