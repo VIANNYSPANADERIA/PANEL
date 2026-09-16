@@ -502,14 +502,26 @@ document.addEventListener('keydown', ()=>{ _ultimaTecla = Date.now(); }, true);
 /* === saveDB: SOLO cache local, con debounce para no bloquear la UI.
    Serializar todo el DB en cada tecla causa latencia; lo agrupamos a 400ms. === */
 let _saveDBTimer = null;
+let _saveDBDesactivado = false;   // cuota local llena: no reintentar en cada ciclo
 function saveDB(inmediato){
   if(_saveDBTimer){ clearTimeout(_saveDBTimer); _saveDBTimer = null; }
   const hacer = ()=>{
+    if(_saveDBDesactivado) return;
     let newJson;
     try{ newJson = JSON.stringify(DB); }catch(e){ console.warn('No se pudo serializar DB:', e); return; }
-    try{ localStorage.setItem(DB_KEY, newJson); }catch(e){ console.warn('No se pudo guardar local:', e); }
-    _lastSavedJson = newJson;
-    _lastSavedInit = true;
+    // Si nada cambió no se escribe. Las fotos de los productos viajan en
+    // base64 dentro del DB, así que escribir en cada ciclo significaba volcar
+    // megas a localStorage (operación síncrona) y la página se congelaba.
+    if(_lastSavedInit && newJson === _lastSavedJson) return;
+    try{
+      localStorage.setItem(DB_KEY, newJson);
+      _lastSavedJson = newJson;
+      _lastSavedInit = true;
+    }catch(e){
+      console.warn('No se pudo guardar local:', e);
+      _saveDBDesactivado = true;
+      toast('La copia local está llena. Los datos se siguen guardando en el servidor.','error');
+    }
   };
   if(inmediato){ hacer(); return; }
   _saveDBTimer = setTimeout(hacer, 400);
@@ -1155,6 +1167,24 @@ function parseNum(val){
 function formatInputMil(el){
   const v = parseNum(el.value);
   el.value = v>0 ? v.toLocaleString('es-CO') : '';
+  // El blur también sincroniza: si el último dígito no alcanzó a registrarse
+  // (pegar, teclado del celular, salir del campo muy rápido), aquí se corrige.
+  if(el.dataset && el.dataset.pid && el.dataset.campo){
+    if(!_itemsPedido[el.dataset.pid]) _itemsPedido[el.dataset.pid] = {cantidad:0,dinero:0};
+    _itemsPedido[el.dataset.pid][el.dataset.campo] = v;
+  }
+}
+/* Lo que está escrito en pantalla manda. Antes el pedido se armaba solo con
+   `_itemsPedido`, que se llenaba en cada tecla: si una tecla no se registraba,
+   la factura salía con un valor distinto al que se veía en el formulario. */
+function _sincronizarItemsDesdeDOM(){
+  const inputs = document.querySelectorAll('.prod-row input[data-pid][data-campo]');
+  if(inputs.length===0) return;   // no estamos en la pantalla de pedido
+  inputs.forEach(inp=>{
+    const pid = inp.dataset.pid;
+    if(!_itemsPedido[pid]) _itemsPedido[pid] = {cantidad:0,dinero:0};
+    _itemsPedido[pid][inp.dataset.campo] = parseNum(inp.value);
+  });
 }
 function abrirPedido(clienteId){
   window._currentCliente = clienteId;
@@ -1232,11 +1262,11 @@ function renderPedidos(params={}){
           ${excIds(x.p).length?`<div class="prod-exc">Exclusivo: ${excNombres(x.p)}</div>`:''}
           <div class="prod-row">
             <label style="font-size:11px;color:var(--on-surface-variant)">Cantidad</label>
-            <input type="text" inputmode="numeric" value="${fmtInputMil(x.it.cantidad)}" placeholder="0" onkeyup="updateItem('${x.p.id}','cantidad',this.value)" onblur="formatInputMil(this)"/>
+            <input type="text" inputmode="numeric" data-pid="${x.p.id}" data-campo="cantidad" value="${fmtInputMil(x.it.cantidad)}" placeholder="0" oninput="updateItem('${x.p.id}','cantidad',this.value)" onblur="formatInputMil(this)"/>
           </div>
           <div class="prod-row">
             <label style="font-size:11px;color:var(--on-surface-variant)">Valor en dinero</label>
-            <input type="text" inputmode="numeric" value="${fmtInputMil(x.it.dinero)}" placeholder="$0" onkeyup="updateItem('${x.p.id}','dinero',this.value)" onblur="formatInputMil(this)"/>
+            <input type="text" inputmode="numeric" data-pid="${x.p.id}" data-campo="dinero" value="${fmtInputMil(x.it.dinero)}" placeholder="$0" oninput="updateItem('${x.p.id}','dinero',this.value)" onblur="formatInputMil(this)"/>
           </div>
           <div class="flex fb"><span style="font-size:12px">Subtotal</span><span id="sub-${x.p.id}" class="bold" style="font-family:var(--font-mono)">${money(x.calc.subtotal)}</span></div>
           <div id="vend-${x.p.id}">${x.p.vendajeActivo && x.p.vendajeCada>0 && x.calc.cantidad>0?`<div class="badge badge-warn">Vendajes: ${Math.floor(x.calc.cantidad/x.p.vendajeCada)}</div>`:''}</div>
@@ -1282,11 +1312,15 @@ function renderPedidos(params={}){
 function updateItem(pid, field, val){
   if(!_itemsPedido[pid]) _itemsPedido[pid] = {cantidad:0,dinero:0};
   _itemsPedido[pid][field] = parseNum(val);
-  if(field==='cantidad') _itemsPedido[pid].dinero = 0;
-  if(field==='dinero') _itemsPedido[pid].cantidad = 0;
+  const otro = field==='cantidad' ? 'dinero' : 'cantidad';
+  _itemsPedido[pid][otro] = 0;
   // Actualizar SOLO los subtotales y el total, sin re-renderizar (mantiene el foco del input)
   const prod = DB.productos.find(p=>p.id===pid);
   if(!prod) return;
+  // El otro campo queda en 0 en memoria: se vacía también en pantalla para que
+  // lo que se ve y lo que se guarda sean siempre lo mismo.
+  const inpOtro = document.querySelector(`.prod-row input[data-pid="${pid}"][data-campo="${otro}"]`);
+  if(inpOtro && inpOtro.value !== '') inpOtro.value = '';
   const it = _itemsPedido[pid];
   const calc = _modoCondicion==='condicion' ? calcCondicion2000(pid,it.cantidad,it.dinero) : calcNormal(pid,it.cantidad,it.dinero);
   const elSub = document.getElementById('sub-'+pid);
@@ -1336,6 +1370,7 @@ async function confirmarLimpiarPedido(){
 }
 async function guardarPedido(silent){
   if(!_currentCliente){ if(!silent) toast('Seleccione cliente','error'); return; }
+  _sincronizarItemsDesdeDOM();
   const productos = DB.productos.filter(p=>p.activo);
   const items = productos.map(p=>{
     const it = _itemsPedido[p.id] || {cantidad:0,dinero:0};
@@ -1434,6 +1469,7 @@ function imprimirPorIframe(htmlCompleto){
 
 function imprimirTicket(){ generarTicketImpresion(); }
 function obtenerItemsPedidoActual(){
+  _sincronizarItemsDesdeDOM();
   const productos = DB.productos.filter(p=>p.activo);
   return productos.map(p=>{
     const it = _itemsPedido[p.id] || {cantidad:0,dinero:0};
@@ -1534,10 +1570,15 @@ if(vCada>0 && vActivo && vCant>0){
   });
   return b;
 }
+let _ticketEnCurso = false;
 async function generarTicketImpresion(){
-  if(_imprimiendo) return;
+  // El guardado previo puede tardar: sin este candado, dos "Enter" seguidos
+  // lanzaban dos guardados y dos impresiones encimadas.
+  if(_imprimiendo || _ticketEnCurso) return;
   const items = obtenerItemsPedidoActual();
   if(items.length===0){ toast('No hay productos para imprimir','error'); return; }
+  _ticketEnCurso = true;
+  try{
   const total = items.reduce((a,b)=>a+b.subtotal,0);
   const cli = DB.clientes.find(c=>c.id===_currentCliente);
   const f = DB.facturaConfig;
@@ -1555,10 +1596,11 @@ async function generarTicketImpresion(){
     <body><div class="ticket">${body}</div></body></html>`);
   toast('Pedido guardado · imprimiendo ticket','success');
   setTimeout(()=>{ _itemsPedido={}; _comentarioPedido=''; go('clientes'); }, 500);
+  } finally { _ticketEnCurso = false; }
 }
 // Enter para imprimir cuando esté en módulo pedidos
 document.addEventListener('keydown', e=>{
-  if(_imprimiendo) return;
+  if(_imprimiendo || _ticketEnCurso) return;
   if(e.key==='Enter' && $('#hdr-title') && $('#hdr-title').textContent==='Pedidos' && !$('#modalRoot').innerHTML && !e.target.matches('textarea,input,select')){
     imprimirTicket();
   }
@@ -1628,9 +1670,32 @@ function prodModal(id){
     <div class="field"><label>Activo en pedidos</label><select id="p-activo"><option value="true" ${p.activo?'selected':''}>Sí</option><option value="false" ${!p.activo?'selected':''}>No</option></select></div>
   `, `<button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" onclick="guardarProd('${id||''}')">Guardar</button>`);
 }
-function fileToData(input, targetId){
+/* Las fotos que salen del celular pesan varios MB. Guardarlas tal cual en
+   base64 dentro del DB desbordaba el guardado local y hacía que la app se
+   sintiera congelada, así que se reducen antes de guardarlas. */
+function fileToData(input, targetId, maxLado = 700){
   const f = input.files[0]; if(!f) return;
-  const r = new FileReader(); r.onload = ()=>{ document.getElementById(targetId).value = r.result; toast('Imagen cargada','success'); }; r.readAsDataURL(f);
+  const destino = document.getElementById(targetId);
+  if(!destino) return;
+  const r = new FileReader();
+  r.onload = ()=>{
+    const img = new Image();
+    img.onload = ()=>{
+      try{
+        const escala = Math.min(1, maxLado / Math.max(img.width, img.height));
+        const w = Math.max(1, Math.round(img.width * escala));
+        const h = Math.max(1, Math.round(img.height * escala));
+        const c = document.createElement('canvas');
+        c.width = w; c.height = h;
+        c.getContext('2d').drawImage(img, 0, 0, w, h);
+        destino.value = c.toDataURL('image/jpeg', 0.72);
+      }catch(e){ destino.value = r.result; }
+      toast('Imagen cargada','success');
+    };
+    img.onerror = ()=>{ destino.value = r.result; toast('Imagen cargada','success'); };
+    img.src = r.result;
+  };
+  r.readAsDataURL(f);
 }
 async function guardarProd(id){
   const data = {
@@ -2931,44 +2996,56 @@ function exportarRecaudoExcel(){
   const t = _calcularTotalesRecaudo();
   const filas = t.filas;
   if(filas.length===0){ toast('No hay datos','error'); return; }
-  const f = DB.facturaConfig;
   const fechaLabel = new Date(_recaudoFecha+'T00:00:00').toLocaleDateString('es-CO',{weekday:'long',year:'numeric',month:'long',day:'2-digit'});
   const tDebe = filas.reduce((a,b)=>a+(b.debeCliente||0),0);
-  const rows = [];
-  rows.push([f.nombreNegocio || 'ERP Panaderia']);
-  rows.push(['NIT:', f.nit || '']);
-  rows.push(['Telefono:', f.telefono || '']);
-  rows.push(['Direccion:', f.direccion || '']);
-  rows.push(['REPORTE DE RECAUDO DE DOMICILIARIOS']);
-  rows.push(['Fecha:', fechaLabel]);
-  rows.push(['Generado:', new Date().toLocaleString('es-CO')]);
-  rows.push([]);
-  rows.push(['#','Zona','Cliente','Subtotal','Deuda cliente','Recaudado','Monto recaudo domiciliario','Recibido','Nequi','Bancolombia','Pago Deuda','Le Debo','Faltante','Salida','Efectivo neto','Observacion']);
-  filas.forEach((f,i)=>{
-    rows.push([
-      i+1, f.tipo||'', f.cliente||'', f.subtotal||0, f.deuda||0,
-      (f.recaudado?'SI':'NO'), calcMontoRecaudoFila(f), (f.recibido?'SI':'NO'),
-      f.nequi||0, f.bancolombia||0, f.deudaPago||0, f.debeCliente||0,
-      f.faltante||0, f.salida||0, f.efectivo||0, f.observacion||''
-    ]);
+  const datos = filas.map((r,i)=>[
+    i+1, r.tipo||'', r.cliente||'', r.subtotal||0,
+    r.recibido?'Sí':'No', r.recaudado?'Sí':'No', calcMontoRecaudoFila(r),
+    r.efectivo||0, r.nequi||0, r.bancolombia||0,
+    r.deuda||0, r.deudaPago||0, r.debeCliente||0,
+    r.faltante||0, r.salida||0, r.observacion||''
+  ]);
+  datos.push(['','','TOTALES', t.bruto, '', '', t.tRec, t.tEfe, t.tNeq, t.tBan,
+              t.deudasHoy, t.tDeu, tDebe, t.falt, t.sal, '']);
+
+  exportarReporte({
+    archivo: `Recaudo_Domiciliarios_${_recaudoFecha}`,
+    hoja: 'Recaudo',
+    titulo: 'RECAUDO DE DOMICILIARIOS',
+    periodo: fechaLabel,
+    columnas: [
+      {titulo:'#', ancho:6},
+      {titulo:'Zona', ancho:14},
+      {titulo:'Cliente', ancho:30},
+      {titulo:'Pedido', ancho:14, moneda:true},
+      {titulo:'Recibido', ancho:10},
+      {titulo:'Recaudado', ancho:11},
+      {titulo:'A cobrar al domiciliario', ancho:22, moneda:true},
+      {titulo:'Efectivo', ancho:14, moneda:true},
+      {titulo:'Nequi', ancho:14, moneda:true},
+      {titulo:'Bancolombia', ancho:14, moneda:true},
+      {titulo:'Deuda nueva', ancho:14, moneda:true},
+      {titulo:'Abono a deuda', ancho:14, moneda:true},
+      {titulo:'Le debo', ancho:14, moneda:true},
+      {titulo:'Faltante', ancho:13, moneda:true},
+      {titulo:'Salida', ancho:13, moneda:true},
+      {titulo:'Observación', ancho:34}
+    ],
+    filas: datos,
+    resumen: [
+      ['Pedidos del día', t.bruto],
+      ['Recibido de clientes', t.tGen],
+      ['Total a recibir del domiciliario', t.tRec],
+      ['Efectivo', t.tEfe],
+      ['Nequi', t.tNeq],
+      ['Bancolombia', t.tBan],
+      ['Abonos a deudas de cartera', t.tDeu],
+      ['Deudas nuevas del día', t.deudasHoy],
+      ['Saldo a favor de clientes', tDebe],
+      ['Faltantes', t.falt],
+      ['Salidas', t.sal]
+    ]
   });
-  rows.push([]);
-  rows.push(['','TOTALES','','',t.bruto,t.deudasHoy,'',t.tRec,'', t.tNeq, t.tBan, t.tDeu, tDebe, t.falt, t.sal, t.tEfe, '']);
-  rows.push([]);
-  rows.push(['Resumen del dia']);
-  rows.push(['Bruto total (pedidos del dia):', t.bruto]);
-  rows.push(['Recibido de clientes:', t.tGen]);
-  rows.push(['Total a recibir del domiciliario (boton Recaudo):', t.tRec]);
-  rows.push(['Efectivo:', t.tEfe]);
-  rows.push(['Nequi:', t.tNeq]);
-  rows.push(['Bancolombia:', t.tBan]);
-  rows.push(['Pagos de cartera (deuda vieja):', t.tDeu]);
-  rows.push(['Deudas nuevas de clientes del dia:', t.deudasHoy]);
-  rows.push(['Saldo a favor de clientes:', tDebe]);
-  rows.push(['Faltantes:', t.falt]);
-  rows.push(['Salidas:', t.sal]);
-  _csvDownload(`recaudo_${_recaudoFecha}.csv`, rows);
-  toast('CSV exportado','success');
 }
 
 /* ===================== CARTERA ===================== */
@@ -2990,26 +3067,34 @@ async function registrarMovCartera(clienteId,tipo,valor,observacion=''){
   DB.cartera.push(mov);
   appwriteService.guardarMovCartera(mov).catch(()=>{});
 }
+/* La cartera muestra solo a quien tiene saldo pendiente (nos debe o le debemos).
+   Los clientes al día ensucian la lista y no hay nada que cobrar ni pagar. */
+let _carteraVerTodos = false;
+function toggleCarteraVerTodos(){ _carteraVerTodos = !_carteraVerTodos; renderCartera(); }
 function renderCartera(){
   setHeader('Cartera');
   const clientesConMov = DB.clientes.filter(c=>DB.cartera.some(m=>m.clienteId===c.id) || c.saldoInicial);
-  const carteraTotal = clientesConMov.reduce((a,c)=>a+Math.abs(getSaldoCliente(c.id)),0);
-  const porCobrar = clientesConMov.reduce((a,c)=>{const s=getSaldoCliente(c.id);return a+(s<0?Math.abs(s):0)},0);
-  const porPagar = clientesConMov.reduce((a,c)=>{const s=getSaldoCliente(c.id);return a+(s>0?s:0)},0);
+  const conSaldo = clientesConMov.filter(c=>getSaldoCliente(c.id) !== 0);
+  const visibles = _carteraVerTodos ? clientesConMov : conSaldo;
+  const alDia = clientesConMov.length - conSaldo.length;
+  const carteraTotal = conSaldo.reduce((a,c)=>a+Math.abs(getSaldoCliente(c.id)),0);
+  const porCobrar = conSaldo.reduce((a,c)=>{const s=getSaldoCliente(c.id);return a+(s<0?Math.abs(s):0)},0);
+  const porPagar = conSaldo.reduce((a,c)=>{const s=getSaldoCliente(c.id);return a+(s>0?s:0)},0);
   $('#view').innerHTML = `
-    <div class="ph"><div><h1>Cartera</h1><div class="sub">Control de deudas integrado con Recaudo y Pedidos</div></div>
+    <div class="ph"><div><h1>Cartera</h1><div class="sub">Solo clientes con saldo pendiente${alDia>0?` · ${alDia} al día ocultos`:''}</div></div>
       <div class="h-spacer"></div>
+      <button class="btn btn-ghost" onclick="toggleCarteraVerTodos()"><span class="ms">${_carteraVerTodos?'filter_alt':'visibility'}</span>${_carteraVerTodos?'Solo con saldo':'Ver todos'}</button>
       <button class="btn btn-primary" onclick="saldoInicialModal()"><span class="ms">payments</span>Establecer Saldo Inicial</button>
       <button class="btn btn-ghost" onclick="historialGeneralModal()"><span class="ms">history</span>Historial General</button>
     </div>
     <div class="grid grid-4 mb-md">
       <div class="kpi kpi-fill"><div class="kpi-ico"><span class="ms">account_balance_wallet</span></div><div class="kpi-l">Cartera Total</div><div class="kpi-v" style="font-size:24px">${money(carteraTotal)}</div></div>
-      <div class="kpi"><div class="kpi-ico kpi-ico-e"><span class="ms">trending_down</span></div><div class="kpi-l">Clientes con deuda</div><div class="kpi-v">${clientesConMov.filter(c=>getSaldoCliente(c.id)<0).length}</div></div>
+      <div class="kpi"><div class="kpi-ico kpi-ico-e"><span class="ms">trending_down</span></div><div class="kpi-l">Clientes con deuda</div><div class="kpi-v">${conSaldo.filter(c=>getSaldoCliente(c.id)<0).length}</div></div>
       <div class="kpi"><div class="kpi-ico kpi-ico-e"><div class="kpi-l" style="margin:0"></div><span class="ms">arrow_outward</span></div><div class="kpi-l">Por Cobrar</div><div class="kpi-v">${money(porCobrar)}</div></div>
       <div class="kpi"><div class="kpi-ico kpi-ico-t"><span class="ms">arrow_downward</span></div><div class="kpi-l">Por Pagar</div><div class="kpi-v">${money(porPagar)}</div></div>
     </div>
     <div class="tw"><table class="d"><thead><tr><th>Cliente</th><th>Me debe</th><th>Le debo</th><th>Saldo</th><th>Último movimiento</th><th></th></tr></thead><tbody>
-      ${clientesConMov.length===0?`<tr><td colspan="6" class="empty">Sin movimientos</td></tr>`:clientesConMov.map(c=>{
+      ${visibles.length===0?`<tr><td colspan="6" class="empty">${_carteraVerTodos?'Sin movimientos':'Ningún cliente tiene saldo pendiente'}</td></tr>`:visibles.map(c=>{
         const s=getSaldoCliente(c.id);
         const meDebe = s<0?Math.abs(s):0, leDebo = s>0?s:0;
         const ult = DB.cartera.filter(m=>m.clienteId===c.id).pop();
@@ -3385,7 +3470,7 @@ function renderConta(){
           return (b.id||'').localeCompare(a.id||'');
         }).map(m=>`<tr><td>${m.fecha}</td><td><span class="badge ${m.tipo==='Ingreso'?'badge-success':'badge-error'}">${m.tipo}</span></td><td>${m.descripcion}</td><td>${m.categoria}</td><td class="num bold">${money(m.valor)}</td><td><button class="btn btn-ghost btn-sm" onclick="editMov('${m.id}')"><span class="ms">edit</span></button><button class="btn btn-danger btn-sm" onclick="delMov('${m.id}')"><span class="ms">delete</span></button></td></tr>`).join('')}
       </tbody></table></div>
-      <button class="btn btn-secondary mt-md" onclick="exportarContaCSV()"><span class="ms">download</span>Exportar CSV</button>
+      <button class="btn btn-secondary mt-md" onclick="exportarContaCSV()"><span class="ms">download</span>Exportar Excel</button>
     `;
   } else if(_contaTab==='flujo'){
     const year=new Date().getFullYear();
@@ -3401,7 +3486,7 @@ function renderConta(){
     body=`
       <div class="ph"><div class="flex gap"><label>Año:</label><input id="flujo-year" type="number" value="${year}" onchange="_contaYear=this.value;renderConta()" style="width:100px"/></div></div>
       <div class="tw"><table class="d"><thead><tr><th>Mes</th><th>Ingresos</th><th>Gastos</th><th>Ganancia/Pérdida</th><th>Rentabilidad</th></tr></thead><tbody>${meses}<tr style="background:var(--surface-container-low)" class="bold"><td>Año</td><td class="num">${money(totIng)}</td><td class="num">${money(totGas)}</td><td class="num" style="color:${totIng-totGas>=0?'var(--tertiary)':'var(--error)'}">${money(totIng-totGas)}</td><td>${totIng+totGas>0?Math.round((totIng-totGas)/(totIng+totGas)*100):0}%</td></tr></tbody></table></div>
-      <button class="btn btn-secondary mt-md" onclick="exportarFlujoCSV()"><span class="ms">download</span>Exportar Flujo</button>
+      <button class="btn btn-secondary mt-md" onclick="exportarFlujoCSV()"><span class="ms">download</span>Exportar Flujo (Excel)</button>
     `;
   } else if(_contaTab==='categorias'){
     const totIngreso=DB.conta.categorias.filter(c=>c.tipo==='Ingreso').reduce((a,c)=>a+valCat(c),0);
@@ -3456,8 +3541,8 @@ function renderConta(){
   $('#view').innerHTML=`
     <div class="ph"><div><h1>Contabilidad</h1><div class="sub">Ingresos, gastos, flujo de caja y cuentas</div></div>
       <div class="h-spacer"></div>
-      <button class="btn btn-secondary" onclick="exportarContaCSV()"><span class="ms">download</span>Exportar CSV</button>
-      <button class="btn btn-ghost" onclick="exportarFlujoCSV()"><span class="ms">table_chart</span>Exportar Flujo</button>
+      <button class="btn btn-secondary" onclick="exportarContaCSV()"><span class="ms">download</span>Exportar Excel</button>
+      <button class="btn btn-ghost" onclick="exportarFlujoCSV()"><span class="ms">table_chart</span>Exportar Flujo (Excel)</button>
     </div>
     <div class="menu-tabs">${tabs.map(t=>`<button class="menu-tab ${_contaTab===t[0]?'active':''}" onclick="_contaTab='${t[0]}';renderConta()">${t[1]}</button>`).join('')}</div>
     <div class="fade-in">${body}</div>
@@ -3707,63 +3792,171 @@ function _csvDownload(filename, rows){
   document.body.appendChild(a); a.click(); a.remove();
   URL.revokeObjectURL(a.href);
 }
+
+/* ===================== REPORTES EXPORTABLES =====================
+   Un solo formato para todos los archivos que salen del sistema: encabezado
+   con los datos del negocio, columnas dimensionadas, valores num\u00e9ricos de
+   verdad (sumables en Excel) con formato de moneda, y un bloque de resumen al
+   final. El generador de Excel se descarga solo cuando se exporta; si no hay
+   conexi\u00f3n para traerlo, se entrega el mismo reporte en CSV. */
+const _FMT_MONEDA = '"$"#,##0';
+let _xlsxPromesa = null;
+function _cargarSheetJS(){
+  if(window.XLSX) return Promise.resolve(window.XLSX);
+  if(_xlsxPromesa) return _xlsxPromesa;
+  _xlsxPromesa = new Promise((resolver, rechazar)=>{
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
+    s.onload = ()=> window.XLSX ? resolver(window.XLSX) : rechazar(new Error('XLSX no disponible'));
+    s.onerror = ()=>{ _xlsxPromesa = null; rechazar(new Error('No se pudo descargar el generador de Excel')); };
+    document.head.appendChild(s);
+  });
+  return _xlsxPromesa;
+}
+/** 'YYYY-MM-DD' \u2192 'dd/mm/aaaa'. Deja intacto cualquier otro texto. */
+function _fechaCorta(v){
+  const s = String(v||'');
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : s;
+}
+/**
+ * Arma y descarga un reporte con el formato est\u00e1ndar del sistema.
+ * @param {{archivo:string, hoja:string, titulo:string, periodo?:string,
+ *          columnas:{titulo:string, ancho?:number, moneda?:boolean}[],
+ *          filas:any[][], resumen?:[string, any, boolean?][]}} cfg
+ */
+async function exportarReporte(cfg){
+  const fc = DB.facturaConfig || {};
+  const ancho = cfg.columnas.length;
+  const rellenar = fila => { const r = (fila||[]).slice(); while(r.length < ancho) r.push(''); return r; };
+
+  const negocio = (fc.nombreNegocio || 'Panader\u00eda').toUpperCase();
+  const contacto = [fc.nit?`NIT ${fc.nit}`:'', fc.telefono?`Tel. ${fc.telefono}`:'', fc.direccion||''].filter(Boolean).join('   \u00b7   ');
+  const titulo = [rellenar([negocio])];
+  if(contacto) titulo.push(rellenar([contacto]));
+  titulo.push(rellenar([cfg.titulo]));
+
+  const meta = [];
+  if(cfg.periodo) meta.push(rellenar(['Per\u00edodo', cfg.periodo]));
+  meta.push(rellenar(['Generado', new Date().toLocaleString('es-CO')]));
+  meta.push(rellenar([]));
+
+  const filaCabecera = titulo.length + meta.length;   // fila 0-based de los t\u00edtulos de columna
+  const aoa = [...titulo, ...meta, rellenar(cfg.columnas.map(c=>c.titulo)), ...cfg.filas.map(rellenar)];
+
+  const resumen = cfg.resumen || [];
+  const filaResumen = aoa.length + 2;
+  if(resumen.length){
+    aoa.push(rellenar([]));
+    aoa.push(rellenar(['RESUMEN']));
+    resumen.forEach(([etiqueta, valor])=> aoa.push(rellenar([etiqueta, valor])));
+  }
+
+  try{
+    const XLSX = await _cargarSheetJS();
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    ws['!cols'] = cfg.columnas.map(c=>({wch: c.ancho || 16}));
+    // Las l\u00edneas del encabezado ocupan todo el ancho del reporte.
+    ws['!merges'] = titulo.map((_,i)=>({s:{r:i,c:0}, e:{r:i,c:ancho-1}}));
+    if(cfg.filas.length){
+      ws['!autofilter'] = {ref: XLSX.utils.encode_range({s:{r:filaCabecera,c:0}, e:{r:filaCabecera+cfg.filas.length, c:ancho-1}})};
+    }
+    const darFormato = (r, c)=>{
+      const cel = ws[XLSX.utils.encode_cell({r, c})];
+      if(cel && typeof cel.v === 'number') cel.z = _FMT_MONEDA;
+    };
+    cfg.filas.forEach((_, i)=>{
+      cfg.columnas.forEach((col, c)=>{ if(col.moneda) darFormato(filaCabecera + 1 + i, c); });
+    });
+    resumen.forEach(([,, noEsMoneda], i)=>{ if(!noEsMoneda) darFormato(filaResumen + i, 1); });
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, (cfg.hoja || 'Reporte').slice(0,31));
+    XLSX.writeFile(wb, cfg.archivo + '.xlsx');
+    toast('Excel exportado','success');
+  }catch(e){
+    console.warn('export', e);
+    _csvDownload(cfg.archivo + '.csv', aoa);
+    toast('Sin conexi\u00f3n para generar el Excel: se export\u00f3 en CSV','default');
+  }
+}
 function exportarContaCSV(){
   const movs = DB.conta.movimientos;
   if(movs.length===0){ toast('No hay movimientos para exportar','error'); return; }
-  const f = DB.facturaConfig;
-  const hoy = new Date().toLocaleString('es-CO');
+  // Mismo orden que se ve en pantalla: lo más reciente primero.
+  const orden = [...movs].sort((a,b)=>(b.fecha||'').localeCompare(a.fecha||'') || (b.id||'').localeCompare(a.id||''));
   const ing = movs.filter(m=>m.tipo==='Ingreso').reduce((a,b)=>a+b.valor,0);
   const gas = movs.filter(m=>m.tipo==='Gasto').reduce((a,b)=>a+b.valor,0);
-  const bal = ing - gas;
-  const rows = [];
-  rows.push([f.nombreNegocio || 'ERP Panaderia']);
-  rows.push(['NIT:', f.nit || '']);
-  rows.push(['Telefono:', f.telefono || '']);
-  rows.push(['Direccion:', f.direccion || '']);
-  rows.push(['REPORTE DE CONTABILIDAD']);
-  rows.push(['Generado:', hoy]);
-  rows.push([]);
-  rows.push(['#','Fecha','Tipo','Categoria','Descripcion','Valor','Ingresos','Gastos']);
-  movs.forEach((m,i)=>{
-    rows.push([
-      i+1, m.fecha, m.tipo, m.categoria, m.descripcion,
-      m.valor,
-      m.tipo==='Ingreso'?m.valor:'',
-      m.tipo==='Gasto'?m.valor:''
-    ]);
+  const fechas = movs.map(m=>m.fecha).filter(Boolean).sort();
+  let saldo = 0;
+  const filas = [...orden].reverse().map((m,i)=>{
+    const esIngreso = m.tipo==='Ingreso';
+    saldo += esIngreso ? m.valor : -m.valor;
+    return [i+1, _fechaCorta(m.fecha), m.tipo, m.categoria||'', m.descripcion||'',
+            esIngreso?m.valor:'', esIngreso?'':m.valor, saldo];
+  }).reverse();
+  // Renumerar de arriba hacia abajo tras invertir, para que el # siga al orden visible.
+  filas.forEach((f,i)=>{ f[0] = i+1; });
+
+  exportarReporte({
+    archivo: `Contabilidad_Historial_${todayKey()}`,
+    hoja: 'Historial',
+    titulo: 'HISTORIAL DE MOVIMIENTOS',
+    periodo: fechas.length ? `${_fechaCorta(fechas[0])} al ${_fechaCorta(fechas[fechas.length-1])}` : '',
+    columnas: [
+      {titulo:'#', ancho:6},
+      {titulo:'Fecha', ancho:12},
+      {titulo:'Tipo', ancho:10},
+      {titulo:'Categoría', ancho:22},
+      {titulo:'Descripción', ancho:42},
+      {titulo:'Ingreso', ancho:15, moneda:true},
+      {titulo:'Gasto', ancho:15, moneda:true},
+      {titulo:'Saldo acumulado', ancho:18, moneda:true}
+    ],
+    filas,
+    resumen: [
+      ['Movimientos registrados', movs.length, true],
+      ['Total ingresos', ing],
+      ['Total gastos', gas],
+      ['Balance', ing - gas]
+    ]
   });
-  rows.push([]);
-  rows.push(['','','','','TOTALES','', '','',]);
-  rows.push(['','','','','Ingresos totales','', ing, '', ]);
-  rows.push(['','','','','Gastos totales','', '', gas, ]);
-  rows.push(['','','','','Balance','', '', '', '']);
-  rows.push(['','','','','BALANCE GENERAL','', bal, '', ]);
-  _csvDownload(`contabilidad_${hoy.replace(/[\/: ,]/g,'-')}.csv`, rows);
-  toast('CSV exportado','success');
 }
 function exportarFlujoCSV(){
   const movs = DB.conta.movimientos;
   if(movs.length===0){ toast('No hay movimientos para exportar','error'); return; }
-  const f = DB.facturaConfig;
   const year = new Date().getFullYear();
-  const hoy = new Date().toLocaleString('es-CO');
   const mesesN=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
-  const rows = [];
-  rows.push([f.nombreNegocio || 'ERP Panaderia']);
-  rows.push(['FLUJO DE CAJA ANUAL', year]);
-  rows.push(['Generado:', hoy]);
-  rows.push([]);
-  rows.push(['Mes','Ingresos','Gastos','Balance','Rentabilidad %']);
   let totIng=0, totGas=0;
-  mesesN.forEach((mn,i)=>{
-    const mi = movs.filter(m=>m.fecha.startsWith(year+'-') && Number(m.fecha.slice(5,7))===i+1 && m.tipo==='Ingreso').reduce((a,b)=>a+b.valor,0);
-    const mg = movs.filter(m=>m.fecha.startsWith(year+'-') && Number(m.fecha.slice(5,7))===i+1 && m.tipo==='Gasto').reduce((a,b)=>a+b.valor,0);
+  const filas = mesesN.map((mn,i)=>{
+    const delMes = m=>m.fecha && m.fecha.startsWith(year+'-') && Number(m.fecha.slice(5,7))===i+1;
+    const mi = movs.filter(m=>delMes(m) && m.tipo==='Ingreso').reduce((a,b)=>a+b.valor,0);
+    const mg = movs.filter(m=>delMes(m) && m.tipo==='Gasto').reduce((a,b)=>a+b.valor,0);
     totIng += mi; totGas += mg;
-    rows.push([mn, mi, mg, mi-mg, mi+mg>0?Math.round((mi-mg)/(mi+mg)*100):0]);
+    return [mn, mi, mg, mi-mg, mi>0 ? Math.round((mi-mg)/mi*100) : 0];
   });
-  rows.push(['TOTAL ANUAL', totIng, totGas, totIng-totGas, totIng+totGas>0?Math.round((totIng-totGas)/(totIng+totGas)*100):0]);
-  _csvDownload(`flujo_caja_${year}.csv`, rows);
-  toast('CSV Flujo exportado','success');
+  filas.push(['TOTAL AÑO', totIng, totGas, totIng-totGas, totIng>0?Math.round((totIng-totGas)/totIng*100):0]);
+
+  exportarReporte({
+    archivo: `Flujo_de_Caja_${year}`,
+    hoja: `Flujo ${year}`,
+    titulo: 'FLUJO DE CAJA ANUAL',
+    periodo: String(year),
+    columnas: [
+      {titulo:'Mes', ancho:16},
+      {titulo:'Ingresos', ancho:16, moneda:true},
+      {titulo:'Gastos', ancho:16, moneda:true},
+      {titulo:'Balance', ancho:16, moneda:true},
+      {titulo:'Margen %', ancho:12}
+    ],
+    filas,
+    resumen: [
+      ['Ingresos del año', totIng],
+      ['Gastos del año', totGas],
+      ['Balance del año', totIng - totGas],
+      ['Margen del año', (totIng>0 ? Math.round((totIng-totGas)/totIng*100) : 0) + '%', true]
+    ]
+  });
 }
 function catModal(id){
   const c=id?DB.conta.categorias.find(x=>x.id===id):{nombre:'',tipo:'Ingreso'};
@@ -4090,9 +4283,11 @@ if(!window._carteraSeeded){
 }
 go('clientes');
 // Autoguardado periódico de la cache local + al cerrar/recargar
-setInterval(saveDB, 2000);
-window.addEventListener('beforeunload', saveDB);
-window.addEventListener('pagehide', saveDB);
+// Nunca mientras se escribe: serializar el DB completo en medio de un pedido
+// se siente como que la página se traba.
+setInterval(()=>{ if(!isUserEditing()) saveDB(); }, 4000);
+window.addEventListener('beforeunload', ()=>saveDB(true));
+window.addEventListener('pagehide', ()=>saveDB(true));
 // === Appwrite: init + carga inicial + Realtime. Toda la logica vive en appwriteService.js ===
 awBootstrap(refrescarVistaActiva);
 initConnectivityIndicator();
