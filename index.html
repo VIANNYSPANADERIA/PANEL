@@ -1741,6 +1741,10 @@ async function sincronizarRecaudoDia(fecha){
         nequi:0, bancolombia:0, deudaPago:0, debeCliente:0,
         faltante:0, salida:0, observacion:'', efectivo:0, fecha
       };
+      // El efectivo arranca en el valor del pedido completo (nada se ha pagado
+      // aún por otro medio), para que "Recaudo" ya sume el total desde el
+      // primer instante, sin esperar a que alguien confirme el cobro.
+      recalcEfectivoFila(nuevaFila);
       // crea la fila en Appwrite Tables
       try{ const saved = await appwriteService.guardarRecaudo(nuevaFila); if(saved) nuevaFila.id = saved.id; }catch(e){}
       r[p.id] = nuevaFila;
@@ -1750,7 +1754,10 @@ async function sincronizarRecaudoDia(fecha){
       r[p.id].subtotal = p.total;
       r[p.id].cliente = (DB.clientes.find(c=>c.id===p.clienteId)||{}).nombre || r[p.id].cliente;
       if(r[p.id].recaudado===undefined) r[p.id].recaudado=false;
-      if(cambioSub && r[p.id].id) _encolarRecaudo(r[p.id]);
+      if(cambioSub){
+        recalcEfectivoFila(r[p.id]);   // el pedido cambió: el efectivo (remanente) también
+        if(r[p.id].id) _encolarRecaudo(r[p.id]);
+      }
     }
   }
 }
@@ -1842,11 +1849,19 @@ function _repintarTablaRecaudo(){
    vive en el modal "Detalle" para no saturar la tabla.
    Color de la barra completa: VERDE si Recibido, NARANJA si Recaudo está marcado. */
 function _filaRecaudoBg(f){ return f.recibido ? '#e6f7ec' : (f.recaudado ? '#ffe0b2' : '#ffffff'); }
+/* Badge de cartera + botón para pagar/descontar esa deuda ahí mismo, sin entrar
+   al modal Detalle. Reutiliza abrirModalPagoDeuda (cliente me debe) y
+   recibidoDescontarLeDebo (yo le debo), que ya actualizan Cartera. */
+function _celdaCarteraHTML(f){
+  const saldoCart = f.clienteId ? getSaldoCliente(f.clienteId) : 0;
+  if(saldoCart<0) return `<span class="badge badge-error">Debe ${money(-saldoCart)}</span> <button class="btn btn-ghost btn-sm" onclick="abrirModalPagoDeuda('${f.pedidoId}')" title="Registrar el pago de esta deuda"><span class="ms">volunteer_activism</span></button>`;
+  if(saldoCart>0) return `<span class="badge badge-warn">Le debo ${money(saldoCart)}</span> <button class="btn btn-ghost btn-sm" onclick="recibidoDescontarLeDebo('${f.pedidoId}')" title="Descontar lo que le debo de una factura"><span class="ms">remove_circle</span></button>`;
+  return `<span class="badge badge-success">Al día</span>`;
+}
 function _filaRecaudoHTML(f){
   const cliObj = f.clienteId ? DB.clientes.find(c=>c.id===f.clienteId) : null;
   const cliColor = cliObj?.color || 'var(--primary)';
-  const saldoCart = f.clienteId ? getSaldoCliente(f.clienteId) : 0;
-  const celdaCartera = saldoCart<0 ? `<span class="badge badge-error">Debe ${money(-saldoCart)}</span>` : saldoCart>0 ? `<span class="badge badge-warn">Le debo ${money(saldoCart)}</span>` : `<span class="badge badge-success">Al día</span>`;
+  const celdaCartera = _celdaCarteraHTML(f);
   const canales = [];
   if(Number(f.efectivo)>0) canales.push('Efectivo');
   if(Number(f.nequi)>0) canales.push('Nequi');
@@ -2262,6 +2277,7 @@ function abrirDetalleRecaudo(pedidoId){
 
       <div class="mt-md" style="border-top:1px solid var(--outline-variant);padding-top:10px">
         <button class="btn btn-secondary" style="width:100%" id="dr-btn-pagodeuda" onclick="abrirModalPagoDeuda('${pedidoId}')"><span class="ms">volunteer_activism</span>Pago de deuda vieja (${money(r.deudaPago||0)})</button>
+        ${saldoCart>0 ? `<button class="btn btn-ghost mt-sm" style="width:100%;border:1px solid var(--secondary);color:var(--secondary)" onclick="recibidoDescontarLeDebo('${pedidoId}')"><span class="ms">remove_circle</span>Descontar lo que le debo (${money(saldoCart)})</button>` : ''}
       </div>
     </div>
   `, `<button class="btn btn-ghost" onclick="closeModal()">Cerrar</button>`, 'modal-lg');
@@ -2335,14 +2351,7 @@ function _repintarFilaRecaudo(id){
   const cbRec = tr.querySelector('td:first-child input[type="checkbox"]');
   if(cbRec && cbRec!==document.activeElement) cbRec.checked = !!r.recibido;
   const tdCart = tr.children[3];
-  if(tdCart){
-    const saldoCart = r.clienteId ? getSaldoCliente(r.clienteId) : 0;
-    tdCart.innerHTML = saldoCart<0
-      ? `<span class="badge badge-error">Debe ${money(-saldoCart)}</span>`
-      : saldoCart>0
-      ? `<span class="badge badge-warn">Le debo ${money(saldoCart)}</span>`
-      : `<span class="badge badge-success">Al día</span>`;
-  }
+  if(tdCart) tdCart.innerHTML = _celdaCarteraHTML(r);
   const tdForma = tr.children[4];
   if(tdForma){
     const canales = [];
@@ -2610,7 +2619,7 @@ function recibidoDescontarLeDebo(pedidoId){
       <button class="btn btn-secondary" style="width:100%" onclick="recibidoLeDeboConfirm('${pedidoId}','nequi')"><span class="ms">smartphone</span> Descontar de Nequi</button>
       <button class="btn btn-secondary" style="width:100%" onclick="recibidoLeDeboConfirm('${pedidoId}','bancolombia')"><span class="ms">account_balance</span> Descontar de Bancolombia</button>
     </div>
-  `, `<button class="btn btn-ghost" onclick="abrirModalRecibido('${pedidoId}')">Atrás</button>`);
+  `, `<button class="btn btn-ghost" onclick="closeModal()">Cancelar</button>`);
   setTimeout(()=>{ const el=document.getElementById('rld-monto'); if(el){ el.focus(); el.select(); } }, 60);
 }
 function recibidoLeDeboConfirm(pedidoId, medio){
