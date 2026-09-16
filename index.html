@@ -1792,10 +1792,12 @@ function _calcularTotalesRecaudo(){
   const tNeq = filasEfe.reduce((a,b)=>a+(Number(b.nequi)||0),0);
   const tBan = filasEfe.reduce((a,b)=>a+(Number(b.bancolombia)||0),0);
   const tDeu = filas.reduce((a,b)=>a+(Number(b.deudaPago)||0),0);
-  // calcMontoRecaudoFila ya decide, fila por fila, si suma la deuda de cartera:
-  // solo cuando el usuario la incluyó explícitamente al marcar ESA fila como
-  // recaudada. Ninguna fila sin marcar aporta nada a este total.
-  const tRec = filas.filter(f=>f.recaudado).reduce((a,b)=>a+calcMontoRecaudoFila(b),0);
+  // Cuenta el efectivo de cualquier fila ya confirmada como Recibida (sin
+  // necesidad de tocar el botón Recaudo, que es independiente) MÁS cualquier
+  // fila donde se haya marcado Recaudo manualmente (p.ej. para incluir una
+  // deuda de cartera). calcMontoRecaudoFila decide, fila por fila, si suma
+  // esa deuda: solo cuando el usuario la incluyó explícitamente al marcar Recaudo.
+  const tRec = filas.filter(f=>f.recibido || f.recaudado).reduce((a,b)=>a+calcMontoRecaudoFila(b),0);
   const bruto = filas.reduce((a,b)=>a+(b.subtotal||0),0);
   const confMonto = confirmadas.reduce((a,b)=>a+(b.subtotal||0),0);
   const falt = filas.reduce((a,b)=>a+(b.faltante||0),0);
@@ -2454,11 +2456,8 @@ function confirmarRecaudo(pedidoId){
 function updRecibido(id, val){
   const r = DB.recaudo[_recaudoFecha] && DB.recaudo[_recaudoFecha][id]; if(!r) return;
   if(!val){
-    // Desmarcar: quitar recibido y, con él, el Recaudo automático que traía
-    // (si el usuario quiere seguir contándolo aparte, puede volver a marcar
-    // el botón Recaudo manualmente).
+    // Desmarcar Recibido. El botón Recaudo es independiente: no se toca aquí.
     r.recibido = false;
-    r.recaudado = false;
     recalcEfectivoFila(r);
     saveDB(); _encolarRecaudo(r); _repintarFilaRecaudo(id); _repintarTotalesRecaudo();
     return;
@@ -2562,8 +2561,7 @@ function recibidoConfirmar(pedidoId){
   }
   r.nequi = neq;
   r.bancolombia = ban;
-  r.recibido = true;
-  r.recaudado = true;   // confirmar el cobro ya cuenta por defecto en "Total a recibir del domiciliario"
+  r.recibido = true;   // el botón Recaudo es independiente: no se toca aquí
   recalcEfectivoFila(r);   // reproduce exactamente el efectivo ingresado (ya validado arriba)
   saveDB(); _encolarRecaudo(r); _repintarFilaRecaudo(pedidoId); _repintarTotalesRecaudo();
   closeModal();
@@ -2573,8 +2571,7 @@ function recibidoConfirmar(pedidoId){
    NO se marca como recibido (no hay dinero que entregue el domiciliario). */
 function recibidoNoCancelo(pedidoId){
   const r = DB.recaudo[_recaudoFecha] && DB.recaudo[_recaudoFecha][pedidoId]; if(!r) return;
-  r.recibido = false;
-  r.recaudado = false;
+  r.recibido = false;   // el botón Recaudo es independiente: no se toca aquí
   updRec(pedidoId, 'deuda', r.subtotal||0);
   closeModal();
   toast('Pedido registrado como deuda: no canceló hoy','default');
@@ -2650,8 +2647,7 @@ function recibidoDeudaConfirm(pedidoId, medio){
   // (si es efectivo, el KPI de efectivo ya lo suma vía deudaPagoMedio)
   // Registrar en cartera: baja la deuda vieja del cliente
   if(r.clienteId) registrarMovCartera(r.clienteId,'pago_deuda',monto,`Pago deuda (${medio}) ${_recaudoFecha}`);
-  r.recibido = true;
-  r.recaudado = true;
+  r.recibido = true;   // el botón Recaudo es independiente: no se toca aquí
   recalcEfectivoFila(r);
   saveDB(); _encolarRecaudo(r); _repintarFilaRecaudo(pedidoId); _repintarTotalesRecaudo();
   closeModal();
@@ -2691,8 +2687,7 @@ function recibidoLeDeboConfirm(pedidoId, medio){
   }
   // En cartera: baja lo que yo le debo al cliente (usé el saldo a favor)
   if(r.clienteId) registrarMovCartera(r.clienteId,'debo_cliente',-monto,`Descuento le debo (${medio}) ${_recaudoFecha}`);
-  r.recibido = true;
-  r.recaudado = true;
+  r.recibido = true;   // el botón Recaudo es independiente: no se toca aquí
   recalcEfectivoFila(r);
   saveDB(); _encolarRecaudo(r);
   if(r.clienteId){ Object.values(DB.recaudo[_recaudoFecha]||{}).forEach(o=>{ if(o.clienteId===r.clienteId) _repintarFilaRecaudo(o.pedidoId); }); }
