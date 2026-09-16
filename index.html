@@ -2375,18 +2375,10 @@ function _repintarTotalesRecaudo(){
   set('liq-faltantes', t.falt);
   set('liq-salidas', t.sal);
 }
-/* Al MARCAR Recaudo se abre un modal para decidir si se incluye la deuda de
-   cartera (tú eliges, nunca automático) y para pagar esa deuda ahí mismo.
-   Al DESMARCAR no hace falta modal: es una acción simple y reversible. */
+/* El botón "Recaudo" siempre abre este modal de revisión: al confirmar un
+   cobro (Recibido) la fila YA se marca sola como recaudada, así que aquí solo
+   hace falta cuando quieras revisar, incluir deuda de cartera, o quitarla. */
 function recaudarPedido(id){
-  const r = DB.recaudo[_recaudoFecha] && DB.recaudo[_recaudoFecha][id]; if(!r) return;
-  if(r.recaudado){
-    r.recaudado = false;
-    recalcEfectivoFila(r);
-    saveDB(); _encolarRecaudo(r); _repintarFilaRecaudo(id); _repintarTotalesRecaudo();
-    toast('Recaudo retirado','default');
-    return;
-  }
   abrirModalRecaudo(id);
 }
 /* Modal del botón "Recaudo": muestra el pedido, el efectivo calculado, y deja
@@ -2422,12 +2414,22 @@ function abrirModalRecaudo(pedidoId){
   modal(`Recaudo del domiciliario · ${nombre}`, `
     <div class="flex fb"><span>Pedido</span><span class="bold">${money(r.subtotal)}</span></div>
     <div class="flex fb"><span>Efectivo de este pedido</span><span class="bold">${money(r.efectivo)}</span></div>
+    ${!r.recibido ? `<div class="muted mt-sm" style="font-size:12px">Aún no has confirmado el cobro (Recibido). Puedes marcar el Recaudo igual, o confirmar el cobro primero para que quede completo.</div>` : ''}
     ${filaDeuda}
     <div class="flex fb mt-md" style="border-top:1px solid var(--outline-variant);padding-top:10px">
       <span class="bold">Monto a recaudar</span><span class="bold" id="rc-monto" style="font-size:20px;color:var(--tertiary)">${money(base + (r.incluirDeuda?debeCartera:0))}</span>
     </div>
   `, `<button class="btn btn-ghost" onclick="closeModal()">Cancelar</button>
-      <button class="btn btn-primary" onclick="confirmarRecaudo('${pedidoId}')">Marcar Recaudo</button>`, '');
+      ${r.recaudado?`<button class="btn btn-danger" onclick="quitarRecaudo('${pedidoId}')">Quitar Recaudo</button>`:''}
+      <button class="btn btn-primary" onclick="confirmarRecaudo('${pedidoId}')">${r.recaudado?'Actualizar':'Marcar Recaudo'}</button>`, '');
+}
+function quitarRecaudo(pedidoId){
+  const r = DB.recaudo[_recaudoFecha] && DB.recaudo[_recaudoFecha][pedidoId]; if(!r) return;
+  r.recaudado = false;
+  recalcEfectivoFila(r);
+  saveDB(); _encolarRecaudo(r); _repintarFilaRecaudo(pedidoId); _repintarTotalesRecaudo();
+  closeModal();
+  toast('Recaudo retirado','default');
 }
 /* Recalcula en vivo el "Monto a recaudar" al marcar/desmarcar incluir deuda. */
 function _recaudoModalPreview(pedidoId){
@@ -2452,8 +2454,11 @@ function confirmarRecaudo(pedidoId){
 function updRecibido(id, val){
   const r = DB.recaudo[_recaudoFecha] && DB.recaudo[_recaudoFecha][id]; if(!r) return;
   if(!val){
-    // Desmarcar: quitar recibido sin más
+    // Desmarcar: quitar recibido y, con él, el Recaudo automático que traía
+    // (si el usuario quiere seguir contándolo aparte, puede volver a marcar
+    // el botón Recaudo manualmente).
     r.recibido = false;
+    r.recaudado = false;
     recalcEfectivoFila(r);
     saveDB(); _encolarRecaudo(r); _repintarFilaRecaudo(id); _repintarTotalesRecaudo();
     return;
@@ -2558,6 +2563,7 @@ function recibidoConfirmar(pedidoId){
   r.nequi = neq;
   r.bancolombia = ban;
   r.recibido = true;
+  r.recaudado = true;   // confirmar el cobro ya cuenta por defecto en "Total a recibir del domiciliario"
   recalcEfectivoFila(r);   // reproduce exactamente el efectivo ingresado (ya validado arriba)
   saveDB(); _encolarRecaudo(r); _repintarFilaRecaudo(pedidoId); _repintarTotalesRecaudo();
   closeModal();
@@ -2568,6 +2574,7 @@ function recibidoConfirmar(pedidoId){
 function recibidoNoCancelo(pedidoId){
   const r = DB.recaudo[_recaudoFecha] && DB.recaudo[_recaudoFecha][pedidoId]; if(!r) return;
   r.recibido = false;
+  r.recaudado = false;
   updRec(pedidoId, 'deuda', r.subtotal||0);
   closeModal();
   toast('Pedido registrado como deuda: no canceló hoy','default');
@@ -2644,6 +2651,7 @@ function recibidoDeudaConfirm(pedidoId, medio){
   // Registrar en cartera: baja la deuda vieja del cliente
   if(r.clienteId) registrarMovCartera(r.clienteId,'pago_deuda',monto,`Pago deuda (${medio}) ${_recaudoFecha}`);
   r.recibido = true;
+  r.recaudado = true;
   recalcEfectivoFila(r);
   saveDB(); _encolarRecaudo(r); _repintarFilaRecaudo(pedidoId); _repintarTotalesRecaudo();
   closeModal();
@@ -2684,6 +2692,7 @@ function recibidoLeDeboConfirm(pedidoId, medio){
   // En cartera: baja lo que yo le debo al cliente (usé el saldo a favor)
   if(r.clienteId) registrarMovCartera(r.clienteId,'debo_cliente',-monto,`Descuento le debo (${medio}) ${_recaudoFecha}`);
   r.recibido = true;
+  r.recaudado = true;
   recalcEfectivoFila(r);
   saveDB(); _encolarRecaudo(r);
   if(r.clienteId){ Object.values(DB.recaudo[_recaudoFecha]||{}).forEach(o=>{ if(o.clienteId===r.clienteId) _repintarFilaRecaudo(o.pedidoId); }); }
