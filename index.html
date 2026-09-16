@@ -1920,12 +1920,11 @@ function _calcularTotalesRecaudo(){
   const tNeq = filasEfe.reduce((a,b)=>a+(Number(b.nequi)||0),0);
   const tBan = filasEfe.reduce((a,b)=>a+(Number(b.bancolombia)||0),0);
   const tDeu = filas.reduce((a,b)=>a+(Number(b.deudaPago)||0),0);
-  // Cuenta el efectivo de cualquier fila ya confirmada como Recibida (sin
-  // necesidad de tocar el botón Recaudo, que es independiente) MÁS cualquier
-  // fila donde se haya marcado Recaudo manualmente (p.ej. para incluir una
-  // deuda de cartera). calcMontoRecaudoFila decide, fila por fila, si suma
-  // esa deuda: solo cuando el usuario la incluyó explícitamente al marcar Recaudo.
-  const tRec = filas.filter(f=>f.recibido || f.recaudado).reduce((a,b)=>a+calcMontoRecaudoFila(b),0);
+  // Lo que se le cobra al domiciliario. SOLO lo mueve el botón "Recaudo":
+  // el checkbox "Recibido" es otra cosa (confirma cómo pagó el cliente) y no
+  // debe sumar aquí. calcMontoRecaudoFila decide, fila por fila, si además
+  // suma la deuda de cartera: solo si se incluyó al marcar el Recaudo.
+  const tRec = filas.filter(f=>f.recaudado).reduce((a,b)=>a+calcMontoRecaudoFila(b),0);
   const bruto = filas.reduce((a,b)=>a+(b.subtotal||0),0);
   const confMonto = confirmadas.reduce((a,b)=>a+(b.subtotal||0),0);
   const falt = filas.reduce((a,b)=>a+(b.faltante||0),0);
@@ -1974,13 +1973,11 @@ function _repintarTablaRecaudo(){
 /* Fila compacta: solo lo esencial para decidir de un vistazo. Todo lo demás
    (montos por medio de pago, deuda, faltante, salida, observación, ubicación)
    vive en el modal "Detalle" para no saturar la tabla.
-   Color de la barra completa: GRIS si se quitó del recaudo, VERDE si Recibido,
-   NARANJA si Recaudo está marcado. */
-function _filaRecaudoBg(f){ return f.excluidoRecaudo ? '#eceff1' : (f.recibido ? '#e6f7ec' : (f.recaudado ? '#ffe0b2' : '#ffffff')); }
+   Color de la barra completa: VERDE si Recibido, NARANJA si Recaudo está marcado. */
+function _filaRecaudoBg(f){ return f.recibido ? '#e6f7ec' : (f.recaudado ? '#ffe0b2' : '#ffffff'); }
 /* Estado visual del botón "Recaudo" de la fila. Una sola fuente para el render
    inicial y el repintado incremental. */
 function _recBtnEstado(f){
-  if(f.excluidoRecaudo) return {cls:'btn btn-ghost btn-sm', style:'opacity:.7', html:'<span class="ms">block</span>Excluido'};
   const monto = calcMontoRecaudoFila(f);
   return {
     cls: `btn ${f.recaudado?'':'btn-ghost'} btn-sm`,
@@ -2309,9 +2306,6 @@ function recalcEfectivoFila(r){
  *  y NUNCA la deuda de cartera a menos que el usuario la haya incluido a propósito. */
 function calcMontoRecaudoFila(r){
   if(!r) return 0;
-  // "Quitar Recaudo" excluye la fila del total que se le cobra al domiciliario,
-  // aunque el pedido siga marcado como Recibido (son banderas independientes).
-  if(r.excluidoRecaudo) return 0;
   let monto = (Number(r.efectivo)||0) + (Number(r.deudaPagoEfectivo)||0);
   if(r.recaudado && r.incluirDeuda && r.clienteId){
     const sd = getSaldoCliente(r.clienteId);
@@ -2406,8 +2400,8 @@ function abrirDetalleRecaudo(pedidoId){
 
       <div class="mt-md" style="border-top:1px solid var(--outline-variant);padding-top:10px">
         <div class="bold mb-sm">Recaudo del domiciliario</div>
-        <button class="btn ${(r.recaudado&&!r.excluidoRecaudo)?'':'btn-ghost'}" style="width:100%${(r.recaudado&&!r.excluidoRecaudo)?';background:#e8710a;color:#fff':''}" id="dr-btn-recaudo" onclick="recaudarPedido('${pedidoId}')">
-          ${r.excluidoRecaudo?'<span class="ms">block</span>Excluido del total':`<span class="ms">${r.recaudado?'check_circle':'payments'}</span>${r.recaudado?('Recaudo '+money(montoRecaudo)):'Marcar Recaudo'}`}
+        <button class="btn ${r.recaudado?'':'btn-ghost'}" style="width:100%${r.recaudado?';background:#e8710a;color:#fff':''}" id="dr-btn-recaudo" onclick="recaudarPedido('${pedidoId}')">
+          <span class="ms">${r.recaudado?'check_circle':'payments'}</span>${r.recaudado?('Recaudo '+money(montoRecaudo)):'Marcar Recaudo'}
         </button>
         <div class="muted mt-sm" style="font-size:11px">La deuda de cartera y su forma de pago se deciden ahí mismo, al marcar el Recaudo.</div>
       </div>
@@ -2442,12 +2436,9 @@ function _repintarDetalleModal(id, r){
   const btnRec = document.getElementById('dr-btn-recaudo');
   if(btnRec){
     const monto = calcMontoRecaudoFila(r);
-    const marcado = r.recaudado && !r.excluidoRecaudo;
-    btnRec.className = `btn ${marcado?'':'btn-ghost'}`;
-    btnRec.style.cssText = `width:100%${marcado?';background:#e8710a;color:#fff':''}`;
-    btnRec.innerHTML = r.excluidoRecaudo
-      ? '<span class="ms">block</span>Excluido del total'
-      : `<span class="ms">${r.recaudado?'check_circle':'payments'}</span>${r.recaudado?('Recaudo '+money(monto)):'Marcar Recaudo'}`;
+    btnRec.className = `btn ${r.recaudado?'':'btn-ghost'}`;
+    btnRec.style.cssText = `width:100%${r.recaudado?';background:#e8710a;color:#fff':''}`;
+    btnRec.innerHTML = `<span class="ms">${r.recaudado?'check_circle':'payments'}</span>${r.recaudado?('Recaudo '+money(monto)):'Marcar Recaudo'}`;
   }
   const estadoEl = document.getElementById('dr-estado');
   if(estadoEl) estadoEl.innerHTML = r.deuda>0?`<span class="badge badge-error">Debe</span>`:r.debeCliente>0?`<span class="badge badge-warn">Le debo</span>`:`<span class="badge badge-success">Al día</span>`;
@@ -2569,39 +2560,27 @@ function abrirModalRecaudo(pedidoId){
       </div>`;
   }
 
-  const excluido = !!r.excluidoRecaudo;
   modal(`Recaudo del domiciliario · ${nombre}`, `
     <div class="flex fb"><span>Pedido</span><span class="bold">${money(r.subtotal)}</span></div>
     <div class="flex fb"><span>Efectivo de este pedido</span><span class="bold">${money(r.efectivo)}</span></div>
-    ${excluido ? `<div class="badge badge-muted mt-sm">Excluido del total del domiciliario</div>` : ''}
     ${!r.recibido ? `<div class="muted mt-sm" style="font-size:12px">Aún no has confirmado el cobro (Recibido). Puedes marcar el Recaudo igual, o confirmar el cobro primero para que quede completo.</div>` : ''}
-    ${excluido ? '' : filaDeuda}
+    ${filaDeuda}
     <div class="flex fb mt-md" style="border-top:1px solid var(--outline-variant);padding-top:10px">
-      <span class="bold">Monto a recaudar</span><span class="bold" id="rc-monto" style="font-size:20px;color:var(--tertiary)">${money(base + (!excluido && r.incluirDeuda?debeCartera:0))}</span>
+      <span class="bold">Monto a recaudar</span><span class="bold" id="rc-monto" style="font-size:20px;color:var(--tertiary)">${money(base + (r.incluirDeuda?debeCartera:0))}</span>
     </div>
   `, `<button class="btn btn-ghost" onclick="closeModal()">Cancelar</button>
-      ${excluido
-        ? `<button class="btn btn-primary" onclick="incluirEnRecaudo('${pedidoId}')">Volver a incluir</button>`
-        : `${(r.recaudado||r.recibido)?`<button class="btn btn-danger" onclick="quitarRecaudo('${pedidoId}')">Quitar Recaudo</button>`:''}
-           <button class="btn btn-primary" onclick="confirmarRecaudo('${pedidoId}')">${r.recaudado?'Actualizar':'Marcar Recaudo'}</button>`}`, '');
+      ${r.recaudado
+        ? `<button class="btn btn-danger" onclick="quitarRecaudo('${pedidoId}')">Quitar Recaudo</button>`
+        : `<button class="btn btn-primary" onclick="confirmarRecaudo('${pedidoId}')">Marcar Recaudo</button>`}`, '');
 }
 function quitarRecaudo(pedidoId){
   const r = DB.recaudo[_recaudoFecha] && DB.recaudo[_recaudoFecha][pedidoId]; if(!r) return;
   r.recaudado = false;
   r.incluirDeuda = false;
-  r.excluidoRecaudo = true;
   recalcEfectivoFila(r);
   saveDB(); _encolarRecaudo(r); _repintarFilaRecaudo(pedidoId); _repintarTotalesRecaudo();
   closeModal();
-  toast('Pedido retirado del total del domiciliario','default');
-}
-function incluirEnRecaudo(pedidoId){
-  const r = DB.recaudo[_recaudoFecha] && DB.recaudo[_recaudoFecha][pedidoId]; if(!r) return;
-  r.excluidoRecaudo = false;
-  recalcEfectivoFila(r);
-  saveDB(); _encolarRecaudo(r); _repintarFilaRecaudo(pedidoId); _repintarTotalesRecaudo();
-  closeModal();
-  toast('Pedido incluido de nuevo','success');
+  toast('Recaudo retirado','default');
 }
 /* Recalcula en vivo el "Monto a recaudar" al marcar/desmarcar incluir deuda. */
 function _recaudoModalPreview(pedidoId){
@@ -2617,7 +2596,6 @@ function confirmarRecaudo(pedidoId){
   const r = DB.recaudo[_recaudoFecha] && DB.recaudo[_recaudoFecha][pedidoId]; if(!r) return;
   r.incluirDeuda = document.getElementById('rc-incluirdeuda')?.checked || false;
   r.recaudado = true;
-  r.excluidoRecaudo = false;
   recalcEfectivoFila(r);
   saveDB(); _encolarRecaudo(r); _repintarFilaRecaudo(pedidoId); _repintarTotalesRecaudo();
   closeModal();
