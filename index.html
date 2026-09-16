@@ -1839,10 +1839,10 @@ function _repintarTablaRecaudo(){
 
 /* Fila compacta: solo lo esencial para decidir de un vistazo. Todo lo demás
    (montos por medio de pago, deuda, faltante, salida, observación, ubicación)
-   vive en el modal "Detalle" para no saturar la tabla. */
+   vive en el modal "Detalle" para no saturar la tabla.
+   Color de la barra completa: VERDE si Recibido, NARANJA si Recaudo está marcado. */
+function _filaRecaudoBg(f){ return f.recibido ? '#e6f7ec' : (f.recaudado ? '#ffe0b2' : '#ffffff'); }
 function _filaRecaudoHTML(f){
-  const dotColor = f.recibido ? '#1b873f' : (f.recaudado ? '#e8710a' : '#c9c9c9');
-  const dotTitle = f.recibido ? 'Recibido' : (f.recaudado ? 'Recaudado, falta confirmar cobro' : 'Pendiente');
   const cliObj = f.clienteId ? DB.clientes.find(c=>c.id===f.clienteId) : null;
   const cliColor = cliObj?.color || 'var(--primary)';
   const saldoCart = f.clienteId ? getSaldoCliente(f.clienteId) : 0;
@@ -1853,14 +1853,15 @@ function _filaRecaudoHTML(f){
   if(Number(f.bancolombia)>0) canales.push('Bancolombia');
   const montoRecaudo = calcMontoRecaudoFila(f);
   const diffCell = (f._excedente||0)>0 ? `<span class="badge badge-error">+${money(f._excedente)}</span>` : `<span class="muted">${money(0)}</span>`;
-  return `<tr data-id="${f.pedidoId}">
-    <td class="center"><span title="${dotTitle}" style="display:inline-block;width:11px;height:11px;border-radius:50%;background:${dotColor}"></span></td>
+  const recBtnStyle = f.recaudado ? 'background:#e8710a;color:#fff' : '';
+  return `<tr data-id="${f.pedidoId}" style="background:${_filaRecaudoBg(f)};border-left:5px solid ${cliColor}">
+    <td class="center"><input type="checkbox" ${f.recibido?'checked':''} onchange="updRecibido('${f.pedidoId}',this.checked)" title="Marcar como recibido"/></td>
     <td class="bold" style="color:${cliColor}">${f.cliente}</td>
     <td class="num">${money(f.subtotal)}</td>
     <td class="center">${celdaCartera}</td>
     <td>${canales.length?canales.join(' + '):'-'}</td>
     <td class="num">${money(f.efectivo)}</td>
-    <td class="center"><button class="btn ${f.recaudado?'btn-tertiary':'btn-ghost'} btn-sm" onclick="recaudarPedido('${f.pedidoId}')" title="Marcar recaudo del domiciliario"><span class="ms">${f.recaudado?'check_circle':'payments'}</span>${f.recaudado?money(montoRecaudo):'Recaudo'}</button></td>
+    <td class="center"><button class="btn ${f.recaudado?'':'btn-ghost'} btn-sm" style="${recBtnStyle}" onclick="recaudarPedido('${f.pedidoId}')" title="Marcar recaudo del domiciliario"><span class="ms">${f.recaudado?'check_circle':'payments'}</span>${f.recaudado?money(montoRecaudo):'Recaudo'}</button></td>
     <td class="center">${diffCell}</td>
     <td class="center"><button class="btn btn-ghost btn-sm" onclick="abrirDetalleRecaudo('${f.pedidoId}')"><span class="ms">visibility</span>Detalle</button></td>
   </tr>`;
@@ -1917,7 +1918,7 @@ function renderRecaudo(){
     <div class="tw rec-tw">
       <table class="d">
         <thead><tr>
-          <th>Estado</th><th>Cliente</th><th>Pedido</th><th>Cartera</th><th>Forma de pago</th>
+          <th>Recibido</th><th>Cliente</th><th>Pedido</th><th>Cartera</th><th>Forma de pago</th>
           <th>Efectivo</th><th>Recaudo</th><th>Diferencia</th><th>Detalle</th>
         </tr></thead>
         <tbody id="rec-tbody">
@@ -2219,10 +2220,9 @@ function abrirDetalleRecaudo(pedidoId){
         <div><div class="muted" style="font-size:11px">Zona</div><div class="bold">${r.tipo||'-'}</div></div>
         <div style="text-align:right"><div class="muted" style="font-size:11px">Cartera actual</div><div id="dr-cartera">${celdaCartera}</div></div>
       </div>
-      <div class="grid grid-3 mt-md">
+      <div class="grid grid-2 mt-md">
         <div><div class="muted" style="font-size:11px">Pedido del día</div><div class="bold" style="font-family:var(--font-mono)">${money(r.subtotal)}</div></div>
         <div><div class="muted" style="font-size:11px">Estado del pedido</div><div id="dr-estado">${estadoPedido}</div></div>
-        <div><div class="muted" style="font-size:11px">Recibido</div><input id="dr-chk-recibido" type="checkbox" ${r.recibido?'checked':''} onchange="updRecibido('${pedidoId}',this.checked)"/></div>
       </div>
 
       <div class="mt-md bold">Forma de pago</div>
@@ -2240,7 +2240,7 @@ function abrirDetalleRecaudo(pedidoId){
 
       <div class="mt-md" style="border-top:1px solid var(--outline-variant);padding-top:10px">
         <div class="bold mb-sm">Recaudo del domiciliario</div>
-        <button class="btn ${r.recaudado?'btn-tertiary':'btn-ghost'}" style="width:100%" id="dr-btn-recaudo" onclick="recaudarPedido('${pedidoId}')">
+        <button class="btn ${r.recaudado?'':'btn-ghost'}" style="width:100%${r.recaudado?';background:#e8710a;color:#fff':''}" id="dr-btn-recaudo" onclick="recaudarPedido('${pedidoId}')">
           <span class="ms">${r.recaudado?'check_circle':'payments'}</span>${r.recaudado?('Recaudo '+money(montoRecaudo)):'Marcar Recaudo'}
         </button>
       </div>
@@ -2285,8 +2285,8 @@ function _repintarDetalleModal(id, r){
   const btnRec = document.getElementById('dr-btn-recaudo');
   if(btnRec){
     const monto = calcMontoRecaudoFila(r);
-    btnRec.className = `btn ${r.recaudado?'btn-tertiary':'btn-ghost'}`;
-    btnRec.style.width = '100%';
+    btnRec.className = `btn ${r.recaudado?'':'btn-ghost'}`;
+    btnRec.style.cssText = `width:100%${r.recaudado?';background:#e8710a;color:#fff':''}`;
     btnRec.innerHTML = `<span class="ms">${r.recaudado?'check_circle':'payments'}</span>${r.recaudado?('Recaudo '+money(monto)):'Marcar Recaudo'}`;
   }
   const estadoEl = document.getElementById('dr-estado');
@@ -2298,8 +2298,6 @@ function _repintarDetalleModal(id, r){
   }
   const btnPD = document.getElementById('dr-btn-pagodeuda');
   if(btnPD) btnPD.innerHTML = `<span class="ms">volunteer_activism</span>Pago de deuda vieja (${money(r.deudaPago||0)})`;
-  const chk = document.getElementById('dr-chk-recibido');
-  if(chk && chk!==activo) chk.checked = !!r.recibido;
 }
 
 /* ===== Modal LIQUIDAR RUTA: resumen final antes de cerrar el día con el domiciliario ===== */
@@ -2325,18 +2323,17 @@ function confirmarLiquidacionRuta(){
   toast('Ruta liquidada','success');
 }
 
-/* Repinta SOLO una fila (dot, cartera, forma de pago, efectivo, recaudo, diferencia)
-   y el modal Detalle si está abierto para esa misma fila. Nunca reconstruye la tabla. */
+/* Repinta SOLO una fila (color de barra, checkbox recibido, cartera, forma de pago,
+   efectivo, recaudo, diferencia) y el modal Detalle si está abierto para esa misma
+   fila. Nunca reconstruye la tabla. */
 function _repintarFilaRecaudo(id){
   const r = DB.recaudo[_recaudoFecha] && DB.recaudo[_recaudoFecha][id]; if(!r) return;
   _repintarDetalleModal(id, r);
   const tr = document.querySelector(`tr[data-id="${id}"]`);
   if(!tr) return;
-  const dotEl = tr.querySelector('td:first-child span');
-  if(dotEl){
-    dotEl.style.background = r.recibido ? '#1b873f' : (r.recaudado ? '#e8710a' : '#c9c9c9');
-    dotEl.title = r.recibido ? 'Recibido' : (r.recaudado ? 'Recaudado, falta confirmar cobro' : 'Pendiente');
-  }
+  tr.style.background = _filaRecaudoBg(r);
+  const cbRec = tr.querySelector('td:first-child input[type="checkbox"]');
+  if(cbRec && cbRec!==document.activeElement) cbRec.checked = !!r.recibido;
   const tdCart = tr.children[3];
   if(tdCart){
     const saldoCart = r.clienteId ? getSaldoCliente(r.clienteId) : 0;
@@ -2359,7 +2356,8 @@ function _repintarFilaRecaudo(id){
   const btn = tr.querySelector('button[onclick^="recaudarPedido"]');
   if(btn){
     const monto = calcMontoRecaudoFila(r);
-    btn.className = `btn ${r.recaudado?'btn-tertiary':'btn-ghost'} btn-sm`;
+    btn.className = `btn ${r.recaudado?'':'btn-ghost'} btn-sm`;
+    btn.style.cssText = r.recaudado ? 'background:#e8710a;color:#fff' : '';
     btn.innerHTML = `<span class="ms">${r.recaudado?'check_circle':'payments'}</span>${r.recaudado?money(monto):'Recaudo'}`;
   }
   const tdDiff = tr.children[7];
