@@ -264,6 +264,87 @@ table.d tr:hover td{background:var(--surface-container-low)}
 .reg-mov-ico.ing{background:#e8f5e9}
 .reg-mov-ico.gas{background:#ffdad6}
 @media(max-width:640px){.reg-valor{font-size:26px}.reg-tbtn{font-size:14px;padding:12px}}
+
+/* ===================== MÓVIL =====================
+   En pantallas pequeñas el menú lateral es un cajón sobre el contenido: sin
+   fondo oscuro ni cierre automático, tapaba media pantalla y dejaba la página
+   sin poder usarse. El resto del bloque evita desbordes horizontales y que
+   algo quede debajo de la barra inferior. */
+.sidebar{transition:transform .22s ease}
+.sb-backdrop{display:none;position:fixed;inset:0;background:rgba(21,28,39,.45);z-index:45;opacity:0;pointer-events:none;transition:opacity .2s}
+.sb-close{display:none}
+@media(max-width:768px){
+  /* clip, no hidden: hidden convierte al body en contenedor de scroll y rompe
+     el encabezado sticky. */
+  body{overflow-x:clip}
+  .sb-backdrop{display:block}
+  .sb-backdrop.show{opacity:1;pointer-events:auto}
+  .sb-close{display:grid}
+  .sidebar{width:min(84vw,300px);box-shadow:var(--shadow-pop)}
+  .sb-brand{gap:var(--s-sm)}
+
+  /* Encabezado de página: título completo arriba, acciones de a dos por fila */
+  .ph{gap:8px}
+  .ph h1{font-size:20px;line-height:26px}
+  .ph .sub{font-size:12px}
+  .ph .h-spacer{display:none}
+  .ph > div:not(.h-spacer){flex:1 1 100%;min-width:0}
+  .ph > .btn,.ph > input,.ph > select{flex:1 1 calc(50% - 4px);min-width:0}
+  .ph > .btn:first-child{flex:0 0 auto}
+
+  /* Áreas táctiles: botones que se puedan tocar con el dedo */
+  .btn{padding:10px 14px;min-height:42px}
+  .btn-sm{padding:8px 10px;min-height:36px}
+  .icon-btn{width:42px;height:42px}
+
+  /* iOS hace zoom al enfocar si la letra mide menos de 16px */
+  input,select,textarea,.field input,.field select,.field textarea,.search input,.prod-row input{font-size:16px}
+  .search{width:100%}
+  .search input{width:100%}
+  .header{padding:0 var(--s-md)}
+  .h-t{font-size:16px;overflow:hidden;text-overflow:ellipsis}
+
+  /* Tablas anchas: scroll horizontal de verdad, sin cortar columnas */
+  .tw{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .tw.rec-tw{max-height:none}
+  table.d th,table.d td{padding:8px 10px;white-space:nowrap}
+
+  /* Modal tipo hoja inferior: cabe en pantalla y sus botones son alcanzables */
+  .modal-bg{padding:0;place-items:end stretch}
+  .modal,.modal.lg,.modal-lg{width:100%;max-height:92vh;border-radius:var(--r-xl) var(--r-xl) 0 0}
+  .modal-h{padding:var(--s-md)}
+  .modal-b{padding:var(--s-md)}
+  .modal-f{flex-wrap:wrap;padding:var(--s-md);padding-bottom:calc(var(--s-md) + env(safe-area-inset-bottom))}
+  .modal-f .btn{flex:1 1 140px}
+
+  /* Nada queda escondido detrás de la barra de navegación inferior */
+  .content{padding-bottom:104px}
+  .bottom-nav{padding-bottom:calc(6px + env(safe-area-inset-bottom))}
+  .bottom-nav button span:last-child{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .fab{bottom:calc(80px + env(safe-area-inset-bottom))}
+  .toast-wrap{left:var(--s-md);right:var(--s-md);bottom:calc(80px + env(safe-area-inset-bottom))}
+  .toast{max-width:none}
+
+  /* Rejillas que se desbordaban en pantallas angostas */
+  .chart-grid{grid-template-columns:1fr}
+  .cc-grid{grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}
+  .prod-grid{grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}
+  .coord-row{grid-template-columns:1fr}
+  .gf,.gf3,.gf4{grid-template-columns:1fr}
+  .menu-tabs{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .menu-tab{white-space:nowrap;padding:10px 12px}
+  .seg,.toggle{width:100%}
+  .seg button,.toggle button{flex:1;padding:10px 8px}
+  .map-wrap{height:48vh;min-height:260px}
+  .cal-toolbar{flex-wrap:wrap}
+  .cal-title{min-width:0;flex:1 1 100%;order:-1}
+  .kpi-v{font-size:19px}
+  /* Acciones de las tarjetas: en táctil no hay hover, deben verse siempre.
+     Se les fija el tamaño para que editar y eliminar no se monten una sobre
+     otra (la de editar va anclada a 42px del borde). */
+  .ccard-del,.ccard-handle,.loc-pin{opacity:.6}
+  .ccard-del.icon-btn{width:34px;height:34px}
+}
 </style>
 </head>
 <body>
@@ -274,6 +355,7 @@ table.d tr:hover td{background:var(--surface-container-low)}
     <main class="content" id="view"></main>
   </div>
 </div>
+<div class="sb-backdrop" id="sbBackdrop"></div>
 <div class="bottom-nav" id="bottomNav"></div>
 <div id="modalRoot"></div>
 <div class="toast-wrap" id="toasts"></div>
@@ -612,43 +694,63 @@ function calcNormal(productoId, cantidad, dinero){
 /* ---------- Router ---------- */
 const ROUTES = {};
 function go(route, params={}){
+  cerrarSidebar();
   ROUTES[route] ? ROUTES[route](params) : renderClientes();
   $$('.nav-item').forEach(el=>el.classList.toggle('active',el.dataset.route===route));
   $$('.bottom-nav button').forEach(el=>el.classList.toggle('active',el.dataset.route===route));
   window.scrollTo(0,0);
 }
 
+/* En móvil el menú lateral es un cajón que tapa la pantalla: si no se cierra
+   al navegar (o al tocar fuera), la página queda inservible. */
+function toggleSidebar(forzar){
+  const sb = document.getElementById('sidebar');
+  const bd = document.getElementById('sbBackdrop');
+  if(!sb) return;
+  const abrir = (forzar===undefined) ? !sb.classList.contains('open') : !!forzar;
+  sb.classList.toggle('open', abrir);
+  if(bd) bd.classList.toggle('show', abrir);
+}
+function cerrarSidebar(){ toggleSidebar(false); }
+
 /* ---------- Sidebar + Header ---------- */
 function renderShell(){
   const items = [
-    {route:'clientes',icon:'group',label:'Clientes'},
-    {route:'productos',icon:'inventory_2',label:'Administrar Productos'},
-    {route:'factura',icon:'receipt_long',label:'Configuración Factura'},
-    {route:'recaudo',icon:'local_shipping',label:'Recaudo Domiciliarios'},
-    {route:'cartera',icon:'account_balance_wallet',label:'Cartera'},
-    {route:'nomina',icon:'badge',label:'Nómina'},
-    {route:'contabilidad',icon:'monitoring',label:'Contabilidad'},
-    {route:'costos',icon:'savings',label:'Costos y Rentabilidad'},
-    {route:'calendario',icon:'calendar_month',label:'Calendario'},
+    {route:'clientes',icon:'group',label:'Clientes',corto:'Clientes'},
+    {route:'productos',icon:'inventory_2',label:'Administrar Productos',corto:'Productos'},
+    {route:'factura',icon:'receipt_long',label:'Configuración Factura',corto:'Factura'},
+    {route:'recaudo',icon:'local_shipping',label:'Recaudo Domiciliarios',corto:'Recaudo'},
+    {route:'cartera',icon:'account_balance_wallet',label:'Cartera',corto:'Cartera'},
+    {route:'nomina',icon:'badge',label:'Nómina',corto:'Nómina'},
+    {route:'contabilidad',icon:'monitoring',label:'Contabilidad',corto:'Conta'},
+    {route:'costos',icon:'savings',label:'Costos y Rentabilidad',corto:'Costos'},
+    {route:'calendario',icon:'calendar_month',label:'Calendario',corto:'Agenda'},
   ];
   $('#sidebar').innerHTML = `
     <div class="sb-brand">
       <div class="sb-brand-ico"><span class="ms" style="font-size:22px">bakery_dining</span></div>
       <div><div class="sb-brand-t">Panadería</div><div class="sb-brand-s">Panel ERP</div></div>
+      <div class="h-spacer"></div>
+      <button class="icon-btn sb-close" onclick="cerrarSidebar()" aria-label="Cerrar menú"><span class="ms">close</span></button>
     </div>
     <nav class="nav">${items.map(i=>`<div class="nav-item" data-route="${i.route}"><span class="ms">${i.icon}</span><span>${i.label}</span></div>`).join('')}</nav>
   `;
   $('#sidebar').addEventListener('click', e=>{
     const it = e.target.closest('.nav-item'); if(it) go(it.dataset.route);
   });
+  $('#sbBackdrop').addEventListener('click', cerrarSidebar);
   $('#header').innerHTML = `
-    <button class="icon-btn" onclick="document.getElementById('sidebar').classList.toggle('open')"><span class="ms">menu</span></button>
+    <button class="icon-btn" onclick="toggleSidebar()" aria-label="Menú"><span class="ms">menu</span></button>
     <div class="h-t" id="hdr-title">Clientes</div>
     <div class="h-spacer"></div>
     <div class="avatar">P</div>
   `;
-  $('#bottomNav').innerHTML = items.slice(0,5).map(i=>`<button data-route="${i.route}"><span class="ms">${i.icon}</span><span>${i.label}</span></button>`).join('');
-  $('#bottomNav').addEventListener('click', e=>{ const b=e.target.closest('button'); if(b) go(b.dataset.route); });
+  $('#bottomNav').innerHTML = items.slice(0,5).map(i=>`<button data-route="${i.route}"><span class="ms">${i.icon}</span><span>${i.corto}</span></button>`).join('')
+    + `<button data-menu="1"><span class="ms">more_horiz</span><span>Más</span></button>`;
+  $('#bottomNav').addEventListener('click', e=>{
+    const b = e.target.closest('button'); if(!b) return;
+    if(b.dataset.menu) toggleSidebar(true); else go(b.dataset.route);
+  });
 }
 function setHeader(title){ $('#hdr-title') && ($('#hdr-title').textContent = title); }
 
@@ -1272,13 +1374,19 @@ async function guardarPedido(silent){
 }
 /* Imprime HTML de ticket usando un IFRAME oculto: no depende de pop-ups,
    nunca se queda en about:blank y se autolimpia. Es el método fiable. */
+let _imprimiendo = false;
 function imprimirPorIframe(htmlCompleto){
+  // Dos impresiones a la vez dejan la pestaña sin responder: se ignora la segunda.
+  if(_imprimiendo) return;
+  _imprimiendo = true;
+
   // Eliminar cualquier iframe de impresión previo que haya quedado.
   const viejo = document.getElementById('print-frame');
   if(viejo) viejo.remove();
 
   const iframe = document.createElement('iframe');
   iframe.id = 'print-frame';
+  iframe.setAttribute('aria-hidden', 'true');
   iframe.style.position = 'fixed';
   iframe.style.right = '0';
   iframe.style.bottom = '0';
@@ -1287,6 +1395,19 @@ function imprimirPorIframe(htmlCompleto){
   iframe.style.border = '0';
   document.body.appendChild(iframe);
 
+  let limpio = false;
+  const limpiar = () => {
+    if(limpio) return;
+    limpio = true;
+    _imprimiendo = false;
+    window.removeEventListener('afterprint', cerrar);
+    try{ iframe.remove(); }catch(e){}
+  };
+  // Red de seguridad: si el navegador nunca avisa que terminó, la app se
+  // desbloquea igual en lugar de quedarse esperando para siempre.
+  const fallback = setTimeout(limpiar, 60000);
+  const cerrar = () => { clearTimeout(fallback); setTimeout(limpiar, 300); };
+
   const doc = iframe.contentWindow.document;
   doc.open();
   doc.write(htmlCompleto);
@@ -1294,12 +1415,17 @@ function imprimirPorIframe(htmlCompleto){
 
   // Esperar a que el contenido (y fuentes) carguen antes de imprimir.
   const lanzar = () => {
+    const w = iframe.contentWindow;
+    if(!w){ clearTimeout(fallback); limpiar(); return; }
+    // El iframe NO se puede quitar mientras la vista previa sigue abierta:
+    // hacerlo deja la página sin responder y obliga a recargar. Por eso se
+    // espera a 'afterprint' en lugar de borrarlo con un temporizador.
+    w.onafterprint = cerrar;
+    window.addEventListener('afterprint', cerrar);
     try{
-      iframe.contentWindow.focus();
-      iframe.contentWindow.print();
-    }catch(e){ console.warn('print', e); }
-    // Limpiar el iframe después de imprimir (o de cancelar).
-    setTimeout(()=>{ try{ iframe.remove(); }catch(e){} }, 1500);
+      w.focus();
+      w.print();
+    }catch(e){ console.warn('print', e); clearTimeout(fallback); limpiar(); }
   };
   // onload asegura que el DOM del iframe esté listo.
   if(iframe.contentWindow.document.readyState === 'complete') setTimeout(lanzar, 200);
@@ -1408,7 +1534,8 @@ if(vCada>0 && vActivo && vCant>0){
   });
   return b;
 }
-function generarTicketImpresion(){
+async function generarTicketImpresion(){
+  if(_imprimiendo) return;
   const items = obtenerItemsPedidoActual();
   if(items.length===0){ toast('No hay productos para imprimir','error'); return; }
   const total = items.reduce((a,b)=>a+b.subtotal,0);
@@ -1416,7 +1543,7 @@ function generarTicketImpresion(){
   const f = DB.facturaConfig;
   // Bug #5: guardar el pedido ANTES de abrir la ventana de impresión, así nunca
   // se pierde la información aunque el usuario cierre la ventana emergente.
-  guardarPedido(true);
+  try{ await guardarPedido(true); }catch(e){ console.warn('guardar pedido', e); }
   f.consecutivoTicket = (f.consecutivoTicket||1) + 1;
   appwriteService.guardarFacturaConfig({consecutivoTicket: f.consecutivoTicket}).catch(()=>{});
   saveDB();
@@ -1431,6 +1558,7 @@ function generarTicketImpresion(){
 }
 // Enter para imprimir cuando esté en módulo pedidos
 document.addEventListener('keydown', e=>{
+  if(_imprimiendo) return;
   if(e.key==='Enter' && $('#hdr-title') && $('#hdr-title').textContent==='Pedidos' && !$('#modalRoot').innerHTML && !e.target.matches('textarea,input,select')){
     imprimirTicket();
   }
@@ -1846,8 +1974,20 @@ function _repintarTablaRecaudo(){
 /* Fila compacta: solo lo esencial para decidir de un vistazo. Todo lo demás
    (montos por medio de pago, deuda, faltante, salida, observación, ubicación)
    vive en el modal "Detalle" para no saturar la tabla.
-   Color de la barra completa: VERDE si Recibido, NARANJA si Recaudo está marcado. */
-function _filaRecaudoBg(f){ return f.recibido ? '#e6f7ec' : (f.recaudado ? '#ffe0b2' : '#ffffff'); }
+   Color de la barra completa: GRIS si se quitó del recaudo, VERDE si Recibido,
+   NARANJA si Recaudo está marcado. */
+function _filaRecaudoBg(f){ return f.excluidoRecaudo ? '#eceff1' : (f.recibido ? '#e6f7ec' : (f.recaudado ? '#ffe0b2' : '#ffffff')); }
+/* Estado visual del botón "Recaudo" de la fila. Una sola fuente para el render
+   inicial y el repintado incremental. */
+function _recBtnEstado(f){
+  if(f.excluidoRecaudo) return {cls:'btn btn-ghost btn-sm', style:'opacity:.7', html:'<span class="ms">block</span>Excluido'};
+  const monto = calcMontoRecaudoFila(f);
+  return {
+    cls: `btn ${f.recaudado?'':'btn-ghost'} btn-sm`,
+    style: f.recaudado ? 'background:#e8710a;color:#fff' : '',
+    html: `<span class="ms">${f.recaudado?'check_circle':'payments'}</span>${f.recaudado?money(monto):'Recaudo'}`
+  };
+}
 /* Badge de cartera (solo lectura). El pago de esa deuda se hace desde el
    modal que abre el botón "Recaudo", no aquí en la fila. */
 function _celdaCarteraHTML(f){
@@ -1864,9 +2004,8 @@ function _filaRecaudoHTML(f){
   if(Number(f.efectivo)>0) canales.push('Efectivo');
   if(Number(f.nequi)>0) canales.push('Nequi');
   if(Number(f.bancolombia)>0) canales.push('Bancolombia');
-  const montoRecaudo = calcMontoRecaudoFila(f);
   const diffCell = (f._excedente||0)>0 ? `<span class="badge badge-error">+${money(f._excedente)}</span>` : `<span class="muted">${money(0)}</span>`;
-  const recBtnStyle = f.recaudado ? 'background:#e8710a;color:#fff' : '';
+  const recBtn = _recBtnEstado(f);
   return `<tr data-id="${f.pedidoId}" style="background:${_filaRecaudoBg(f)};border-left:5px solid ${cliColor}">
     <td class="center"><input type="checkbox" ${f.recibido?'checked':''} onchange="updRecibido('${f.pedidoId}',this.checked)" title="Marcar como recibido"/></td>
     <td class="bold" style="color:${cliColor}">${f.cliente}</td>
@@ -1874,7 +2013,7 @@ function _filaRecaudoHTML(f){
     <td class="center">${celdaCartera}</td>
     <td>${canales.length?canales.join(' + '):'-'}</td>
     <td class="num">${money(f.efectivo)}</td>
-    <td class="center"><button class="btn ${f.recaudado?'':'btn-ghost'} btn-sm" style="${recBtnStyle}" onclick="recaudarPedido('${f.pedidoId}')" title="Marcar recaudo del domiciliario"><span class="ms">${f.recaudado?'check_circle':'payments'}</span>${f.recaudado?money(montoRecaudo):'Recaudo'}</button></td>
+    <td class="center"><button class="${recBtn.cls}" style="${recBtn.style}" onclick="recaudarPedido('${f.pedidoId}')" title="Marcar recaudo del domiciliario">${recBtn.html}</button></td>
     <td class="center">${diffCell}</td>
     <td class="center"><button class="btn btn-ghost btn-sm" onclick="abrirDetalleRecaudo('${f.pedidoId}')"><span class="ms">visibility</span>Detalle</button></td>
   </tr>`;
@@ -2170,6 +2309,9 @@ function recalcEfectivoFila(r){
  *  y NUNCA la deuda de cartera a menos que el usuario la haya incluido a propósito. */
 function calcMontoRecaudoFila(r){
   if(!r) return 0;
+  // "Quitar Recaudo" excluye la fila del total que se le cobra al domiciliario,
+  // aunque el pedido siga marcado como Recibido (son banderas independientes).
+  if(r.excluidoRecaudo) return 0;
   let monto = (Number(r.efectivo)||0) + (Number(r.deudaPagoEfectivo)||0);
   if(r.recaudado && r.incluirDeuda && r.clienteId){
     const sd = getSaldoCliente(r.clienteId);
@@ -2189,6 +2331,8 @@ function _encolarRecaudo(r){
   _recaudoTimer = setTimeout(_procesarColaRecaudo, 300);  // espera breve a que dejes de escribir
 }
 
+const _recaudoReintentos = new Map();   // rowId -> intentos fallidos
+const RECAUDO_MAX_REINTENTOS = 5;
 async function _procesarColaRecaudo(){
   if(_recaudoEnviando) return;
   _recaudoEnviando = true;
@@ -2199,11 +2343,20 @@ async function _procesarColaRecaudo(){
       _recaudoCola.delete(id);
       try{
         await appwriteService.editarRecaudo(fila.id, fila);
+        _recaudoReintentos.delete(id);
       }catch(e){
         // Si Appwrite devuelve 429, se reencola y se espera más antes de reintentar.
-        if(String(e && e.message || '').includes('429') || (e && e.code===429)){
+        // Con un tope: si no, la cola nunca se vacía y la vista deja de
+        // actualizarse porque la app se cree "editando" para siempre.
+        const es429 = String(e && e.message || '').includes('429') || (e && e.code===429);
+        const intentos = (_recaudoReintentos.get(id)||0) + 1;
+        if(es429 && intentos <= RECAUDO_MAX_REINTENTOS){
+          _recaudoReintentos.set(id, intentos);
           _recaudoCola.set(id, fila);
           await new Promise(res=>setTimeout(res, 3000));
+        } else {
+          _recaudoReintentos.delete(id);
+          if(es429) toast('No se pudo guardar un cambio del recaudo. Revisa la conexión.','error');
         }
       }
       await new Promise(res=>setTimeout(res, 400));  // separa bien las peticiones
@@ -2253,8 +2406,8 @@ function abrirDetalleRecaudo(pedidoId){
 
       <div class="mt-md" style="border-top:1px solid var(--outline-variant);padding-top:10px">
         <div class="bold mb-sm">Recaudo del domiciliario</div>
-        <button class="btn ${r.recaudado?'':'btn-ghost'}" style="width:100%${r.recaudado?';background:#e8710a;color:#fff':''}" id="dr-btn-recaudo" onclick="recaudarPedido('${pedidoId}')">
-          <span class="ms">${r.recaudado?'check_circle':'payments'}</span>${r.recaudado?('Recaudo '+money(montoRecaudo)):'Marcar Recaudo'}
+        <button class="btn ${(r.recaudado&&!r.excluidoRecaudo)?'':'btn-ghost'}" style="width:100%${(r.recaudado&&!r.excluidoRecaudo)?';background:#e8710a;color:#fff':''}" id="dr-btn-recaudo" onclick="recaudarPedido('${pedidoId}')">
+          ${r.excluidoRecaudo?'<span class="ms">block</span>Excluido del total':`<span class="ms">${r.recaudado?'check_circle':'payments'}</span>${r.recaudado?('Recaudo '+money(montoRecaudo)):'Marcar Recaudo'}`}
         </button>
         <div class="muted mt-sm" style="font-size:11px">La deuda de cartera y su forma de pago se deciden ahí mismo, al marcar el Recaudo.</div>
       </div>
@@ -2289,9 +2442,12 @@ function _repintarDetalleModal(id, r){
   const btnRec = document.getElementById('dr-btn-recaudo');
   if(btnRec){
     const monto = calcMontoRecaudoFila(r);
-    btnRec.className = `btn ${r.recaudado?'':'btn-ghost'}`;
-    btnRec.style.cssText = `width:100%${r.recaudado?';background:#e8710a;color:#fff':''}`;
-    btnRec.innerHTML = `<span class="ms">${r.recaudado?'check_circle':'payments'}</span>${r.recaudado?('Recaudo '+money(monto)):'Marcar Recaudo'}`;
+    const marcado = r.recaudado && !r.excluidoRecaudo;
+    btnRec.className = `btn ${marcado?'':'btn-ghost'}`;
+    btnRec.style.cssText = `width:100%${marcado?';background:#e8710a;color:#fff':''}`;
+    btnRec.innerHTML = r.excluidoRecaudo
+      ? '<span class="ms">block</span>Excluido del total'
+      : `<span class="ms">${r.recaudado?'check_circle':'payments'}</span>${r.recaudado?('Recaudo '+money(monto)):'Marcar Recaudo'}`;
   }
   const estadoEl = document.getElementById('dr-estado');
   if(estadoEl) estadoEl.innerHTML = r.deuda>0?`<span class="badge badge-error">Debe</span>`:r.debeCliente>0?`<span class="badge badge-warn">Le debo</span>`:`<span class="badge badge-success">Al día</span>`;
@@ -2350,10 +2506,10 @@ function _repintarFilaRecaudo(id){
   if(tdEfe) tdEfe.textContent = money(r.efectivo);
   const btn = tr.querySelector('button[onclick^="recaudarPedido"]');
   if(btn){
-    const monto = calcMontoRecaudoFila(r);
-    btn.className = `btn ${r.recaudado?'':'btn-ghost'} btn-sm`;
-    btn.style.cssText = r.recaudado ? 'background:#e8710a;color:#fff' : '';
-    btn.innerHTML = `<span class="ms">${r.recaudado?'check_circle':'payments'}</span>${r.recaudado?money(monto):'Recaudo'}`;
+    const est = _recBtnEstado(r);
+    btn.className = est.cls;
+    btn.style.cssText = est.style;
+    btn.innerHTML = est.html;
   }
   const tdDiff = tr.children[7];
   if(tdDiff) tdDiff.innerHTML = (r._excedente||0)>0 ? `<span class="badge badge-error">+${money(r._excedente)}</span>` : `<span class="muted">${money(0)}</span>`;
@@ -2413,25 +2569,39 @@ function abrirModalRecaudo(pedidoId){
       </div>`;
   }
 
+  const excluido = !!r.excluidoRecaudo;
   modal(`Recaudo del domiciliario · ${nombre}`, `
     <div class="flex fb"><span>Pedido</span><span class="bold">${money(r.subtotal)}</span></div>
     <div class="flex fb"><span>Efectivo de este pedido</span><span class="bold">${money(r.efectivo)}</span></div>
+    ${excluido ? `<div class="badge badge-muted mt-sm">Excluido del total del domiciliario</div>` : ''}
     ${!r.recibido ? `<div class="muted mt-sm" style="font-size:12px">Aún no has confirmado el cobro (Recibido). Puedes marcar el Recaudo igual, o confirmar el cobro primero para que quede completo.</div>` : ''}
-    ${filaDeuda}
+    ${excluido ? '' : filaDeuda}
     <div class="flex fb mt-md" style="border-top:1px solid var(--outline-variant);padding-top:10px">
-      <span class="bold">Monto a recaudar</span><span class="bold" id="rc-monto" style="font-size:20px;color:var(--tertiary)">${money(base + (r.incluirDeuda?debeCartera:0))}</span>
+      <span class="bold">Monto a recaudar</span><span class="bold" id="rc-monto" style="font-size:20px;color:var(--tertiary)">${money(base + (!excluido && r.incluirDeuda?debeCartera:0))}</span>
     </div>
   `, `<button class="btn btn-ghost" onclick="closeModal()">Cancelar</button>
-      ${r.recaudado?`<button class="btn btn-danger" onclick="quitarRecaudo('${pedidoId}')">Quitar Recaudo</button>`:''}
-      <button class="btn btn-primary" onclick="confirmarRecaudo('${pedidoId}')">${r.recaudado?'Actualizar':'Marcar Recaudo'}</button>`, '');
+      ${excluido
+        ? `<button class="btn btn-primary" onclick="incluirEnRecaudo('${pedidoId}')">Volver a incluir</button>`
+        : `${(r.recaudado||r.recibido)?`<button class="btn btn-danger" onclick="quitarRecaudo('${pedidoId}')">Quitar Recaudo</button>`:''}
+           <button class="btn btn-primary" onclick="confirmarRecaudo('${pedidoId}')">${r.recaudado?'Actualizar':'Marcar Recaudo'}</button>`}`, '');
 }
 function quitarRecaudo(pedidoId){
   const r = DB.recaudo[_recaudoFecha] && DB.recaudo[_recaudoFecha][pedidoId]; if(!r) return;
   r.recaudado = false;
+  r.incluirDeuda = false;
+  r.excluidoRecaudo = true;
   recalcEfectivoFila(r);
   saveDB(); _encolarRecaudo(r); _repintarFilaRecaudo(pedidoId); _repintarTotalesRecaudo();
   closeModal();
-  toast('Recaudo retirado','default');
+  toast('Pedido retirado del total del domiciliario','default');
+}
+function incluirEnRecaudo(pedidoId){
+  const r = DB.recaudo[_recaudoFecha] && DB.recaudo[_recaudoFecha][pedidoId]; if(!r) return;
+  r.excluidoRecaudo = false;
+  recalcEfectivoFila(r);
+  saveDB(); _encolarRecaudo(r); _repintarFilaRecaudo(pedidoId); _repintarTotalesRecaudo();
+  closeModal();
+  toast('Pedido incluido de nuevo','success');
 }
 /* Recalcula en vivo el "Monto a recaudar" al marcar/desmarcar incluir deuda. */
 function _recaudoModalPreview(pedidoId){
@@ -2447,6 +2617,7 @@ function confirmarRecaudo(pedidoId){
   const r = DB.recaudo[_recaudoFecha] && DB.recaudo[_recaudoFecha][pedidoId]; if(!r) return;
   r.incluirDeuda = document.getElementById('rc-incluirdeuda')?.checked || false;
   r.recaudado = true;
+  r.excluidoRecaudo = false;
   recalcEfectivoFila(r);
   saveDB(); _encolarRecaudo(r); _repintarFilaRecaudo(pedidoId); _repintarTotalesRecaudo();
   closeModal();
