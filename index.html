@@ -2053,7 +2053,10 @@ function _calcularTotalesRecaudo(){
   const falt = filas.reduce((a,b)=>a+(b.faltante||0),0);
   const sal = filas.reduce((a,b)=>a+(b.salida||0),0);
   const deudasHoy = filas.reduce((a,b)=>a+(Number(b.deuda)||0),0);
-  return {filas, tEfe, tNeq, tBan, tDeu, tRec,
+  // Filas que sí son un pedido del día. Las "solo abono de deuda" no cuentan
+  // como pedidos atendidos ni pendientes.
+  const filasPedido = filas.filter(f=>!f.soloDeuda);
+  return {filas, filasPedido, tEfe, tNeq, tBan, tDeu, tRec,
     tGen: tEfe+tNeq+tBan,               // dinero recibido de clientes (sin duplicar pagos de deuda)
     bruto, confMonto, falt, sal, deudasHoy,
     pendiente: Math.max(0, bruto - confMonto)};
@@ -2068,7 +2071,8 @@ function _filasRecaudoFiltradas(filas){
     if(_recaudoBusqueda && !(f.cliente||'').toLowerCase().includes(_recaudoBusqueda.toLowerCase())) return false;
     if(_recaudoZona && f.tipo !== _recaudoZona) return false;
     switch(_recaudoFiltro){
-      case 'pendientes': return !f.recibido && !f.recaudado;
+      // Una fila "solo abono de deuda" no es un pedido pendiente de cobrar.
+      case 'pendientes': return !f.soloDeuda && !f.recibido && !f.recaudado;
       case 'recibidos': return !!f.recibido;
       case 'recaudados': return !!f.recaudado;
       case 'norecaudados': return !f.recaudado;
@@ -2122,10 +2126,18 @@ function _filaRecaudoHTML(f){
   const celdaCartera = _celdaCarteraHTML(f);
   const diffCell = (f._excedente||0)>0 ? `<span class="badge badge-error">+${money(f._excedente)}</span>` : `<span class="muted">${money(0)}</span>`;
   const recBtn = _recBtnEstado(f);
+  // Fila "solo deuda": no hay pedido que cobrar hoy, así que el checkbox
+  // Recibido no aplica y la columna Pedido lo deja claro.
+  const cbRecibido = f.soloDeuda
+    ? `<input type="checkbox" disabled title="Esta fila es solo un abono de deuda: no hay pedido de hoy que cobrar"/>`
+    : `<input type="checkbox" ${f.recibido?'checked':''} onchange="updRecibido('${f.pedidoId}',this.checked)" title="Marcar como recibido"/>`;
+  const celdaPedido = f.soloDeuda
+    ? `<span class="muted">Solo abono</span>`
+    : money(f.subtotal);
   return `<tr data-id="${f.pedidoId}" style="background:${_filaRecaudoBg(f)};border-left:5px solid ${cliColor}">
-    <td class="center"><input type="checkbox" ${f.recibido?'checked':''} onchange="updRecibido('${f.pedidoId}',this.checked)" title="Marcar como recibido"/></td>
+    <td class="center">${cbRecibido}</td>
     <td class="bold" style="color:${cliColor}">${f.cliente}</td>
-    <td class="num">${money(f.subtotal)}</td>
+    <td class="num">${celdaPedido}</td>
     <td class="center">${celdaCartera}</td>
     <td>${_canalesFila(f)}</td>
     <td class="num">${money(f.efectivo)}</td>
@@ -2200,7 +2212,7 @@ function renderRecaudo(){
         <button class="btn btn-primary btn-sm" onclick="abrirLiquidacionRuta()"><span class="ms">receipt_long</span>Liquidar ruta</button>
       </div>
       <div class="card-b grid grid-4">
-        <div><div class="muted" style="font-size:11px">Pedidos atendidos</div><div class="bold" id="liq-atendidos" style="font-family:var(--font-mono)">${t.filas.filter(f=>f.recibido||f.recaudado).length} / ${t.filas.length}</div></div>
+        <div><div class="muted" style="font-size:11px">Pedidos atendidos</div><div class="bold" id="liq-atendidos" style="font-family:var(--font-mono)">${t.filasPedido.filter(f=>f.recibido||f.recaudado).length} / ${t.filasPedido.length}</div></div>
         <div><div class="muted" style="font-size:11px">Deudas generadas hoy</div><div class="bold" id="liq-deudas" style="color:var(--error);font-family:var(--font-mono)">${money(t.deudasHoy)}</div></div>
         <div><div class="muted" style="font-size:11px">Faltantes</div><div class="bold" id="liq-faltantes" style="color:var(--error);font-family:var(--font-mono)">${money(t.falt)}</div></div>
         <div><div class="muted" style="font-size:11px">Salidas</div><div class="bold" id="liq-salidas" style="color:var(--error);font-family:var(--font-mono)">${money(t.sal)}</div></div>
@@ -2390,17 +2402,49 @@ function pagarDeudaCarteraMedio(clienteId){
   `, `<button class="btn btn-ghost" onclick="abrirModalPagarDeudaCartera()">Atrás</button>`);
   setTimeout(()=>{ const el=document.getElementById('pdc-monto'); if(el){el.focus();el.select();} },60);
 }
+/* Fila del día donde queda anotado un abono hecho desde "Pagar deuda (cartera)".
+   Si el cliente tiene pedido hoy se reusa su misma fila; si no, se crea una fila
+   "solo deuda" (pedido $0) para que el abono exista dentro del día y entre en el
+   KPI de su medio de pago. Sin esto el pago solo movía Cartera y los KPIs del
+   día se quedaban quietos. */
+async function _filaParaAbonoCartera(clienteId){
+  if(!DB.recaudo[_recaudoFecha]) DB.recaudo[_recaudoFecha] = {};
+  const dia = DB.recaudo[_recaudoFecha];
+  const existente = Object.values(dia).find(f=>f.clienteId===clienteId);
+  if(existente) return existente;
+  const cli = DB.clientes.find(c=>c.id===clienteId);
+  const fila = {
+    pedidoId:`DEUDA-${clienteId}`, clienteId, cliente:cli?cli.nombre:'', tipo:cli?cli.tipo:'',
+    subtotal:0, deuda:0, entregado:false, recibido:false, recaudado:false,
+    nequi:0, bancolombia:0, deudaPago:0, debeCliente:0,
+    faltante:0, salida:0, observacion:'', efectivo:0, fecha:_recaudoFecha,
+    pagosDeuda:[], deudaPagoEfectivo:0, deudaPagoNequi:0, deudaPagoBancolombia:0,
+    _deudaSeparada:true,
+    soloDeuda:true   // no es un pedido del día: solo sostiene abonos de cartera
+  };
+  try{ const saved = await appwriteService.guardarRecaudo(fila); if(saved) fila.id = saved.id; }catch(e){}
+  dia[fila.pedidoId] = fila;
+  return fila;
+}
 async function pagarDeudaCarteraConfirm(clienteId, medio){
   const monto = Number(document.getElementById('pdc-monto').value)||0;
   if(monto<=0){ toast('Monto inválido','error'); return; }
   const cat = medio==='efectivo'?'Efectivo': medio==='nequi'?'Nequi':'Bancolombia';
-  // Este pago SOLO afecta Cartera (baja la deuda del cliente). A propósito NO se
-  // registra ningún movimiento en Contabilidad: cartera y contabilidad son
-  // independientes para este flujo.
+  // 1) Cartera: baja la deuda del cliente.
   await registrarMovCartera(clienteId,'pago_deuda',monto,`Pago deuda directo (${medio}) ${_recaudoFecha}`);
+  // 2) Día: el abono se anota en la fila de recaudo del cliente para que sume en
+  //    el KPI del medio con que pagó. Va en pagosDeuda, NUNCA en nequi/bancolombia:
+  //    esos campos son del cobro del pedido de hoy y mezclarlos cruza los dos pagos.
+  const fila = await _filaParaAbonoCartera(clienteId);
+  if(!Array.isArray(fila.pagosDeuda)) fila.pagosDeuda = [];
+  fila.pagosDeuda.push({ monto, medio });
+  _recalcPagosDeuda(fila);
+  recalcEfectivoFila(fila);
+  _encolarRecaudo(fila);
+  // A propósito NO se registra movimiento en Contabilidad: cartera y contabilidad
+  // son independientes para este flujo.
   saveDB(); closeModal();
-  // Repintar filas del recaudo por si el cliente aparece
-  Object.values(DB.recaudo[_recaudoFecha]||{}).forEach(o=>{ if(o.clienteId===clienteId) _repintarFilaRecaudo(o.pedidoId); });
+  _repintarTablaRecaudo();   // la fila puede ser nueva: hay que pintarla
   _repintarTotalesRecaudo();
   toast(`Deuda abonada: ${money(monto)} · ${cat}`,'success');
 }
@@ -2592,10 +2636,10 @@ function _repintarDetalleModal(id, r){
 /* ===== Modal LIQUIDAR RUTA: resumen final antes de cerrar el día con el domiciliario ===== */
 function abrirLiquidacionRuta(){
   const t = _calcularTotalesRecaudo();
-  const atendidos = t.filas.filter(f=>f.recibido||f.recaudado).length;
+  const atendidos = t.filasPedido.filter(f=>f.recibido||f.recaudado).length;
   modal('Liquidación de ruta', `
     <div class="grid grid-2" style="gap:10px">
-      <div><div class="muted" style="font-size:11px">Pedidos atendidos</div><div class="bold">${atendidos} / ${t.filas.length}</div></div>
+      <div><div class="muted" style="font-size:11px">Pedidos atendidos</div><div class="bold">${atendidos} / ${t.filasPedido.length}</div></div>
       <div><div class="muted" style="font-size:11px">Valor total de pedidos</div><div class="bold">${money(t.bruto)}</div></div>
       <div><div class="muted" style="font-size:11px">Total recibido de clientes</div><div class="bold">${money(t.tGen)}</div></div>
       <div><div class="muted" style="font-size:11px">Efectivo</div><div class="bold">${money(t.tEfe)}</div></div>
@@ -2653,7 +2697,7 @@ function _repintarTotalesRecaudo(){
   set('kpi-salidas', t.sal);
   set('kpi-recdom', t.tRec);
   const liqAt = document.getElementById('liq-atendidos');
-  if(liqAt) liqAt.textContent = `${t.filas.filter(f=>f.recibido||f.recaudado).length} / ${t.filas.length}`;
+  if(liqAt) liqAt.textContent = `${t.filasPedido.filter(f=>f.recibido||f.recaudado).length} / ${t.filasPedido.length}`;
   set('liq-deudas', t.deudasHoy);
   set('liq-faltantes', t.falt);
   set('liq-salidas', t.sal);
@@ -3026,7 +3070,8 @@ async function _reiniciarRecaudo(){
 function abrirMenuSecretoRecaudo(){
   const fecha = _recaudoFecha;
   sincronizarRecaudoDia(fecha);
-  const filas = Object.values(DB.recaudo[fecha]||{});
+  // Solo pedidos reales: las filas "solo abono de deuda" no tienen nada que descontar.
+  const filas = Object.values(DB.recaudo[fecha]||{}).filter(f=>!f.soloDeuda);
   if(filas.length===0){ toast('No hay clientes en recaudo para esta fecha','error'); return; }
   const cards = filas.map(f=>{
     const cli = DB.clientes.find(c=>c.id===f.clienteId);
