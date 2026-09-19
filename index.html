@@ -2302,13 +2302,13 @@ function pagoDeudaConfirm(pedidoId, medio){
   // pagosDeuda (ver _deudaPagoPorMedio).
   _recalcPagosDeuda(r);
 
-  // Cartera: el cliente abona su deuda
+  // Cartera: el cliente abona su deuda. Un solo movimiento, aunque pague de más:
+  // 'pago_deuda' SUMA al saldo, así que un sobrepago ya deja el saldo positivo
+  // (= saldo a favor del cliente) por sí solo. Registrar además un
+  // 'debo_cliente' por el excedente lo contaba DOS veces y le inflaba el
+  // sobrante al doble.
   if(r.clienteId) registrarMovCartera(r.clienteId,'pago_deuda',valor,`Pago deuda (${medio}) ${_recaudoFecha}`);
-  // Si con este abono pagó de más, el excedente queda a favor del cliente
-  const excedente = valor - debe;
-  if(debe>0 && excedente>0 && r.clienteId){
-    registrarMovCartera(r.clienteId,'debo_cliente',excedente,`Sobrepago deuda ${_recaudoFecha}`);
-  }
+  const excedente = Math.max(0, valor - debe);
 
   recalcEfectivoFila(r);
   saveDB(); _encolarRecaudo(r);
@@ -2316,7 +2316,9 @@ function pagoDeudaConfirm(pedidoId, medio){
     Object.values(DB.recaudo[_recaudoFecha]||{}).forEach(o=>{ if(o.clienteId===r.clienteId) _repintarFilaRecaudo(o.pedidoId); });
   } else _repintarFilaRecaudo(pedidoId);
   _repintarTotalesRecaudo();
-  toast(`Abono ${money(valor)} · ${medio}`,'success');
+  toast(excedente>0
+    ? `Abono ${money(valor)} · ${medio} · le quedan ${money(excedente)} a favor`
+    : `Abono ${money(valor)} · ${medio}`,'success');
   // Volver al modal principal para ver el pago reflejado y poder agregar otro
   abrirModalPagoDeuda(pedidoId);
 }
@@ -2364,6 +2366,65 @@ function _revertirPagoDeudaFila(r){
   r.pagosDeuda = [];
   r.deudaPago = 0; r.deudaPagoEfectivo = 0; r.deudaPagoNequi = 0; r.deudaPagoBancolombia = 0;
   r.deudaPagoMedio = null;
+}
+
+/* ===== SALDO A FAVOR DEL CLIENTE APLICADO AL PEDIDO DE HOY =====
+   Cuando un cliente paga de más una deuda vieja, ese excedente queda en cartera
+   como "le debo". Ese sobrante puede abonarse al pedido del día aunque el
+   cliente no entregue plata hoy: baja lo que queda debiendo sin inventar un
+   cobro en efectivo.
+   Se guarda el valor ABSOLUTO aplicado en la fila (r.saldoFavorAplicado) y en
+   cartera solo se mueve la DIFERENCIA, así volver a confirmar el cobro (o
+   corregir el monto) nunca descuenta dos veces. */
+function _aplicarSaldoFavorFila(r, nuevoMonto){
+  if(!r) return 0;
+  const nuevo  = Math.max(0, Math.round(Number(nuevoMonto)||0));
+  const previo = Math.max(0, Math.round(Number(r.saldoFavorAplicado)||0));
+  const delta  = nuevo - previo;
+  if(delta === 0){ r.saldoFavorAplicado = nuevo; return 0; }
+  // descuentoLeDebo es el campo que RESTA del efectivo en recalcEfectivoFila.
+  // Se mueve solo en la diferencia para no pisar descuentos hechos por otra vía.
+  r.descuentoLeDebo = Math.max(0, (Number(r.descuentoLeDebo)||0) + delta);
+  r.saldoFavorAplicado = nuevo;
+  // Cartera: usar el saldo a favor lo BAJA (delta>0); devolverlo lo SUBE (delta<0).
+  if(r.clienteId) registrarMovCartera(r.clienteId,'debo_cliente',-delta,
+    delta>0 ? `Saldo a favor aplicado al pedido ${_recaudoFecha}`
+            : `Reversa saldo a favor aplicado ${_recaudoFecha}`);
+  return delta;
+}
+/* Saldo a favor que esta fila puede usar. Se reconstruye el saldo del cliente
+   como si esta fila todavía no hubiera tocado nada:
+     · se le devuelve la deuda que ESTA fila registró (r._last_deuda), porque esa
+       deuda es justamente lo que el sobrante podría cubrir, y
+     · se le suma lo que esta fila ya aplicó (r.saldoFavorAplicado).
+   Sin esto el tope se encogía solo: al bajar el monto aplicado y confirmar, la
+   deuda que se generaba "tapaba" el sobrante y ya no se podía volver a subir. */
+function _saldoFavorDisponible(r){
+  const saldo = (r && r.clienteId) ? getSaldoCliente(r.clienteId) : 0;
+  const deudaPropia = Math.max(0, Number(r && r._last_deuda)||0);
+  return Math.max(0, saldo + deudaPropia) + Math.max(0, Number(r && r.saldoFavorAplicado)||0);
+}
+/* Compat: un descuento hecho antes con "Descontar lo que le debo" (efectivo) es
+   exactamente este mismo saldo a favor aplicado. Se adopta UNA sola vez para que
+   el campo del modal no lo vuelva a descontar de cartera. */
+function _adoptarDescuentoLeDeboPrevio(r){
+  if(r && r.saldoFavorAplicado===undefined && (Number(r.descuentoLeDebo)||0)>0){
+    r.saldoFavorAplicado = Math.max(0, Math.round(Number(r.descuentoLeDebo)||0));
+  }
+}
+/* Deja la fila con una deuda nueva EXACTA (valor absoluto), moviendo en cartera
+   solo la diferencia contra lo ya registrado. Usa la misma convención
+   `_last_deuda` que updRec, para que los dos caminos nunca se pisen. */
+function _setDeudaFila(r, nuevaDeuda, motivo){
+  if(!r) return;
+  const val  = Math.max(0, Math.round(Number(nuevaDeuda)||0));
+  const last = Number(r._last_deuda)||0;
+  const delta = val - last;
+  r.deuda = val;
+  if(delta !== 0){
+    if(r.clienteId) registrarMovCartera(r.clienteId,'deuda',delta,motivo||`Deuda delivery ${_recaudoFecha}`);
+    r._last_deuda = val;
+  }
 }
 
 /* ===== Pagar deuda de un cliente de cartera (sin pedido del día) ===== */
@@ -2556,6 +2617,7 @@ function abrirDetalleRecaudo(pedidoId){
   const estadoPedido = r.deuda>0 ? `<span class="badge badge-error">Debe</span>` : r.debeCliente>0 ? `<span class="badge badge-warn">Le debo</span>` : `<span class="badge badge-success">Al día</span>`;
   const montoRecaudo = calcMontoRecaudoFila(r);
   const totalRecibido = (Number(r.nequi)||0)+(Number(r.bancolombia)||0)+(Number(r.efectivo)||0);
+  const favorAplic = Math.max(0, Number(r.saldoFavorAplicado)||0);
   const celdaUbic = (cli && cli.lat!=null && cli.lng!=null) ? `<button class="btn btn-ghost btn-sm" onclick="copiarYabrirUbicacion('${r.clienteId}')"><span class="ms">location_on</span>Ver ubicación</button>` : `<span class="muted">Sin ubicación</span>`;
   modal(`Detalle · ${r.cliente||'Cliente'}`, `
     <div id="detalleRecaudoBox" data-pid="${pedidoId}">
@@ -2576,6 +2638,12 @@ function abrirDetalleRecaudo(pedidoId){
       </div>
       <div class="flex fb mt-sm" style="border-top:1px solid var(--outline-variant);padding-top:8px">
         <span>Total cobrado del pedido de hoy</span><span class="bold" id="dr-totalrecibido">${money(totalRecibido)}</span>
+      </div>
+      <div class="flex fb" id="dr-favor-wrap" style="color:var(--secondary);${favorAplic>0?'':'display:none'}">
+        <span>Saldo a favor aplicado</span><span class="bold" id="dr-favor">-${money(favorAplic)}</span>
+      </div>
+      <div class="flex fb" id="dr-pend-wrap" style="color:#e8710a;${(Number(r.deuda)||0)>0?'':'display:none'}">
+        <span>Queda debiendo del pedido</span><span class="bold" id="dr-pend">${money(r.deuda||0)}</span>
       </div>
       <div class="flex fb" id="dr-diff-wrap" style="${(r._excedente||0)>0?'color:var(--error)':''}">
         <span>Diferencia</span><span class="bold" id="dr-diff">${(r._excedente||0)>0?('Excedente '+money(r._excedente)):money(0)}</span>
@@ -2612,6 +2680,15 @@ function _repintarDetalleModal(id, r){
   if(efeEl && efeEl!==activo) efeEl.value = money(r.efectivo);
   const trEl = document.getElementById('dr-totalrecibido');
   if(trEl) trEl.textContent = money(totalRecibido);
+  const favorAplic = Math.max(0, Number(r.saldoFavorAplicado)||0);
+  const favorEl = document.getElementById('dr-favor');
+  const favorWrap = document.getElementById('dr-favor-wrap');
+  if(favorEl) favorEl.textContent = '-'+money(favorAplic);
+  if(favorWrap) favorWrap.style.display = favorAplic>0 ? '' : 'none';
+  const pendEl = document.getElementById('dr-pend');
+  const pendWrap = document.getElementById('dr-pend-wrap');
+  if(pendEl) pendEl.textContent = money(r.deuda||0);
+  if(pendWrap) pendWrap.style.display = (Number(r.deuda)||0)>0 ? '' : 'none';
   const diffEl = document.getElementById('dr-diff');
   const diffWrap = document.getElementById('dr-diff-wrap');
   const exced = r._excedente||0;
@@ -2785,8 +2862,13 @@ function updRecibido(id, val){
   if(!val){
     // Desmarcar Recibido. El botón Recaudo es independiente: no se toca aquí.
     r.recibido = false;
+    // Se deshace lo que este mismo modal dejó registrado: la deuda que se generó
+    // por pagar de menos y el saldo a favor que se consumió. Si no, desmarcar
+    // dejaba al cliente con una deuda fantasma y su sobrante gastado.
+    if(r._deudaDeRecibido){ _setDeudaFila(r, 0); r._deudaDeRecibido = false; }
+    _aplicarSaldoFavorFila(r, 0);
     recalcEfectivoFila(r);
-    saveDB(); _encolarRecaudo(r); _repintarFilaRecaudo(id); _repintarTotalesRecaudo();
+    _guardarYRepintarFila(r, id);
     return;
   }
   // Marcar: abrir modal con opciones de cómo se recibió el pago
@@ -2798,23 +2880,25 @@ function updRecibido(id, val){
    se registre en un solo paso y quede reflejado de inmediato en "Detalle". */
 function abrirModalRecibido(pedidoId){
   const r = DB.recaudo[_recaudoFecha] && DB.recaudo[_recaudoFecha][pedidoId]; if(!r) return;
-  const saldo = r.clienteId ? getSaldoCliente(r.clienteId) : 0;
-  const yoLeDebo   = saldo > 0 ? saldo : 0;               // YO le debo al cliente
+  _adoptarDescuentoLeDeboPrevio(r);
   const cli = r.clienteId ? DB.clientes.find(c=>c.id===r.clienteId) : null;
   const nombre = cli ? cli.nombre : (r.cliente||'Cliente');
+  const subtotal = Math.max(0, Number(r.subtotal)||0);
   const neqIni = Number(r.nequi)||0;
   const banIni = Number(r.bancolombia)||0;
-  const efeIni = Math.max(0, (Number(r.subtotal)||0) - neqIni - banIni);
 
-  // El pago de deuda VIEJA no va aquí: eso se maneja con el botón "Pago deuda" de la columna.
-  // Aquí solo se registra el cobro del PEDIDO DEL DÍA.
-  let botonLeDebo = '';
-  if(yoLeDebo > 0){
-    botonLeDebo = `
-      <button class="btn btn-ghost mt-sm" style="width:100%;border:1px solid var(--error);color:var(--error)" onclick="recibidoDescontarLeDebo('${pedidoId}')">
-        <span class="ms">remove_circle</span> Descontar lo que le debo (${money(yoLeDebo)})
-      </button>`;
-  }
+  // Saldo a favor (sobrante de pagos de deuda anteriores): se puede abonar al
+  // pedido de hoy. Nunca más de lo que vale el pedido; lo que sobre sigue a
+  // favor del cliente para los días siguientes.
+  const favorDisp  = _saldoFavorDisponible(r);
+  const favorMax   = Math.min(favorDisp, subtotal);
+  const yaAplicado = Math.max(0, Number(r.saldoFavorAplicado)||0);
+  const favorIni   = Math.min(yaAplicado>0 ? yaAplicado : favorMax, favorMax);
+
+  // Deuda que la fila ya traía: se respeta al abrir para no borrarla sola. Si el
+  // cliente sí paga, basta con subir el efectivo y la deuda baja al confirmar.
+  const deudaBase = Math.max(0, Math.min(Number(r.deuda)||0, Math.max(0, subtotal - favorIni)));
+  const efeIni = Math.max(0, subtotal - neqIni - banIni - favorIni - deudaBase);
 
   // Si ya abonó deuda vieja, se avisa: ese dinero NO se toca aquí ni se resta de
   // la factura del día. Son dos cobros independientes.
@@ -2823,28 +2907,40 @@ function abrirModalRecibido(pedidoId){
     ? `<p class="muted mt-sm" style="font-size:12px">Ya hay <b>${money(abonoDeuda)}</b> abonados a la deuda vieja de este cliente. Eso va aparte: aquí solo registra el pedido de hoy.</p>`
     : '';
 
+  // Campo del sobrante a favor. Solo aparece si de verdad hay algo que aplicar.
+  const bloqueFavor = favorMax>0 ? `
+    <div class="field mt-md" style="background:var(--surface-container-low);padding:10px 12px;border-radius:var(--r-lg)">
+      <label>Saldo a favor del cliente a aplicar</label>
+      <input id="rc-favor" type="number" min="0" max="${favorMax}" value="${favorIni}" oninput="_recibidoAutoEfectivo('${pedidoId}')"/>
+      <div class="muted" style="font-size:11px;margin-top:6px">
+        Sobrante de pagos anteriores: <b>${money(favorDisp)}</b> disponible. Baja el pedido de hoy sin que el cliente entregue plata.
+        Máximo aplicable a esta factura: <b>${money(favorMax)}</b>.
+      </div>
+    </div>` : '';
+
   modal(`Registrar cobro · ${nombre}`, `
-    <p>Factura del día: <b>${money(r.subtotal||0)}</b></p>
-    <p class="muted mt-sm" style="font-size:12px">Indica cuánto pagó por cada medio. Si pagó una parte en efectivo y otra por transferencia, llena los tres campos.</p>
+    <input type="hidden" id="rc-deudabase" value="${deudaBase}"/>
+    <p>Factura del día: <b>${money(subtotal)}</b></p>
+    <p class="muted mt-sm" style="font-size:12px">Indica cuánto pagó por cada medio. Si pagó una parte en efectivo y otra por transferencia, llena los tres campos. Lo que quede sin cubrir se guarda como deuda para otro día.</p>
     ${avisoDeuda}
+    ${bloqueFavor}
     <div class="grid grid-3 mt-md">
       <div class="field"><label>Efectivo</label><input id="rc-efectivo" type="number" value="${efeIni}" oninput="_recibidoPreview('${pedidoId}')"/></div>
       <div class="field"><label>Nequi</label><input id="rc-nequi" type="number" value="${neqIni}" oninput="_recibidoAutoEfectivo('${pedidoId}')"/></div>
       <div class="field"><label>Bancolombia</label><input id="rc-bancolombia" type="number" value="${banIni}" oninput="_recibidoAutoEfectivo('${pedidoId}')"/></div>
     </div>
     <div class="flex fb mt-sm" style="border-top:1px solid var(--outline-variant);padding-top:8px">
-      <span>Total ingresado</span><span class="bold" id="rc-total">${money(efeIni+neqIni+banIni)}</span>
+      <span>Total cubierto (pagos + saldo a favor)</span><span class="bold" id="rc-total">${money(efeIni+neqIni+banIni+favorIni)}</span>
     </div>
     <div class="flex fb" id="rc-diff-wrap" style="color:var(--tertiary)">
       <span>Diferencia con el pedido</span><span class="bold" id="rc-diff">Cuadra ✓</span>
     </div>
-    ${botonLeDebo}
     <button class="btn btn-ghost mt-sm" style="width:100%;border:1px dashed var(--outline-variant)" onclick="recibidoNoCancelo('${pedidoId}')">
-      <span class="ms">event_busy</span> No canceló hoy (queda debiendo el pedido)
+      <span class="ms">event_busy</span> No canceló hoy (queda debiendo el pedido${favorMax>0?', aplicando el saldo a favor':''})
     </button>
   `, `<button class="btn btn-ghost" onclick="cancelarRecibido('${pedidoId}')">Cancelar</button>
-      <button class="btn btn-primary" onclick="recibidoConfirmar('${pedidoId}')">Confirmar cobro</button>`);
-  setTimeout(()=>{ const el=document.getElementById('rc-efectivo'); if(el){ el.focus(); el.select(); } }, 60);
+      <button class="btn btn-primary" id="rc-btn-confirmar" onclick="recibidoConfirmar('${pedidoId}')">Confirmar cobro</button>`);
+  setTimeout(()=>{ const el=document.getElementById('rc-efectivo'); if(el){ el.focus(); el.select(); } _recibidoPreview(pedidoId); }, 60);
 }
 
 function cancelarRecibido(pedidoId){
@@ -2860,56 +2956,115 @@ function _recibidoAutoEfectivo(pedidoId){
   const r = DB.recaudo[_recaudoFecha] && DB.recaudo[_recaudoFecha][pedidoId]; if(!r) return;
   const efeEl = document.getElementById('rc-efectivo');
   if(efeEl && efeEl !== document.activeElement){
-    const neq = Number(document.getElementById('rc-nequi')?.value)||0;
-    const ban = Number(document.getElementById('rc-bancolombia')?.value)||0;
-    efeEl.value = Math.max(0, (Number(r.subtotal)||0) - neq - ban);
+    const v = _recibidoValores(pedidoId, r);
+    efeEl.value = Math.max(0, (Number(r.subtotal)||0) - v.neq - v.ban - v.favor - v.deudaBase);
   }
   _recibidoPreview(pedidoId);
 }
-/* Recalcula en vivo "Total ingresado" y "Diferencia" mientras el usuario escribe
-   en el formulario de Registrar cobro (efectivo + nequi + bancolombia). */
+/* Lee de una sola vez lo que hay escrito en el formulario de Registrar cobro,
+   ya saneado (sin negativos y con el saldo a favor topado). Una sola fuente
+   para la vista previa y para la confirmación: así lo que se ve es exactamente
+   lo que se guarda. */
+function _recibidoValores(pedidoId, fila){
+  const r = fila || (DB.recaudo[_recaudoFecha] && DB.recaudo[_recaudoFecha][pedidoId]);
+  const subtotal = Math.max(0, Number(r && r.subtotal)||0);
+  const leer = id => Math.max(0, Number(document.getElementById(id)?.value)||0);
+  const favorEl  = document.getElementById('rc-favor');
+  const favorMax = Math.min(_saldoFavorDisponible(r), subtotal);
+  const favorRaw = favorEl ? Math.max(0, Number(favorEl.value)||0)
+                           : Math.max(0, Number(r && r.saldoFavorAplicado)||0);
+  const favor = Math.min(favorRaw, favorMax);
+  const efe = leer('rc-efectivo'), neq = leer('rc-nequi'), ban = leer('rc-bancolombia');
+  const deudaBase = Math.max(0, Number(document.getElementById('rc-deudabase')?.value)||0);
+  return {subtotal, efe, neq, ban, favor, favorRaw, favorMax, deudaBase,
+          total: efe+neq+ban+favor, diff: subtotal - (efe+neq+ban+favor)};
+}
+/* Recalcula en vivo "Total cubierto" y "Diferencia" mientras el usuario escribe.
+   El saldo a favor cuenta como parte cubierta del pedido aunque no sea plata
+   que entre hoy; lo que quede sin cubrir se avisa como deuda, no como error. */
 function _recibidoPreview(pedidoId){
   const r = DB.recaudo[_recaudoFecha] && DB.recaudo[_recaudoFecha][pedidoId]; if(!r) return;
-  const efe = Number(document.getElementById('rc-efectivo')?.value)||0;
-  const neq = Number(document.getElementById('rc-nequi')?.value)||0;
-  const ban = Number(document.getElementById('rc-bancolombia')?.value)||0;
-  const total = efe+neq+ban;
-  const diff = (Number(r.subtotal)||0) - total;
-  const elTot = document.getElementById('rc-total'); if(elTot) elTot.textContent = money(total);
+  const v = _recibidoValores(pedidoId, r);
+  const elTot = document.getElementById('rc-total'); if(elTot) elTot.textContent = money(v.total);
   const elDiff = document.getElementById('rc-diff');
   const elWrap = document.getElementById('rc-diff-wrap');
-  if(elDiff) elDiff.textContent = diff===0 ? 'Cuadra ✓' : (diff>0 ? `Falta ${money(diff)}` : `Sobra ${money(-diff)}`);
-  if(elWrap) elWrap.style.color = diff===0 ? 'var(--tertiary)' : 'var(--error)';
+  const btn    = document.getElementById('rc-btn-confirmar');
+  let texto, color, etiquetaBtn = 'Confirmar cobro';
+  if(v.favorRaw > v.favorMax){
+    texto = `Saldo a favor máximo: ${money(v.favorMax)}`; color = 'var(--error)';
+  } else if(v.diff === 0){
+    texto = 'Cuadra ✓'; color = 'var(--tertiary)';
+  } else if(v.diff > 0){
+    texto = `Queda debiendo ${money(v.diff)}`; color = '#e8710a';
+    etiquetaBtn = `Confirmar y dejar debiendo ${money(v.diff)}`;
+  } else {
+    texto = `Sobran ${money(-v.diff)}: ajusta los valores`; color = 'var(--error)';
+  }
+  if(elDiff) elDiff.textContent = texto;
+  if(elWrap) elWrap.style.color = color;
+  if(btn) btn.textContent = etiquetaBtn;
 }
-/* Confirma el cobro del pedido del día repartido en efectivo/nequi/bancolombia.
-   Exige que la suma cuadre exactamente con el pedido: nada de excedentes o
-   faltantes absorbidos en silencio. */
+/* Confirma el cobro del pedido del día: efectivo + nequi + bancolombia + el
+   saldo a favor que se decida aplicar. Ya NO exige cuadrar exacto: lo que no se
+   cubra queda registrado como deuda del cliente (la paga otro día). Lo único
+   que se rechaza es ingresar MÁS de lo que vale el pedido. */
 function recibidoConfirmar(pedidoId){
   const r = DB.recaudo[_recaudoFecha] && DB.recaudo[_recaudoFecha][pedidoId]; if(!r) return;
-  const efe = Number(document.getElementById('rc-efectivo')?.value)||0;
-  const neq = Number(document.getElementById('rc-nequi')?.value)||0;
-  const ban = Number(document.getElementById('rc-bancolombia')?.value)||0;
-  const diff = (Number(r.subtotal)||0) - (efe+neq+ban);
-  if(diff !== 0){
-    toast(diff>0 ? `Faltan ${money(diff)} por asignar` : `Sobran ${money(-diff)}: ajusta los valores`, 'error');
+  const v = _recibidoValores(pedidoId, r);
+  if(v.favorRaw > v.favorMax){
+    toast(`El saldo a favor aplicable a esta factura es máximo ${money(v.favorMax)}`,'error');
     return;
   }
-  r.nequi = neq;
-  r.bancolombia = ban;
+  if(v.diff < 0){
+    toast(`Sobran ${money(-v.diff)}: ajusta los valores`,'error');
+    return;
+  }
+  r.nequi = v.neq;
+  r.bancolombia = v.ban;
+  _aplicarSaldoFavorFila(r, v.favor);   // cartera se mueve solo por la diferencia
+  _setDeudaFila(r, v.diff);             // lo que no se cubrió hoy queda debiendo
+  r._deudaDeRecibido = v.diff > 0;      // marca para poder revertirla al desmarcar
   r.recibido = true;   // el botón Recaudo es independiente: no se toca aquí
-  recalcEfectivoFila(r);   // reproduce exactamente el efectivo ingresado (ya validado arriba)
-  saveDB(); _encolarRecaudo(r); _repintarFilaRecaudo(pedidoId); _repintarTotalesRecaudo();
+  recalcEfectivoFila(r);
+  _guardarYRepintarFila(r, pedidoId);
   closeModal();
-  toast('Cobro registrado','success');
+  const partes = [];
+  if(v.favor>0) partes.push(`saldo a favor ${money(v.favor)}`);
+  if(v.diff>0)  partes.push(`queda debiendo ${money(v.diff)}`);
+  toast(partes.length ? `Cobro registrado · ${partes.join(' · ')}` : 'Cobro registrado','success');
 }
-/* El cliente no pagó nada hoy: el pedido completo queda como deuda nueva y
-   NO se marca como recibido (no hay dinero que entregue el domiciliario). */
+/* Guarda la fila y repinta. Si la fila tiene cliente se repintan TODAS sus filas
+   del día: su cartera cambió y esa columna se ve en cada una. */
+function _guardarYRepintarFila(r, pedidoId){
+  saveDB(); _encolarRecaudo(r);
+  if(r.clienteId){
+    Object.values(DB.recaudo[_recaudoFecha]||{}).forEach(o=>{ if(o.clienteId===r.clienteId) _repintarFilaRecaudo(o.pedidoId); });
+  } else _repintarFilaRecaudo(pedidoId);
+  _repintarTotalesRecaudo();
+}
+/* El cliente no pagó nada hoy: el pedido queda como deuda nueva y NO se marca
+   como recibido (no hay dinero que entregue el domiciliario). Si tiene saldo a
+   favor y se dejó puesto en el formulario, ese sobrante sí baja la deuda. */
 function recibidoNoCancelo(pedidoId){
   const r = DB.recaudo[_recaudoFecha] && DB.recaudo[_recaudoFecha][pedidoId]; if(!r) return;
+  const v = _recibidoValores(pedidoId, r);
+  if(v.favorRaw > v.favorMax){
+    toast(`El saldo a favor aplicable a esta factura es máximo ${money(v.favorMax)}`,'error');
+    return;
+  }
   r.recibido = false;   // el botón Recaudo es independiente: no se toca aquí
-  updRec(pedidoId, 'deuda', r.subtotal||0);
+  r.nequi = 0; r.bancolombia = 0;            // no entró plata hoy por ningún medio
+  _aplicarSaldoFavorFila(r, v.favor);
+  _setDeudaFila(r, Math.max(0, v.subtotal - v.favor));
+  r._deudaDeRecibido = true;
+  recalcEfectivoFila(r);
+  _guardarYRepintarFila(r, pedidoId);
+  const cb = document.querySelector(`input[onchange*="updRecibido('${pedidoId}'"]`);
+  if(cb) cb.checked = false;
   closeModal();
-  toast('Pedido registrado como deuda: no canceló hoy','default');
+  toast(v.favor>0
+    ? `Queda debiendo ${money(Math.max(0, v.subtotal - v.favor))} (saldo a favor ${money(v.favor)} aplicado)`
+    : 'Pedido registrado como deuda: no canceló hoy','default');
 }
 
 /* Opción 4: registrar pago de deuda (cliente me debe) */
@@ -2965,10 +3120,10 @@ function recibidoDeudaConfirm(pedidoId, medio){
   const monto = Number(document.getElementById('rd-monto').value)||0;
   if(monto<=0){ toast('Ingresa un monto válido','error'); return; }
   // Si pagó SOLO la deuda, el pedido de hoy NO se cobra: queda como deuda nueva.
+  // Va por _setDeudaFila para que el delta contra lo ya registrado sea correcto
+  // y no se duplique el movimiento si después se edita la deuda a mano.
   if(r._modoPagoDeuda === 'solo'){
-    r.deuda = (Number(r.subtotal)||0);   // anula el efectivo del pedido
-    // registrar en cartera que el pedido de hoy queda debiendo
-    if(r.clienteId) registrarMovCartera(r.clienteId,'deuda',(Number(r.subtotal)||0),`Pedido a crédito ${_recaudoFecha}`);
+    _setDeudaFila(r, Number(r.subtotal)||0, `Pedido a crédito ${_recaudoFecha}`);
   }
   // Guardar el abono de deuda vieja en su propio array, NUNCA dentro de
   // r.nequi/r.bancolombia (esos son del cobro del pedido de hoy). Los KPIs de
@@ -3007,29 +3162,37 @@ function recibidoLeDeboConfirm(pedidoId, medio){
   const r = DB.recaudo[_recaudoFecha] && DB.recaudo[_recaudoFecha][pedidoId]; if(!r) return;
   const monto = Number(document.getElementById('rld-monto').value)||0;
   if(monto<=0){ toast('Ingresa un monto válido','error'); return; }
+  _adoptarDescuentoLeDeboPrevio(r);
+  const disponible = _saldoFavorDisponible(r) - (Number(r.saldoFavorAplicado)||0);
+  if(monto > disponible){
+    toast(`Solo le debes ${money(Math.max(0,disponible))} a este cliente`,'error');
+    return;
+  }
   // Descuento en la factura del día: RESTA del medio elegido.
   if(medio==='nequi'){
     r.nequi = Math.max(0,(Number(r.nequi)||0) - monto);
+    if(r.clienteId) registrarMovCartera(r.clienteId,'debo_cliente',-monto,`Descuento le debo (${medio}) ${_recaudoFecha}`);
   } else if(medio==='bancolombia'){
     r.bancolombia = Math.max(0,(Number(r.bancolombia)||0) - monto);
+    if(r.clienteId) registrarMovCartera(r.clienteId,'debo_cliente',-monto,`Descuento le debo (${medio}) ${_recaudoFecha}`);
   } else {
-    // efectivo: usamos descuentoLeDebo que RESTA del efectivo en la fórmula
-    r.descuentoLeDebo = (Number(r.descuentoLeDebo)||0) + monto;
+    // Efectivo: es el mismo "saldo a favor aplicado" del modal de cobro, así que
+    // se acumula ahí (mueve descuentoLeDebo y cartera por la diferencia). Si no,
+    // el campo del modal volvería a descontarlo y se contaría dos veces.
+    _aplicarSaldoFavorFila(r, (Number(r.saldoFavorAplicado)||0) + monto);
   }
-  // En cartera: baja lo que yo le debo al cliente (usé el saldo a favor)
-  if(r.clienteId) registrarMovCartera(r.clienteId,'debo_cliente',-monto,`Descuento le debo (${medio}) ${_recaudoFecha}`);
   r.recibido = true;   // el botón Recaudo es independiente: no se toca aquí
   recalcEfectivoFila(r);
-  saveDB(); _encolarRecaudo(r);
-  if(r.clienteId){ Object.values(DB.recaudo[_recaudoFecha]||{}).forEach(o=>{ if(o.clienteId===r.clienteId) _repintarFilaRecaudo(o.pedidoId); }); }
-  else _repintarFilaRecaudo(pedidoId);
-  _repintarTotalesRecaudo();
+  _guardarYRepintarFila(r, pedidoId);
   closeModal();
   toast(`Descontado ${money(monto)} de ${medio}`,'success');
 }
 function updRec(id,campo,val){
   const r = DB.recaudo[_recaudoFecha] && DB.recaudo[_recaudoFecha][id]; if(!r) return;
   r[campo] = (campo==='entregado'||campo==='recibido'||campo==='observacion') ? val : (parseNum(val));
+  // Deuda editada a mano: deja de ser "la que generó el modal de cobro", así
+  // desmarcar Recibido no borra un valor que el usuario puso a propósito.
+  if(campo==='deuda') r._deudaDeRecibido = false;
   // Si se escribe directo en la columna PAGO DEUDA, asumimos efectivo (para que sume en efectivo).
   if(campo==='deudaPago'){
     r.deudaPagoMedio = (r[campo] > 0) ? (r.deudaPagoMedio || 'efectivo') : null;
@@ -3116,15 +3279,17 @@ function exportarRecaudoExcel(){
   if(filas.length===0){ toast('No hay datos','error'); return; }
   const fechaLabel = new Date(_recaudoFecha+'T00:00:00').toLocaleDateString('es-CO',{weekday:'long',year:'numeric',month:'long',day:'2-digit'});
   const tDebe = filas.reduce((a,b)=>a+(b.debeCliente||0),0);
+  const tFavor = filas.reduce((a,b)=>a+Math.max(0,Number(b.saldoFavorAplicado)||0),0);
   const datos = filas.map((r,i)=>[
     i+1, r.tipo||'', r.cliente||'', r.subtotal||0,
     r.recibido?'Sí':'No', r.recaudado?'Sí':'No', calcMontoRecaudoFila(r),
     r.efectivo||0, r.nequi||0, r.bancolombia||0,
+    Math.max(0,Number(r.saldoFavorAplicado)||0),
     r.deuda||0, r.deudaPago||0, r.debeCliente||0,
     r.faltante||0, r.salida||0, r.observacion||''
   ]);
   datos.push(['','','TOTALES', t.bruto, '', '', t.tRec, t.tEfe, t.tNeq, t.tBan,
-              t.deudasHoy, t.tDeu, tDebe, t.falt, t.sal, '']);
+              tFavor, t.deudasHoy, t.tDeu, tDebe, t.falt, t.sal, '']);
 
   exportarReporte({
     archivo: `Recaudo_Domiciliarios_${_recaudoFecha}`,
@@ -3142,6 +3307,7 @@ function exportarRecaudoExcel(){
       {titulo:'Efectivo', ancho:14, moneda:true},
       {titulo:'Nequi', ancho:14, moneda:true},
       {titulo:'Bancolombia', ancho:14, moneda:true},
+      {titulo:'Saldo a favor aplicado', ancho:20, moneda:true},
       {titulo:'Deuda nueva', ancho:14, moneda:true},
       {titulo:'Abono a deuda', ancho:14, moneda:true},
       {titulo:'Le debo', ancho:14, moneda:true},
