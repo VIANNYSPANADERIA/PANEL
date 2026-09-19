@@ -503,9 +503,17 @@ document.addEventListener('keydown', ()=>{ _ultimaTecla = Date.now(); }, true);
    Serializar todo el DB en cada tecla causa latencia; lo agrupamos a 400ms. === */
 let _saveDBTimer = null;
 let _saveDBDesactivado = false;   // cuota local llena: no reintentar en cada ciclo
+/* ¿Hay algo por guardar? JSON.stringify(DB) es la operación cara de toda la app
+   (las fotos de los productos viajan en base64 dentro del DB, así que son varios
+   MB y el hilo se bloquea mientras tanto). Sin esta bandera, el guardado
+   periódico serializaba todo cada 4 segundos aunque no hubiera cambiado nada:
+   eso era el tirón que obligaba a reiniciar la página. */
+let _dbSucio = false;
 function saveDB(inmediato){
+  _dbSucio = true;
   if(_saveDBTimer){ clearTimeout(_saveDBTimer); _saveDBTimer = null; }
   const hacer = ()=>{
+    _dbSucio = false;
     if(_saveDBDesactivado) return;
     let newJson;
     try{ newJson = JSON.stringify(DB); }catch(e){ console.warn('No se pudo serializar DB:', e); return; }
@@ -585,6 +593,16 @@ function refrescarVistaActiva(){
     }catch(e){}
     return;
   }
+  // En PEDIDOS: JAMÁS reconstruir la pantalla desde una sincronización de fondo.
+  // Es un formulario que se está llenando: rehacerlo borra lo escrito, y volver
+  // a pintar la grilla completa de productos (con las fotos incrustadas en
+  // base64) es lo que dejaba la app trabada hasta tener que reiniciarla. Aquí
+  // solo se refresca lo único que de verdad pudo cambiar en el servidor: la
+  // deuda del cliente.
+  if(route === 'pedidos'){
+    try{ _refrescarDeudaPedido(); }catch(e){}
+    return;
+  }
   // En CONTABILIDAD pestaña Registrar: no re-renderizar (borraría lo que escribes).
   // Solo refrescar la lista de últimos movimientos.
   if(route === 'contabilidad' && typeof _contaTab!=='undefined' && _contaTab==='registrar'){
@@ -657,6 +675,68 @@ function excIds(p){
   if(!v) return [];
   if(Array.isArray(v)) return v.filter(Boolean);
   return String(v).split(',').map(x=>x.trim()).filter(Boolean);
+}
+/* Subtítulo del encabezado de Pedidos: zona del cliente + su estado de cartera.
+   Vive aparte porque se repinta solo cuando llega una sincronización, sin tocar
+   el resto de la pantalla. */
+function _pedidoSubHTML(cli){
+  const deuda = getDeudaCliente(cli.id);
+  return `${cli.tipo||''} ${deuda>0?`· <span class="badge badge-error">Debe ${money(deuda)}</span>`
+        : deuda<0?`· <span class="badge badge-success">A favor ${money(-deuda)}</span>`:''}`;
+}
+/* Tarjeta de deuda / saldo a favor del resumen del pedido. También se repinta
+   sola, sin reconstruir la grilla de productos. */
+function _pedidoDeudaCardHTML(cli){
+  const deuda = getDeudaCliente(cli.id);
+  const chk = `<label class="switch"><input type="checkbox" id="pedidoMostrarDeuda" ${_pedidoMostrarDeuda?'checked':''} onchange="_pedidoMostrarDeuda=this.checked"/></label>`;
+  if(deuda===0){
+    return `<div class="card mb-md" style="background:var(--surface-container-low)">
+      <div class="card-b flex fb" style="gap:8px;align-items:center">
+        <span style="font-size:13px;font-weight:600"><span class="ms" style="vertical-align:middle;color:var(--tertiary)">check_circle</span> Sin deuda pendiente</span>
+        ${chk}
+      </div>
+    </div>`;
+  }
+  const col = deuda>0 ? '#ba1a1a' : '#005338';
+  return `<div class="card mb-md" style="border-left:6px solid ${col};background:${deuda>0?'#fff4f4':'#f0faf5'}">
+    <div class="card-b">
+      <div style="font-size:13px;font-weight:700;color:${col};margin-bottom:6px">
+        <span class="ms" style="vertical-align:middle;font-size:18px">${deuda>0?'account_balance_wallet':'savings'}</span>
+        ${deuda>0?'DEUDA DEL CLIENTE':'SALDO A FAVOR DEL CLIENTE'}
+      </div>
+      <div style="font-size:32px;font-weight:900;font-family:var(--font-mono);color:${col};line-height:1">${money(Math.abs(deuda))}</div>
+      ${deuda>0 ? _desgloseDeudaPedidoHTML(deuda, _deudaHoyCliente(cli.id, _clientesFecha||todayKey())) : ''}
+      <div style="font-size:11.5px;margin-top:6px;color:${col}">
+        ${deuda>0?'El cliente tiene una deuda pendiente con la panadería.':'La panadería tiene un saldo pendiente a favor del cliente.'}
+      </div>
+      <div class="flex" style="gap:10px;margin-top:10px;align-items:center">
+        ${chk}<span style="font-size:12px;font-weight:600;color:${col}">Mostrar en el ticket</span>
+      </div>
+    </div>
+  </div>`;
+}
+/* Repintado quirúrgico de la pantalla de Pedidos cuando llega una sincronización:
+   solo la cartera del cliente. Nunca la grilla de productos ni los inputs. */
+function _refrescarDeudaPedido(){
+  const cli = DB.clientes.find(c=>c.id===_currentCliente);
+  if(!cli) return;
+  const sub = document.getElementById('ped-sub');
+  if(sub) sub.innerHTML = _pedidoSubHTML(cli);
+  const box = document.getElementById('ped-deuda-box');
+  // Si el switch está enfocado no se toca, para no interrumpir un clic en curso.
+  if(box && !box.contains(document.activeElement)) box.innerHTML = _pedidoDeudaCardHTML(cli);
+}
+/* Desglose "de hoy / de antes" para la tarjeta de deuda del módulo Pedidos.
+   Mismo código de colores que la columna Cartera del recaudo: punto ROJO = lo
+   que se generó hoy, punto gris = lo que el cliente ya arrastraba. */
+function _desgloseDeudaPedidoHTML(total, hoy){
+  const deHoy = Math.min(Math.max(0, hoy), total);
+  const vieja = Math.max(0, total - deHoy);
+  if(deHoy<=0) return '';
+  return `<div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:8px;font-size:12px;font-weight:700">
+    <span style="white-space:nowrap"><span style="color:#ba1a1a;font-size:15px;vertical-align:-1px">●</span> De hoy: ${money(deHoy)}</span>
+    ${vieja>0?`<span style="white-space:nowrap;color:#6b6b6b"><span style="color:#9a9a9a;font-size:15px;vertical-align:-1px">●</span> De antes: ${money(vieja)}</span>`:''}
+  </div>`;
 }
 function excVisible(p, clienteId){
   const ids = excIds(p);
@@ -1241,7 +1321,7 @@ function renderPedidos(params={}){
   $('#view').innerHTML = `
     <div class="ph">
       <button class="btn btn-ghost btn-sm" onclick="go('clientes')"><span class="ms">arrow_back</span></button>
-      <div><h1>Pedido - ${cli.nombre}</h1><div class="sub">${cli.tipo||''} ${deuda>0?`· <span class="badge badge-error">Debe ${money(deuda)}</span>`:deuda<0?`· <span class="badge badge-success">A favor ${money(deuda*-1)}</span>`:''}</div></div>
+      <div><h1>Pedido - ${cli.nombre}</h1><div class="sub" id="ped-sub">${_pedidoSubHTML(cli)}</div></div>
       <div class="h-spacer"></div>
       <div class="seg">
         <button class="${_modoCondicion==='condicion'?'active':''}" onclick="_modoCondicion='condicion';renderPedidos()">Condición Pan 2.000</button>
@@ -1256,7 +1336,9 @@ function renderPedidos(params={}){
     <div class="prod-grid mt-md">
       ${items.map(x=>`
         <div class="prod ${x.calc.subtotal>0?'has-item':''}" id="card-${x.p.id}">
-          <div class="prod-img">${x.p.imagen?`<img src="${x.p.imagen}"/>`:'<span class="ms" style="font-size:32px">cake</span>'}</div>
+          <!-- lazy/async: las fotos van en base64 dentro del DB; decodificarlas
+               todas de golpe trababa el pintado de la grilla. -->
+          <div class="prod-img">${x.p.imagen?`<img src="${x.p.imagen}" loading="lazy" decoding="async" alt=""/>`:'<span class="ms" style="font-size:32px">cake</span>'}</div>
           <div class="prod-name">${x.p.nombre}</div>
           <div class="prod-price">${money(x.p.precio)} / unidad ${x.p.vendajeActivo?'· <span class="badge badge-warn">Vendaje '+x.p.vendajePct+'%</span>':''}</div>
           ${excIds(x.p).length?`<div class="prod-exc">Exclusivo: ${excNombres(x.p)}</div>`:''}
@@ -1276,29 +1358,7 @@ function renderPedidos(params={}){
       <div class="card-h"><div class="card-t">Resumen del pedido</div></div>
       <div class="card-b">
         <div class="field"><label>Comentario para la factura</label><textarea id="comentario" rows="2" placeholder="Comentario..." oninput="_comentarioPedido=this.value">${_comentarioPedido}</textarea></div>
-        ${deuda!==0?`
-        <div class="card mb-md" style="border-left:6px solid ${deuda>0?'#ba1a1a':'#005338'};background:${deuda>0?'#fff4f4':'#f0faf5'}">
-          <div class="card-b">
-            <div style="font-size:13px;font-weight:700;color:${deuda>0?'#ba1a1a':'#005338'};margin-bottom:6px">
-              <span class="ms" style="vertical-align:middle;font-size:18px">${deuda>0?'account_balance_wallet':'savings'}</span>
-              ${deuda>0?'DEUDA DEL CLIENTE':'SALDO A FAVOR DEL CLIENTE'}
-            </div>
-            <div style="font-size:32px;font-weight:900;font-family:var(--font-mono);color:${deuda>0?'#ba1a1a':'#005338'};line-height:1">${money(Math.abs(deuda))}</div>
-            <div style="font-size:11.5px;margin-top:6px;color:${deuda>0?'#ba1a1a':'#005338'}">
-              ${deuda>0?'El cliente tiene una deuda pendiente con la panadería.':'La panadería tiene un saldo pendiente a favor del cliente.'}
-            </div>
-            <div class="flex" style="gap:10px;margin-top:10px;align-items:center">
-              <label class="switch"><input type="checkbox" id="pedidoMostrarDeuda" ${_pedidoMostrarDeuda?'checked':''} onchange="_pedidoMostrarDeuda=this.checked"/></label>
-              <span style="font-size:12px;font-weight:600;color:${deuda>0?'#ba1a1a':'#005338'}">Mostrar en el ticket</span>
-            </div>
-          </div>
-        </div>`:`
-        <div class="card mb-md" style="background:var(--surface-container-low)">
-          <div class="card-b flex fb" style="gap:8px;align-items:center">
-            <span style="font-size:13px;font-weight:600"><span class="ms" style="vertical-align:middle;color:var(--tertiary)">check_circle</span> Sin deuda pendiente</span>
-            <label class="switch"><input type="checkbox" id="pedidoMostrarDeuda" ${_pedidoMostrarDeuda?'checked':''} onchange="_pedidoMostrarDeuda=this.checked"/></label>
-          </div>
-        </div>`}
+        <div id="ped-deuda-box">${_pedidoDeudaCardHTML(cli)}</div>
         <div class="flex fb"><span class="bold">TOTAL DEL PEDIDO</span><span id="totalPedido" class="bold" style="font-size:24px;font-family:var(--font-mono);color:var(--primary)">${money(total)}</span></div>
         <div class="mt-md flex gap" style="flex-wrap:wrap">
           <button class="btn btn-primary" onclick="guardarPedido()"><span class="ms">save</span>Guardar Pedido</button>
@@ -2043,12 +2103,21 @@ function _calcularTotalesRecaudo(){
     tBan += _deudaPagoPorMedio(b,'bancolombia');
   }
   const tDeu = filas.reduce((a,b)=>a+(Number(b.deudaPago)||0),0);
+  // Saldo a favor de clientes usado para cubrir pedidos de hoy. No es plata que
+  // entre en caja, pero sí cubre factura: cuenta para saber qué falta por cobrar.
+  const tFavor = filas.reduce((a,b)=>a+Math.max(0,Number(b.saldoFavorAplicado)||0),0);
   // Lo que se le cobra al domiciliario. SOLO lo mueve el botón "Recaudo":
   // el checkbox "Recibido" es otra cosa (confirma cómo pagó el cliente) y no
   // debe sumar aquí. calcMontoRecaudoFila decide, fila por fila, si además
   // suma la deuda de cartera: solo si se incluyó al marcar el Recaudo.
   const tRec = filas.filter(f=>f.recaudado).reduce((a,b)=>a+calcMontoRecaudoFila(b),0);
   const bruto = filas.reduce((a,b)=>a+(b.subtotal||0),0);
+  // Lo realmente cubierto del pedido de hoy: el cobro confirmado por cualquier
+  // medio más el saldo a favor aplicado. Antes se usaba el subtotal completo de
+  // las filas marcadas como Recibido, así que un pedido pagado a medias se daba
+  // por cobrado entero y el KPI "Pendiente" salía en cero sin serlo.
+  const cubierto = confirmadas.reduce((a,b)=>
+    a+(Number(b.efectivo)||0)+(Number(b.nequi)||0)+(Number(b.bancolombia)||0), 0) + tFavor;
   const confMonto = confirmadas.reduce((a,b)=>a+(b.subtotal||0),0);
   const falt = filas.reduce((a,b)=>a+(b.faltante||0),0);
   const sal = filas.reduce((a,b)=>a+(b.salida||0),0);
@@ -2056,10 +2125,10 @@ function _calcularTotalesRecaudo(){
   // Filas que sí son un pedido del día. Las "solo abono de deuda" no cuentan
   // como pedidos atendidos ni pendientes.
   const filasPedido = filas.filter(f=>!f.soloDeuda);
-  return {filas, filasPedido, tEfe, tNeq, tBan, tDeu, tRec,
+  return {filas, filasPedido, tEfe, tNeq, tBan, tDeu, tRec, tFavor,
     tGen: tEfe+tNeq+tBan,               // dinero recibido de clientes (sin duplicar pagos de deuda)
-    bruto, confMonto, falt, sal, deudasHoy,
-    pendiente: Math.max(0, bruto - confMonto)};
+    bruto, confMonto, cubierto, falt, sal, deudasHoy,
+    pendiente: Math.max(0, bruto - cubierto)};
 }
 
 /* ---- Filtros y búsqueda (solo afectan qué se ve en la tabla, no los KPIs) ---- */
@@ -2112,11 +2181,36 @@ function _recBtnEstado(f){
     html: `<span class="ms">${f.recaudado?'check_circle':'payments'}</span>${f.recaudado?money(monto):'Recaudo'}`
   };
 }
+/* Deuda que el cliente generó HOY (pedidos del día que quedaron debiendo).
+   Se mira en TODAS sus filas del día, no solo en una, porque un mismo cliente
+   puede tener más de un renglón en la fecha. */
+function _deudaHoyCliente(clienteId, fecha){
+  if(!clienteId) return 0;
+  return Object.values(DB.recaudo[fecha || _recaudoFecha] || {})
+    .filter(f=>f.clienteId===clienteId)
+    .reduce((a,f)=>a+Math.max(0, Number(f.deuda)||0), 0);
+}
+/* Desglose "cuánto es de hoy y cuánto venía de antes". El punto ROJO marca lo
+   que se acaba de generar hoy; el punto gris, lo que ya arrastraba. */
+function _desgloseDeudaHTML(total, hoy){
+  const deHoy = Math.min(Math.max(0, hoy), total);
+  const vieja = Math.max(0, total - deHoy);
+  if(deHoy<=0) return '';
+  const punto = (color,titulo)=>`<span title="${titulo}" style="color:${color};font-size:13px;line-height:1">●</span>`;
+  return `<div style="font-size:10.5px;margin-top:3px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
+    <span style="white-space:nowrap">${punto('#ba1a1a','Deuda generada HOY')} <b style="color:#ba1a1a">Hoy ${money(deHoy)}</b></span>
+    ${vieja>0?`<span class="muted" style="white-space:nowrap">${punto('#9a9a9a','Deuda que ya venía de antes')} Antes ${money(vieja)}</span>`:''}
+  </div>`;
+}
 /* Badge de cartera (solo lectura). El pago de esa deuda se hace desde el
    modal que abre el botón "Recaudo", no aquí en la fila. */
 function _celdaCarteraHTML(f){
   const saldoCart = f.clienteId ? getSaldoCliente(f.clienteId) : 0;
-  if(saldoCart<0) return `<span class="badge badge-error">Debe ${money(-saldoCart)}</span>`;
+  if(saldoCart<0){
+    const total = -saldoCart;
+    return `<span class="badge badge-error">Debe ${money(total)}</span>`
+         + _desgloseDeudaHTML(total, _deudaHoyCliente(f.clienteId));
+  }
   if(saldoCart>0) return `<span class="badge badge-warn">Le debo ${money(saldoCart)}</span>`;
   return `<span class="badge badge-success">Al día</span>`;
 }
@@ -2612,8 +2706,7 @@ function _bloqueAbonosDeudaHTML(r){
 function abrirDetalleRecaudo(pedidoId){
   const r = DB.recaudo[_recaudoFecha] && DB.recaudo[_recaudoFecha][pedidoId]; if(!r) return;
   const cli = r.clienteId ? DB.clientes.find(c=>c.id===r.clienteId) : null;
-  const saldoCart = r.clienteId ? getSaldoCliente(r.clienteId) : 0;
-  const celdaCartera = saldoCart<0 ? `<span class="badge badge-error">Debe ${money(-saldoCart)}</span>` : saldoCart>0 ? `<span class="badge badge-warn">Le debo ${money(saldoCart)}</span>` : `<span class="badge badge-success">Al día</span>`;
+  const celdaCartera = _celdaCarteraHTML(r);   // incluye el desglose hoy / antes
   const estadoPedido = r.deuda>0 ? `<span class="badge badge-error">Debe</span>` : r.debeCliente>0 ? `<span class="badge badge-warn">Le debo</span>` : `<span class="badge badge-success">Al día</span>`;
   const montoRecaudo = calcMontoRecaudoFila(r);
   const totalRecibido = (Number(r.nequi)||0)+(Number(r.bancolombia)||0)+(Number(r.efectivo)||0);
@@ -2704,10 +2797,7 @@ function _repintarDetalleModal(id, r){
   const estadoEl = document.getElementById('dr-estado');
   if(estadoEl) estadoEl.innerHTML = r.deuda>0?`<span class="badge badge-error">Debe</span>`:r.debeCliente>0?`<span class="badge badge-warn">Le debo</span>`:`<span class="badge badge-success">Al día</span>`;
   const cartEl = document.getElementById('dr-cartera');
-  if(cartEl){
-    const sc = r.clienteId?getSaldoCliente(r.clienteId):0;
-    cartEl.innerHTML = sc<0?`<span class="badge badge-error">Debe ${money(-sc)}</span>`:sc>0?`<span class="badge badge-warn">Le debo ${money(sc)}</span>`:`<span class="badge badge-success">Al día</span>`;
-  }
+  if(cartEl) cartEl.innerHTML = _celdaCarteraHTML(r);
 }
 
 /* ===== Modal LIQUIDAR RUTA: resumen final antes de cerrar el día con el domiciliario ===== */
@@ -3280,16 +3370,26 @@ function exportarRecaudoExcel(){
   const fechaLabel = new Date(_recaudoFecha+'T00:00:00').toLocaleDateString('es-CO',{weekday:'long',year:'numeric',month:'long',day:'2-digit'});
   const tDebe = filas.reduce((a,b)=>a+(b.debeCliente||0),0);
   const tFavor = filas.reduce((a,b)=>a+Math.max(0,Number(b.saldoFavorAplicado)||0),0);
+  // Las columnas de dinero replican EXACTAMENTE la lógica de los KPIs de
+  // pantalla (_calcularTotalesRecaudo): el cobro del pedido solo cuenta si la
+  // fila está en "Recibido", el recaudo solo si está en "Recaudado", y los
+  // abonos de deuda vieja van en sus propias columnas. Así cada total del
+  // Excel es la SUMA de su columna y los números cuadran a la vista.
   const datos = filas.map((r,i)=>[
     i+1, r.tipo||'', r.cliente||'', r.subtotal||0,
-    r.recibido?'Sí':'No', r.recaudado?'Sí':'No', calcMontoRecaudoFila(r),
-    r.efectivo||0, r.nequi||0, r.bancolombia||0,
+    r.recibido?'Sí':'No', r.recaudado?'Sí':'No',
+    r.recaudado ? calcMontoRecaudoFila(r) : 0,
+    r.recibido ? (Number(r.efectivo)||0) : 0,
+    r.recibido ? (Number(r.nequi)||0) : 0,
+    r.recibido ? (Number(r.bancolombia)||0) : 0,
+    _deudaPagoPorMedio(r,'efectivo'), _deudaPagoPorMedio(r,'nequi'), _deudaPagoPorMedio(r,'bancolombia'),
     Math.max(0,Number(r.saldoFavorAplicado)||0),
-    r.deuda||0, r.deudaPago||0, r.debeCliente||0,
+    r.deuda||0, r.debeCliente||0,
     r.faltante||0, r.salida||0, r.observacion||''
   ]);
-  datos.push(['','','TOTALES', t.bruto, '', '', t.tRec, t.tEfe, t.tNeq, t.tBan,
-              tFavor, t.deudasHoy, t.tDeu, tDebe, t.falt, t.sal, '']);
+  // La fila de TOTALES va vacía a propósito: exportarReporte la reemplaza por
+  // fórmulas =SUMA() reales sobre cada columna de dinero.
+  datos.push(['','','TOTALES','','','','','','','','','','','','','','','','']);
 
   exportarReporte({
     archivo: `Recaudo_Domiciliarios_${_recaudoFecha}`,
@@ -3304,30 +3404,36 @@ function exportarRecaudoExcel(){
       {titulo:'Recibido', ancho:10},
       {titulo:'Recaudado', ancho:11},
       {titulo:'A cobrar al domiciliario', ancho:22, moneda:true},
-      {titulo:'Efectivo', ancho:14, moneda:true},
-      {titulo:'Nequi', ancho:14, moneda:true},
-      {titulo:'Bancolombia', ancho:14, moneda:true},
+      {titulo:'Efectivo pedido', ancho:15, moneda:true},
+      {titulo:'Nequi pedido', ancho:14, moneda:true},
+      {titulo:'Bancolombia pedido', ancho:18, moneda:true},
+      {titulo:'Abono deuda efectivo', ancho:19, moneda:true},
+      {titulo:'Abono deuda Nequi', ancho:18, moneda:true},
+      {titulo:'Abono deuda Bancolombia', ancho:23, moneda:true},
       {titulo:'Saldo a favor aplicado', ancho:20, moneda:true},
       {titulo:'Deuda nueva', ancho:14, moneda:true},
-      {titulo:'Abono a deuda', ancho:14, moneda:true},
       {titulo:'Le debo', ancho:14, moneda:true},
       {titulo:'Faltante', ancho:13, moneda:true},
       {titulo:'Salida', ancho:13, moneda:true},
       {titulo:'Observación', ancho:34}
     ],
     filas: datos,
+    // Cada total del resumen es una SUMA real sobre sus columnas: al abrir el
+    // archivo, Excel lo recalcula y se puede auditar celda por celda.
     resumen: [
-      ['Pedidos del día', t.bruto],
-      ['Recibido de clientes', t.tGen],
-      ['Total a recibir del domiciliario', t.tRec],
-      ['Efectivo', t.tEfe],
-      ['Nequi', t.tNeq],
-      ['Bancolombia', t.tBan],
-      ['Abonos a deudas de cartera', t.tDeu],
-      ['Deudas nuevas del día', t.deudasHoy],
-      ['Saldo a favor de clientes', tDebe],
-      ['Faltantes', t.falt],
-      ['Salidas', t.sal]
+      ['Pedidos del día',                  {suma:'Pedido', alt:t.bruto}],
+      ['Recibido de clientes',             {f:'SUM(@[Efectivo pedido])+SUM(@[Nequi pedido])+SUM(@[Bancolombia pedido])+SUM(@[Abono deuda efectivo])+SUM(@[Abono deuda Nequi])+SUM(@[Abono deuda Bancolombia])', alt:t.tGen}],
+      ['Total a recibir del domiciliario', {suma:'A cobrar al domiciliario', alt:t.tRec}],
+      ['Efectivo',                         {f:'SUM(@[Efectivo pedido])+SUM(@[Abono deuda efectivo])', alt:t.tEfe}],
+      ['Nequi',                            {f:'SUM(@[Nequi pedido])+SUM(@[Abono deuda Nequi])', alt:t.tNeq}],
+      ['Bancolombia',                      {f:'SUM(@[Bancolombia pedido])+SUM(@[Abono deuda Bancolombia])', alt:t.tBan}],
+      ['Abonos a deudas de cartera',       {f:'SUM(@[Abono deuda efectivo])+SUM(@[Abono deuda Nequi])+SUM(@[Abono deuda Bancolombia])', alt:t.tDeu}],
+      ['Deudas nuevas del día',            {suma:'Deuda nueva', alt:t.deudasHoy}],
+      ['Saldo a favor aplicado',           {suma:'Saldo a favor aplicado', alt:tFavor}],
+      ['Saldo a favor de clientes',        {suma:'Le debo', alt:tDebe}],
+      ['Faltantes',                        {suma:'Faltante', alt:t.falt}],
+      ['Salidas',                          {suma:'Salida', alt:t.sal}],
+      ['Pendiente por cobrar',             {f:'SUM(@[Pedido])-SUM(@[Efectivo pedido])-SUM(@[Nequi pedido])-SUM(@[Bancolombia pedido])-SUM(@[Saldo a favor aplicado])', alt:t.pendiente}]
     ]
   });
 }
@@ -3421,14 +3527,129 @@ async function guardarAjuste(id){
   try{ await appwriteService.guardarMovCartera(mov); saveDB(); closeModal();renderCartera();toast('Ajuste registrado','success'); }
   catch(e){ toast('No se pudo registrar el ajuste','error'); }
 }
-function historialClienteModal(id){
-  const c=DB.clientes.find(x=>x.id===id);
-  const movs=DB.cartera.filter(m=>m.clienteId===id);
-  modal(`Historial - ${c.nombre}`,`<div class="tw"><table class="d"><thead><tr><th>Fecha</th><th>Tipo</th><th>Valor</th><th>Saldo Ant.</th><th>Saldo Act.</th><th>Obs.</th></tr></thead><tbody>${movs.map(m=>`<tr><td>${new Date(m.fecha).toLocaleDateString('es-CO')}</td><td>${m.tipo}</td><td class="num">${money(m.valor)}</td><td class="num">${money(m.saldoAnterior)}</td><td class="num bold">${money(m.saldoActual)}</td><td>${m.observacion||''}</td></tr>`).join('')}</tbody></table></div>`);
+/* ---------- Historial de cartera: presentación ----------
+   Los movimientos se guardan con nombres técnicos ('pago_deuda', 'debo_cliente'…)
+   y con el valor en bruto, que a veces va en negativo porque representa una
+   reversa. Para leerlo no sirve ese dato crudo: lo que importa es CUÁNTO se
+   movió el saldo y HACIA DÓNDE. Eso siempre es saldoActual - saldoAnterior. */
+const CARTERA_TIPOS = {
+  deuda:         {label:'Deuda generada',    icono:'trending_down'},
+  pago_deuda:    {label:'Abono a deuda',     icono:'payments'},
+  pago:          {label:'Pago del cliente',  icono:'payments'},
+  debo_cliente:  {label:'Saldo a favor',     icono:'savings'},
+  pago_empresa:  {label:'Pago al cliente',   icono:'outbound'},
+  saldo_inicial: {label:'Saldo inicial',     icono:'flag'},
+  ajuste:        {label:'Ajuste manual',     icono:'tune'}
+};
+function _tipoCartera(t){ return CARTERA_TIPOS[t] || {label:(t||'Movimiento'), icono:'swap_horiz'}; }
+/** Fecha larga y legible: '19/09/2026 · 3:24 p. m.' */
+function _fechaHoraCorta(v){
+  const d = new Date(v);
+  if(isNaN(d)) return String(v||'');
+  return d.toLocaleDateString('es-CO',{day:'2-digit',month:'2-digit',year:'numeric'})
+       + ' · ' + d.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'});
 }
+/** El saldo en palabras, con el color de su significado. */
+function _saldoTextoHTML(s, tamano){
+  const st = `font-weight:800;font-family:var(--font-mono);${tamano?`font-size:${tamano}`:''}`;
+  if(s<0) return `<span style="color:#ba1a1a;${st}">Debe ${money(-s)}</span>`;
+  if(s>0) return `<span style="color:#004b98;${st}">A favor ${money(s)}</span>`;
+  return `<span style="color:#005338;${st}">Al día</span>`;
+}
+/** El movimiento en sí: +N.NNN en verde si el saldo mejora, -N.NNN en rojo si empeora. */
+function _cambioCarteraHTML(m){
+  const cambio = (Number(m.saldoActual)||0) - (Number(m.saldoAnterior)||0);
+  if(cambio === 0) return `<span class="muted">—</span>`;
+  const color = cambio > 0 ? '#005338' : '#ba1a1a';
+  return `<span style="color:${color};font-weight:800;font-family:var(--font-mono);white-space:nowrap">${cambio>0?'+':'−'}${money(Math.abs(cambio))}</span>`;
+}
+/* Historial de UN cliente: lo más reciente arriba, que es lo que siempre se
+   viene a consultar. Cada renglón dice qué pasó, cuánto movió y cómo quedó. */
+function historialClienteModal(id){
+  const c = DB.clientes.find(x=>x.id===id);
+  if(!c) return;
+  // Copia invertida: el array guarda en orden cronológico, aquí se ve al revés.
+  const movs = DB.cartera.filter(m=>m.clienteId===id).slice().reverse();
+  const saldo = getSaldoCliente(id);
+  const totalDebe  = movs.reduce((a,m)=>{const d=(m.saldoActual-m.saldoAnterior); return a + (d<0?-d:0);},0);
+  const totalAbono = movs.reduce((a,m)=>{const d=(m.saldoActual-m.saldoAnterior); return a + (d>0? d:0);},0);
+
+  const cuerpo = movs.length===0
+    ? `<div class="empty" style="padding:30px 10px">Este cliente todavía no tiene movimientos de cartera.</div>`
+    : `<div class="tw" style="max-height:52vh;overflow:auto">
+        <table class="d">
+          <thead><tr>
+            <th style="width:150px">Fecha</th><th>Movimiento</th>
+            <th class="num" style="width:120px">Cambio</th><th class="num" style="width:150px">Saldo después</th>
+          </tr></thead>
+          <tbody>
+            ${movs.map((m,i)=>{
+              const t = _tipoCartera(m.tipo);
+              const reciente = i===0;
+              return `<tr style="background:${reciente?'#fff8e1':(i%2?'var(--surface-container-low)':'transparent')}">
+                <td style="white-space:nowrap;font-size:11.5px">${_fechaHoraCorta(m.fecha)}${reciente?'<div style="font-size:10px;font-weight:800;color:#e8710a">MÁS RECIENTE</div>':''}</td>
+                <td>
+                  <div class="bold" style="display:flex;align-items:center;gap:6px">
+                    <span class="ms" style="font-size:17px;color:var(--on-surface-variant)">${t.icono}</span>${t.label}
+                  </div>
+                  ${m.observacion?`<div class="muted" style="font-size:11px;margin-left:23px">${m.observacion}</div>`:''}
+                </td>
+                <td class="num">${_cambioCarteraHTML(m)}</td>
+                <td class="num">${_saldoTextoHTML(Number(m.saldoActual)||0)}</td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>`;
+
+  modal(`Historial de cartera · ${c.nombre}`, `
+    <div class="kpi kpi-fill mb-md" style="background:${saldo<0?'#fff4f4':saldo>0?'#eef4ff':'#f0faf5'};border-color:transparent">
+      <div class="kpi-ico" style="background:transparent"><span class="ms" style="color:${saldo<0?'#ba1a1a':saldo>0?'#004b98':'#005338'}">account_balance_wallet</span></div>
+      <div class="kpi-l">Saldo actual</div>
+      <div class="kpi-v" style="font-size:26px">${_saldoTextoHTML(saldo,'26px')}</div>
+    </div>
+    <div class="grid grid-3 mb-md">
+      <div><div class="muted" style="font-size:11px">Movimientos</div><div class="bold" style="font-family:var(--font-mono)">${movs.length}</div></div>
+      <div><div class="muted" style="font-size:11px">Total que se le cargó</div><div class="bold" style="color:#ba1a1a;font-family:var(--font-mono)">${money(totalDebe)}</div></div>
+      <div><div class="muted" style="font-size:11px">Total que abonó</div><div class="bold" style="color:#005338;font-family:var(--font-mono)">${money(totalAbono)}</div></div>
+    </div>
+    <div class="muted mb-sm" style="font-size:11.5px">
+      <span style="color:#005338;font-weight:800">+ verde</span> = baja lo que debe (o sube su saldo a favor) ·
+      <span style="color:#ba1a1a;font-weight:800">− rojo</span> = sube lo que debe. Lo más reciente va primero.
+    </div>
+    ${cuerpo}
+  `, `<button class="btn btn-ghost" onclick="closeModal()">Cerrar</button>`, 'modal-lg');
+}
+/* Historial de TODOS los clientes, también con lo más reciente arriba. */
 function historialGeneralModal(){
-  const movs=DB.cartera.slice().sort((a,b)=>new Date(a.fecha)-new Date(b.fecha));
-  modal('Historial General de Cartera',`<div class="tw"><table class="d"><thead><tr><th>Fecha</th><th>Cliente</th><th>Tipo</th><th>Valor</th><th>Saldo Act.</th></tr></thead><tbody>${movs.map(m=>{const cli=DB.clientes.find(c=>c.id===m.clienteId);return `<tr><td>${new Date(m.fecha).toLocaleDateString('es-CO')}</td><td>${cli?cli.nombre:'-'}</td><td>${m.tipo}</td><td class="num">${money(m.valor)}</td><td class="num">${money(m.saldoActual)}</td></tr>`}).join('')}</tbody></table></div>`,'', 'modal-lg');
+  const movs = DB.cartera.slice().sort((a,b)=> new Date(b.fecha) - new Date(a.fecha));
+  const cuerpo = movs.length===0
+    ? `<div class="empty" style="padding:30px 10px">Todavía no hay movimientos de cartera.</div>`
+    : `<div class="tw" style="max-height:60vh;overflow:auto">
+        <table class="d">
+          <thead><tr><th style="width:150px">Fecha</th><th>Cliente</th><th>Movimiento</th><th class="num" style="width:120px">Cambio</th><th class="num" style="width:150px">Saldo después</th></tr></thead>
+          <tbody>
+            ${movs.map((m,i)=>{
+              const cli = DB.clientes.find(c=>c.id===m.clienteId);
+              const t = _tipoCartera(m.tipo);
+              return `<tr style="background:${i%2?'var(--surface-container-low)':'transparent'}">
+                <td style="white-space:nowrap;font-size:11.5px">${_fechaHoraCorta(m.fecha)}</td>
+                <td class="bold">${cli?cli.nombre:'-'}</td>
+                <td>
+                  <div style="display:flex;align-items:center;gap:6px"><span class="ms" style="font-size:16px;color:var(--on-surface-variant)">${t.icono}</span>${t.label}</div>
+                  ${m.observacion?`<div class="muted" style="font-size:11px;margin-left:22px">${m.observacion}</div>`:''}
+                </td>
+                <td class="num">${_cambioCarteraHTML(m)}</td>
+                <td class="num">${_saldoTextoHTML(Number(m.saldoActual)||0)}</td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>`;
+  modal('Historial general de cartera', `
+    <div class="muted mb-sm" style="font-size:11.5px">Lo más reciente primero · <span style="color:#005338;font-weight:800">+ verde</span> baja la deuda · <span style="color:#ba1a1a;font-weight:800">− rojo</span> la sube.</div>
+    ${cuerpo}
+  `, `<button class="btn btn-ghost" onclick="closeModal()">Cerrar</button>`, 'modal-lg');
 }
 
 /* ===================== NÓMINA ===================== */
@@ -4097,6 +4318,13 @@ function _cargarSheetJS(){
   });
   return _xlsxPromesa;
 }
+/* \u00bfEste valor del RESUMEN pide una f\u00f3rmula de Excel en vez de un n\u00famero fijo?
+   Formas admitidas: {suma:'T\u00edtulo de columna'}, {f:'expresi\u00f3n'}, {conteo:true}.
+   Todas llevan adem\u00e1s `alt`: el n\u00famero ya calculado, que se usa si toca caer al
+   CSV de respaldo o si el reporte sale sin filas. */
+function _esFormula(v){
+  return !!v && typeof v === 'object' && !Array.isArray(v) && ('f' in v || 'suma' in v || 'conteo' in v);
+}
 /** 'YYYY-MM-DD' \u2192 'dd/mm/aaaa'. Deja intacto cualquier otro texto. */
 function _fechaCorta(v){
   const s = String(v||'');
@@ -4105,8 +4333,24 @@ function _fechaCorta(v){
 }
 /**
  * Arma y descarga un reporte con el formato est\u00e1ndar del sistema.
+ *
+ * F\u00d3RMULAS REALES: los totales no se escriben como n\u00fameros "quemados", se
+ * escriben como f\u00f3rmulas de Excel que el propio Excel calcula al abrir el
+ * archivo. As\u00ed, si alguien edita o filtra una fila, los totales se actualizan
+ * solos y siempre se puede auditar de d\u00f3nde sale cada n\u00famero.
+ *   \u00b7 La fila de TOTALES (cualquier fila final cuyo texto empiece por "TOTAL")
+ *     recibe =SUMA() autom\u00e1tica en cada columna marcada como `moneda`.
+ *   \u00b7 `col.formula`    \u2192 f\u00f3rmula a medida para esa columna en la fila de totales.
+ *   \u00b7 `col.formulaFila`\u2192 f\u00f3rmula por cada fila de datos (columnas calculadas).
+ *   \u00b7 En el RESUMEN, un valor {suma:'T\u00edtulo'} / {f:'...'} / {conteo:true} se
+ *     escribe como f\u00f3rmula en vez de como n\u00famero fijo.
+ * Dentro de cualquier f\u00f3rmula, `@Titulo` o `@[T\u00edtulo con espacios]` se traduce
+ * al rango de esa columna (o a su celda, si es una f\u00f3rmula por fila), y `@self`
+ * se refiere a la columna donde va la f\u00f3rmula.
+ *
  * @param {{archivo:string, hoja:string, titulo:string, periodo?:string,
- *          columnas:{titulo:string, ancho?:number, moneda?:boolean}[],
+ *          columnas:{titulo:string, ancho?:number, moneda?:boolean,
+ *                    formula?:string, formulaFila?:string, fmt?:string}[],
  *          filas:any[][], resumen?:[string, any, boolean?][]}} cfg
  */
 async function exportarReporte(cfg){
@@ -4133,8 +4377,23 @@ async function exportarReporte(cfg){
   if(resumen.length){
     aoa.push(rellenar([]));
     aoa.push(rellenar(['RESUMEN']));
-    resumen.forEach(([etiqueta, valor])=> aoa.push(rellenar([etiqueta, valor])));
+    // El valor puede ser un descriptor de f\u00f3rmula ({f}/{suma}/{conteo}). En el
+    // AOA se deja su equivalente num\u00e9rico (`alt`) para que la exportaci\u00f3n CSV de
+    // respaldo siga mostrando el total; en el .xlsx esa celda se reemplaza m\u00e1s
+    // abajo por la f\u00f3rmula real.
+    resumen.forEach(([etiqueta, valor])=> aoa.push(rellenar([etiqueta, _esFormula(valor) ? (valor.alt ?? 0) : valor])));
   }
+
+  // --- Coordenadas del bloque de datos, para construir los rangos ---
+  const nFilas = cfg.filas.length;
+  // \u00bfLa \u00faltima fila de datos es en realidad la fila de totales? Se reconoce por
+  // su texto ("TOTAL", "TOTALES", "TOTAL A\u00d1O"...). Esa fila no se suma a s\u00ed misma.
+  const ultima = nFilas ? cfg.filas[nFilas-1] : null;
+  const hayTotales = !!ultima && ultima.some(v=>typeof v==='string' && /^\s*TOTAL/i.test(v));
+  const filaTotales = hayTotales ? (filaCabecera + nFilas) : -1;   // 0-based
+  const r1 = filaCabecera + 2;                                     // 1-based: 1\u00aa fila de datos
+  const r2 = filaCabecera + nFilas + (hayTotales ? 0 : 1);         // 1-based: \u00faltima fila de datos
+  const hayDatos = nFilas > (hayTotales ? 1 : 0);
 
   try{
     const XLSX = await _cargarSheetJS();
@@ -4152,7 +4411,64 @@ async function exportarReporte(cfg){
     cfg.filas.forEach((_, i)=>{
       cfg.columnas.forEach((col, c)=>{ if(col.moneda) darFormato(filaCabecera + 1 + i, c); });
     });
-    resumen.forEach(([,, noEsMoneda], i)=>{ if(!noEsMoneda) darFormato(filaResumen + i, 1); });
+    resumen.forEach(([,valor, noEsMoneda], i)=>{ if(!noEsMoneda && !_esFormula(valor)) darFormato(filaResumen + i, 1); });
+
+    /* ---------- F\u00f3rmulas reales ---------- */
+    // \u00cdndice por t\u00edtulo de columna, para traducir los tokens @Titulo.
+    const idxCol = {};
+    cfg.columnas.forEach((c,i)=>{ idxCol[String(c.titulo||'').trim().toLowerCase()] = i; });
+    const letra = i => XLSX.utils.encode_col(i);
+    // `filaCtx` = n\u00famero de fila 1-based \u2192 el token apunta a UNA celda.
+    // `filaCtx` nulo \u2192 el token apunta al RANGO completo de la columna.
+    const resolver = (expr, filaCtx, colPropia)=>
+      String(expr).replace(/@\[([^\]]+)\]|@([A-Za-z_][A-Za-z0-9_]*)/g, (m, entreCorchetes, simple)=>{
+        const nombre = (entreCorchetes || simple || '').trim();
+        const i = nombre.toLowerCase()==='self' ? colPropia : idxCol[nombre.toLowerCase()];
+        if(i===undefined || i===null || i<0){
+          // Token que no corresponde a ninguna columna: se deja tal cual y se
+          // avisa por consola. Pasa si a alguien se le cambia el título de una
+          // columna y se le olvida ajustar la fórmula que la referencia.
+          console.warn(`exportarReporte: la fórmula usa @${nombre}, pero no existe una columna con ese título.`);
+          return m;
+        }
+        const L = letra(i);
+        return filaCtx ? `${L}${filaCtx}` : `${L}${r1}:${L}${r2}`;
+      });
+    const ponerFormula = (r, c, expr, fmt)=>{
+      const cel = {t:'n', f:expr};
+      if(fmt) cel.z = fmt;
+      ws[XLSX.utils.encode_cell({r, c})] = cel;
+    };
+
+    if(hayDatos){
+      // 1) Columnas calculadas: una f\u00f3rmula por cada fila de datos.
+      cfg.columnas.forEach((col, c)=>{
+        if(!col.formulaFila) return;
+        for(let i=0; i<nFilas - (hayTotales?1:0); i++){
+          ponerFormula(filaCabecera + 1 + i, c, resolver(col.formulaFila, r1 + i, c), col.fmt || (col.moneda ? _FMT_MONEDA : undefined));
+        }
+      });
+      // 2) Fila de TOTALES: SUMA autom\u00e1tica en las columnas de dinero.
+      if(hayTotales){
+        cfg.columnas.forEach((col, c)=>{
+          const expr = col.formula || (col.moneda ? 'SUM(@self)' : null);
+          if(!expr) return;
+          ponerFormula(filaTotales, c, resolver(expr, null, c), col.fmt || (col.moneda ? _FMT_MONEDA : undefined));
+        });
+      }
+      // 3) RESUMEN: cada rengl\u00f3n que pida f\u00f3rmula se escribe como f\u00f3rmula.
+      resumen.forEach(([, valor, noEsMoneda], i)=>{
+        if(!_esFormula(valor)) return;
+        let expr;
+        if(valor.conteo) expr = `COUNTA(${letra(0)}${r1}:${letra(0)}${r2})`;
+        else if(valor.suma) expr = resolver(`SUM(@[${valor.suma}])`, null, 0);
+        else expr = resolver(valor.f, null, 0);
+        ponerFormula(filaResumen + i, 1, expr, valor.fmt || (noEsMoneda ? undefined : _FMT_MONEDA));
+      });
+    }
+    // Si no hubo filas de datos no se escribe ninguna f\u00f3rmula: las celdas del
+    // resumen conservan el valor num\u00e9rico que ya tra\u00edan, y as\u00ed el archivo nunca
+    // sale con referencias rotas (#\u00a1REF!).
 
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, (cfg.hoja || 'Reporte').slice(0,31));
@@ -4199,10 +4515,10 @@ function exportarContaCSV(){
     ],
     filas,
     resumen: [
-      ['Movimientos registrados', movs.length, true],
-      ['Total ingresos', ing],
-      ['Total gastos', gas],
-      ['Balance', ing - gas]
+      ['Movimientos registrados', {conteo:true, alt:movs.length}, true],
+      ['Total ingresos', {suma:'Ingreso', alt:ing}],
+      ['Total gastos',   {suma:'Gasto', alt:gas}],
+      ['Balance',        {f:'SUM(@[Ingreso])-SUM(@[Gasto])', alt:ing - gas}]
     ]
   });
 }
@@ -4230,15 +4546,20 @@ function exportarFlujoCSV(){
       {titulo:'Mes', ancho:16},
       {titulo:'Ingresos', ancho:16, moneda:true},
       {titulo:'Gastos', ancho:16, moneda:true},
-      {titulo:'Balance', ancho:16, moneda:true},
-      {titulo:'Margen %', ancho:12}
+      // Balance y Margen son columnas calculadas: en el Excel quedan como
+      // fórmulas fila por fila, no como números pegados.
+      {titulo:'Balance', ancho:16, moneda:true, formulaFila:'@[Ingresos]-@[Gastos]'},
+      {titulo:'Margen %', ancho:12, fmt:'0"%"',
+        formulaFila:'IF(@[Ingresos]=0,0,ROUND((@[Ingresos]-@[Gastos])/@[Ingresos]*100,0))',
+        formula:'IF(SUM(@[Ingresos])=0,0,ROUND((SUM(@[Ingresos])-SUM(@[Gastos]))/SUM(@[Ingresos])*100,0))'}
     ],
     filas,
     resumen: [
-      ['Ingresos del año', totIng],
-      ['Gastos del año', totGas],
-      ['Balance del año', totIng - totGas],
-      ['Margen del año', (totIng>0 ? Math.round((totIng-totGas)/totIng*100) : 0) + '%', true]
+      ['Ingresos del año', {suma:'Ingresos', alt:totIng}],
+      ['Gastos del año',   {suma:'Gastos', alt:totGas}],
+      ['Balance del año',  {f:'SUM(@[Ingresos])-SUM(@[Gastos])', alt:totIng - totGas}],
+      ['Margen del año',   {f:'IF(SUM(@[Ingresos])=0,0,ROUND((SUM(@[Ingresos])-SUM(@[Gastos]))/SUM(@[Ingresos])*100,0))',
+                            alt:(totIng>0 ? Math.round((totIng-totGas)/totIng*100) : 0), fmt:'0"%"'}, true]
     ]
   });
 }
@@ -4566,10 +4887,23 @@ if(!window._carteraSeeded){
   });
 }
 go('clientes');
-// Autoguardado periódico de la cache local + al cerrar/recargar
-// Nunca mientras se escribe: serializar el DB completo en medio de un pedido
-// se siente como que la página se traba.
-setInterval(()=>{ if(!isUserEditing()) saveDB(); }, 4000);
+// Autoguardado periódico de la cache local + al cerrar/recargar.
+// Dos reglas para que nunca se sienta que la página se traba:
+//   1) Nunca mientras se escribe (serializar el DB completo en medio de un
+//      pedido congela el hilo).
+//   2) Solo si de verdad hay algo por guardar. Antes se serializaba todo el DB
+//      —fotos de productos en base64 incluidas— cada 4 segundos aunque nada
+//      hubiera cambiado. Cada minuto se revisa igual, como red de seguridad por
+//      si algo tocó el DB sin avisar.
+let _ultimaRevisionGuardado = 0;
+setInterval(()=>{
+  if(isUserEditing()) return;
+  const ahora = Date.now();
+  const revisionDeSeguridad = (ahora - _ultimaRevisionGuardado) > 60000;
+  if(!_dbSucio && !revisionDeSeguridad) return;
+  _ultimaRevisionGuardado = ahora;
+  saveDB();
+}, 4000);
 window.addEventListener('beforeunload', ()=>saveDB(true));
 window.addEventListener('pagehide', ()=>saveDB(true));
 // === Appwrite: init + carga inicial + Realtime. Toda la logica vive en appwriteService.js ===
