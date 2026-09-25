@@ -223,6 +223,9 @@ table.d tr:hover td{background:var(--surface-container-low)}
 .loc-badge{display:inline-flex;align-items:center;gap:4px;font-size:11px;color:var(--tertiary);font-weight:600}
 .loc-pin{position:absolute;bottom:8px;left:8px;width:26px;height:26px;border-radius:50%;background:var(--surface-container-lowest);border:1px solid var(--outline-variant);display:grid;place-items:center;color:var(--tertiary);box-shadow:var(--shadow-card);opacity:0;transition:opacity .15s;z-index:3}
 .ccard:hover .loc-pin{opacity:1}
+/* Ruta Repartos: barra con el botón de Google Maps, siempre visible al bajar */
+.ruta-accion{position:sticky;bottom:var(--s-md);z-index:5;box-shadow:var(--shadow-pop)}
+@media(max-width:768px){.ruta-accion{bottom:calc(76px + env(safe-area-inset-bottom))}}
 /* Barra de progreso (pago de deudas en Costos y Rentabilidad) */
 .pbar{height:8px;border-radius:var(--r-full);background:var(--surface-container-high);overflow:hidden}
 .pbar>span{display:block;height:100%;border-radius:inherit;background:var(--tertiary);transition:width .3s}
@@ -598,7 +601,7 @@ function refrescarVistaActiva(){
   const map = {'Clientes':'clientes','Pedidos':'pedidos','Administrar Productos':'productos',
     'Configuración de Factura':'factura','Recaudo de Domiciliarios':'recaudo',
     'Cartera':'cartera','Nómina':'nomina','Contabilidad':'contabilidad',
-    'Costos y Rentabilidad':'costos','Calendario':'calendario'};
+    'Costos y Rentabilidad':'costos','Calendario':'calendario','Ruta Repartos':'ruta'};
   const route = map[current];
   if(!route || !ROUTES[route]) return;
   // En RECAUDO: no re-renderizar toda la tabla (causa parpadeo de KPIs).
@@ -836,6 +839,7 @@ function renderShell(){
     {route:'contabilidad',icon:'monitoring',label:'Contabilidad',corto:'Conta'},
     {route:'costos',icon:'savings',label:'Costos y Rentabilidad',corto:'Costos'},
     {route:'calendario',icon:'calendar_month',label:'Calendario',corto:'Agenda'},
+    {route:'ruta',icon:'route',label:'Ruta Repartos',corto:'Ruta'},
   ];
   $('#sidebar').innerHTML = `
     <div class="sb-brand sb-brand-logo">
@@ -4946,5 +4950,6 @@ awBootstrap(refrescarVistaActiva);
 initConnectivityIndicator();
 </script>
 <script src="costos.js?v=2026-09-25-2"></script>
+<script src="ruta.js?v=2026-09-25-3"></script>
 </body>
 </html>
