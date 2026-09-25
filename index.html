@@ -12,8 +12,9 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/pocketbase@0.26.2/dist/pocketbase.umd.js"></script>
-  <script src="pocketbaseConfig.js"></script>
-  <script src="pocketbaseService.js"></script>
+  <!-- ?v= obliga al navegador a descargar la versión nueva: súbelo (fecha-número) cada vez que cambies estos archivos -->
+  <script src="pocketbaseConfig.js?v=2026-09-25-2"></script>
+  <script src="pocketbaseService.js?v=2026-09-25-2"></script>
   <style>
 :root{
   --primary:#3525cd;--on-primary:#fff;--primary-container:#4f46e5;--on-primary-container:#dad7ff;
@@ -4944,6 +4945,6 @@ window.addEventListener('pagehide', ()=>saveDB(true));
 awBootstrap(refrescarVistaActiva);
 initConnectivityIndicator();
 </script>
-<script src="costos.js"></script>
+<script src="costos.js?v=2026-09-25-2"></script>
 </body>
 </html>
