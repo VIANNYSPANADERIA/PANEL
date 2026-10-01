@@ -3,8 +3,7 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <title>Vianny's Panadería - Panel ERP</title>
-  <link rel="icon" type="image/png" href="https://res.cloudinary.com/deyaftfah/image/upload/v1785331877/Logo_en_blanco_y_negro_de_panader%C3%ADa_ocqxkx.png"/>
+  <title>ERP Panadería - Panel</title>
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
   <link href="https://fonts.googleapis.com/css2?family=Geist:wght@100..900&family=Geist+Mono:wght@100..900&family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
@@ -12,9 +11,8 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/pocketbase@0.26.2/dist/pocketbase.umd.js"></script>
-  <!-- ?v= obliga al navegador a descargar la versión nueva: súbelo (fecha-número) cada vez que cambies estos archivos -->
-  <script src="pocketbaseConfig.js?v=2026-09-25-2"></script>
-  <script src="pocketbaseService.js?v=2026-09-25-2"></script>
+  <script src="pocketbaseConfig.js"></script>
+  <script src="pocketbaseService.js"></script>
   <style>
 :root{
   --primary:#3525cd;--on-primary:#fff;--primary-container:#4f46e5;--on-primary-container:#dad7ff;
@@ -49,12 +47,6 @@ input,select,textarea{font-family:inherit}
 .header{position:sticky;top:0;z-index:40;height:var(--header-h);background:rgba(255,255,255,.85);backdrop-filter:blur(12px);border-bottom:1px solid var(--outline-variant);padding:0 var(--s-lg);display:flex;align-items:center;gap:var(--s-md)}
 .content{padding:var(--s-lg);max-width:var(--container-max);width:100%;margin:0 auto}
 .sb-brand{display:flex;align-items:center;gap:var(--s-sm);padding:var(--s-sm) var(--s-xs);margin-bottom:var(--s-md)}
-/* Logo de la marca: se muestra completo (contain), centrado y con tamaño tope
-   para que no se recorte ni domine el menú. */
-.sb-brand-logo{position:relative;flex-direction:column;justify-content:center;gap:6px;padding:var(--s-xs) var(--s-xs) var(--s-md);border-bottom:1px solid var(--outline-variant)}
-.sb-logo{display:block;width:100%;max-width:148px;height:auto;aspect-ratio:797/656;object-fit:contain;user-select:none;-webkit-user-drag:none}
-.sb-tag{font-size:10px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--on-surface-variant);background:var(--surface-container-low);border:1px solid var(--outline-variant);border-radius:var(--r-full);padding:2px 10px}
-.sb-brand-logo .sb-close{position:absolute;top:0;right:0}
 .sb-brand-ico{width:38px;height:38px;border-radius:var(--r-lg);background:var(--primary-container);color:var(--on-primary);display:grid;place-items:center}
 .sb-brand-t{font-size:17px;font-weight:700;line-height:20px}
 .sb-brand-s{font-size:11px;color:var(--on-surface-variant)}
@@ -223,12 +215,6 @@ table.d tr:hover td{background:var(--surface-container-low)}
 .loc-badge{display:inline-flex;align-items:center;gap:4px;font-size:11px;color:var(--tertiary);font-weight:600}
 .loc-pin{position:absolute;bottom:8px;left:8px;width:26px;height:26px;border-radius:50%;background:var(--surface-container-lowest);border:1px solid var(--outline-variant);display:grid;place-items:center;color:var(--tertiary);box-shadow:var(--shadow-card);opacity:0;transition:opacity .15s;z-index:3}
 .ccard:hover .loc-pin{opacity:1}
-/* Ruta Repartos: barra con el botón de Google Maps, siempre visible al bajar */
-.ruta-accion{position:sticky;bottom:var(--s-md);z-index:5;box-shadow:var(--shadow-pop)}
-@media(max-width:768px){.ruta-accion{bottom:calc(76px + env(safe-area-inset-bottom))}}
-/* Barra de progreso (pago de deudas en Costos y Rentabilidad) */
-.pbar{height:8px;border-radius:var(--r-full);background:var(--surface-container-high);overflow:hidden}
-.pbar>span{display:block;height:100%;border-radius:inherit;background:var(--tertiary);transition:width .3s}
 .rec-secret{opacity:0;background:transparent;border:none;width:26px;height:26px;padding:0;margin:0 0 0 2px;cursor:default;vertical-align:middle}
   
 /* ===== Calendario ===== */
@@ -421,10 +407,7 @@ const DB = {
     insumos: [],      // {id,nombre,categoria,unidadCompra,cantidadComprada,precioCompra,precioBase,proveedor,fechaCompra,observaciones,historial:[]}
     recetas: [],      // {id,productoId,ingredientes:[{insumoId,cantidad}],panesPorLata,pesoPorPan}  <- POR LATA
     produccion: [],   // {id,fecha,productoId,latas,panesPorLata,pesoPorPan,costoLata}
-    indirectos: [],   // {id,nombre,categoria,valor,periodicidad,fechaInicio,activo,observaciones}
-    flujoConfig: null,       // parámetros del flujo de caja (valores por defecto en costos.js) + ingresosManuales {fecha:monto}
-    proveedoresDeuda: [],    // {id,nombre,deudaInicial,periodicidad,fechaCorte,pedidoHabitual}
-    abonosDeuda: []          // {id,proveedorId,fecha,tipo:'abono'|'credito',valor,nota}
+    indirectos: []    // {id,nombre,categoria,valor,periodicidad,fechaInicio,activo,observaciones}
   },
   conta: {
     movimientos: [],
@@ -574,10 +557,6 @@ function loadDB(){
     if(saved.nomina) DB.nomina = saved.nomina;
     if(saved.conta) DB.conta = saved.conta;
     if(saved.cacheCalendario) DB.cacheCalendario = saved.cacheCalendario;
-    // Costos (incluye flujo de caja y deudas) y calendario: sin esto la copia
-    // local no los restauraba y, sin conexión, la pestaña arrancaba vacía.
-    if(saved.costos) DB.costos = Object.assign({}, DB.costos, saved.costos);
-    if(saved.calendario) DB.calendario = saved.calendario;
     DB.facturaConfig = Object.assign({}, defaultFC, saved.facturaConfig || {});
     if(!Array.isArray(DB.facturaConfig.orden) || DB.facturaConfig.orden.length===0) DB.facturaConfig.orden = defaultFC.orden;
     DB.facturaConfig.orden = DB.facturaConfig.orden.filter(k=>k!=='fecha');
@@ -601,7 +580,7 @@ function refrescarVistaActiva(){
   const map = {'Clientes':'clientes','Pedidos':'pedidos','Administrar Productos':'productos',
     'Configuración de Factura':'factura','Recaudo de Domiciliarios':'recaudo',
     'Cartera':'cartera','Nómina':'nomina','Contabilidad':'contabilidad',
-    'Costos y Rentabilidad':'costos','Calendario':'calendario','Ruta Repartos':'ruta'};
+    'Costos y Rentabilidad':'costos','Calendario':'calendario'};
   const route = map[current];
   if(!route || !ROUTES[route]) return;
   // En RECAUDO: no re-renderizar toda la tabla (causa parpadeo de KPIs).
@@ -827,7 +806,6 @@ function toggleSidebar(forzar){
 function cerrarSidebar(){ toggleSidebar(false); }
 
 /* ---------- Sidebar + Header ---------- */
-const LOGO_URL = 'https://res.cloudinary.com/deyaftfah/image/upload/v1785331877/Logo_en_blanco_y_negro_de_panader%C3%ADa_ocqxkx.png';
 function renderShell(){
   const items = [
     {route:'clientes',icon:'group',label:'Clientes',corto:'Clientes'},
@@ -839,13 +817,12 @@ function renderShell(){
     {route:'contabilidad',icon:'monitoring',label:'Contabilidad',corto:'Conta'},
     {route:'costos',icon:'savings',label:'Costos y Rentabilidad',corto:'Costos'},
     {route:'calendario',icon:'calendar_month',label:'Calendario',corto:'Agenda'},
-    {route:'ruta',icon:'route',label:'Ruta Repartos',corto:'Ruta'},
   ];
   $('#sidebar').innerHTML = `
-    <div class="sb-brand sb-brand-logo">
-      <img class="sb-logo" src="${LOGO_URL}" alt="Vianny's Panadería y Distribuidora" width="148" height="122" decoding="async"
-        onerror="this.outerHTML='<div class=&quot;sb-brand-t&quot;>Vianny’s Panadería</div>'"/>
-      <div class="sb-tag">Panel ERP</div>
+    <div class="sb-brand">
+      <div class="sb-brand-ico"><span class="ms" style="font-size:22px">bakery_dining</span></div>
+      <div><div class="sb-brand-t">Panadería</div><div class="sb-brand-s">Panel ERP</div></div>
+      <div class="h-spacer"></div>
       <button class="icon-btn sb-close" onclick="cerrarSidebar()" aria-label="Cerrar menú"><span class="ms">close</span></button>
     </div>
     <nav class="nav">${items.map(i=>`<div class="nav-item" data-route="${i.route}"><span class="ms">${i.icon}</span><span>${i.label}</span></div>`).join('')}</nav>
@@ -2004,22 +1981,12 @@ function generarTicketImpresionPreview(){
 
 /* ===================== RECAUDO DE DOMICILIARIOS ===================== */
 let _recaudoFecha = todayKey();
-/* Pedidos cuya fila de recaudo se está creando ahora mismo. Esta función se
-   llama varias veces sin esperar (al guardar un pedido, al entrar al módulo…):
-   sin este control, dos llamadas seguidas creaban DOS filas en el servidor para
-   el mismo pedido, y al sincronizar podía ganar la vieja (Recibido desmarcado). */
-const _recaudoCreando = new Set();
 async function sincronizarRecaudoDia(fecha){
   const pedidos = DB.pedidos.filter(p=>p.fecha===fecha);
   if(!DB.recaudo[fecha]) DB.recaudo[fecha]={};
+  const r = DB.recaudo[fecha];
   for(const p of pedidos){
-    // Se relee en cada vuelta: una resincronización puede haber reemplazado
-    // DB.recaudo mientras se esperaba al servidor.
-    const r = (DB.recaudo[fecha] ??= {});
-    const clave = fecha+'|'+p.id;
-    if(_recaudoCreando.has(clave)) continue;
     if(!r[p.id]){
-      _recaudoCreando.add(clave);
       const cli = DB.clientes.find(c=>c.id===p.clienteId);
       const nuevaFila = {
         pedidoId:p.id, clienteId:p.clienteId, cliente:cli?cli.nombre:'', tipo:cli?cli.tipo:'',
@@ -2038,11 +2005,7 @@ async function sincronizarRecaudoDia(fecha){
       recalcEfectivoFila(nuevaFila);
       // crea la fila en Appwrite Tables
       try{ const saved = await appwriteService.guardarRecaudo(nuevaFila); if(saved) nuevaFila.id = saved.id; }catch(e){}
-      finally{ _recaudoCreando.delete(clave); }
-      // Si mientras tanto la fila ya quedó registrada (por el servicio o por otro
-      // dispositivo), se respeta esa: puede traer cambios que no hay que perder.
-      const dia = (DB.recaudo[fecha] ??= {});
-      if(!dia[p.id] || !dia[p.id].id) dia[p.id] = nuevaFila;
+      r[p.id] = nuevaFila;
     } else {
       // Solo memoria. NO se re-guarda en Appwrite en cada render (eso causaba el 429).
       const migrado = _migrarPagosDeudaSeparados(r[p.id]);
@@ -2064,8 +2027,8 @@ async function entrarRecaudo(){
   renderRecaudo();
 }
 /* Ordenar las filas igual que los clientes en el módulo Clientes (campo `orden`) */
-function _filasRecaudoOrdenadas(fecha){
-  return Object.values(DB.recaudo[fecha || _recaudoFecha]||{}).sort((a,b)=>{
+function _filasRecaudoOrdenadas(){
+  return Object.values(DB.recaudo[_recaudoFecha]||{}).sort((a,b)=>{
     const oA = DB.clientes.find(c=>c.id===a.clienteId)?.orden ?? 9999;
     const oB = DB.clientes.find(c=>c.id===b.clienteId)?.orden ?? 9999;
     return oA - oB;
@@ -2120,11 +2083,9 @@ function _canalesFila(f){
   return deuda.length ? `${base} · deuda: ${deuda.join(' + ')}` : base;
 }
 /* Única fuente de verdad para los totales del día: la usan el primer render,
-   el repintado incremental y la exportación, para que nunca se desincronicen.
-   Sin fecha usa el día abierto en Recaudo; con fecha sirve a otros módulos
-   (p. ej. el flujo de caja de Costos lee de aquí el "Recibido de clientes"). */
-function _calcularTotalesRecaudo(fecha){
-  const filas = _filasRecaudoOrdenadas(fecha);
+   el repintado incremental y la exportación, para que nunca se desincronicen. */
+function _calcularTotalesRecaudo(){
+  const filas = _filasRecaudoOrdenadas();
   const confirmadas = filas.filter(f=>f.recibido);
   let tEfe = 0, tNeq = 0, tBan = 0;
   for(const b of filas){
@@ -3922,20 +3883,89 @@ async function pagarNomina(id){
 
 /* ===================== CONTABILIDAD ===================== */
 let _contaTab='resumen';
+let _contaYear=new Date().getFullYear();
+
+/* ===== SALDO INICIAL DEL LIBRO DE INGRESOS Y GASTOS =====
+   Es el dinero con el que arrancó el libro, antes del primer movimiento.
+   Se guarda dentro de la configuración global (facturaConfig.contaSaldoInicial)
+   porque esa fila ya se sincroniza con el servidor y en tiempo real, así no
+   hace falta crear otra tabla. Todos los movimientos se suman sobre él:
+   saldo = saldo inicial + ingresos − gastos. */
+function contaSaldoInicial(){
+  const s = DB.facturaConfig && DB.facturaConfig.contaSaldoInicial;
+  const valor = s ? Number(s.valor) : 0;
+  return { valor: Number.isFinite(valor) ? valor : 0, fecha: (s && s.fecha) || '', definido: !!s };
+}
+const _netoMov = m => (m.tipo==='Ingreso' ? 1 : m.tipo==='Gasto' ? -1 : 0) * (Number(m.valor)||0);
+/* Saldo con el que abre el año: saldo inicial + todo lo movido antes del 1 de enero. */
+function contaSaldoApertura(year){
+  const corte = `${year}-01-01`;
+  return contaSaldoInicial().valor + DB.conta.movimientos.filter(m=>(m.fecha||'') < corte).reduce((a,m)=>a+_netoMov(m),0);
+}
+function _primeraFechaMov(){
+  return DB.conta.movimientos.map(m=>m.fecha).filter(Boolean).sort()[0] || '';
+}
+function saldoInicialModal(){
+  const si = contaSaldoInicial();
+  const primera = _primeraFechaMov();
+  const fecha = si.fecha || primera || todayKey();
+  modal('Saldo inicial del libro',`
+    <div class="muted mb-md" style="font-size:13px">Es el dinero que había al iniciar el libro de ingresos y gastos (caja + bancos), antes del primer movimiento registrado. Todos los ingresos y gastos se suman o restan sobre este valor.</div>
+    <div class="gf">
+      <div class="field"><label>Saldo inicial *</label><input id="si-val" type="number" step="1" value="${si.definido?si.valor:''}" placeholder="0"/></div>
+      <div class="field"><label>Fecha de inicio</label><input id="si-fecha" type="date" value="${fecha}" ${primera?`max="${primera}"`:''}/></div>
+    </div>
+    ${primera?`<div class="muted" style="font-size:12px">El primer movimiento registrado es del ${_fechaCorta(primera)}; la fecha de inicio no puede ser posterior.</div>`:''}
+  `,`${si.definido?`<button class="btn btn-danger" onclick="quitarSaldoInicial()">Quitar</button>`:''}<button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" onclick="guardarSaldoInicial()">Guardar</button>`);
+  setTimeout(()=>{ const el=document.getElementById('si-val'); if(el) el.focus(); }, 50);
+}
+async function guardarSaldoInicial(){
+  const raw = ($('#si-val').value||'').trim();
+  const valor = Number(raw);
+  const fecha = $('#si-fecha').value;
+  if(raw==='' || !Number.isFinite(valor)){ toast('Ingresa un saldo inicial válido','error'); $('#si-val').focus(); return; }
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(fecha||'')){ toast('Selecciona la fecha de inicio','error'); return; }
+  const primera = _primeraFechaMov();
+  if(primera && fecha > primera){ toast(`La fecha no puede ser posterior al primer movimiento (${_fechaCorta(primera)})`,'error'); return; }
+  try{
+    await appwriteService.guardarFacturaConfig({contaSaldoInicial:{valor:Math.round(valor), fecha}});
+    saveDB(); closeModal(); renderConta(); toast('Saldo inicial guardado · '+money(Math.round(valor)),'success');
+  }catch(e){ toast('No se pudo guardar el saldo inicial','error'); }
+}
+async function quitarSaldoInicial(){
+  if(!confirm('¿Quitar el saldo inicial? Los saldos volverán a calcularse desde $0.')) return;
+  try{
+    await appwriteService.guardarFacturaConfig({contaSaldoInicial:null});
+    saveDB(); closeModal(); renderConta(); toast('Saldo inicial eliminado','success');
+  }catch(e){ toast('No se pudo quitar el saldo inicial','error'); }
+}
+function _cardSaldoInicial(si){
+  return `
+    <div class="card mb-md"><div class="card-b flex fb" style="align-items:center;flex-wrap:wrap;gap:10px">
+      <div>
+        <div class="muted" style="font-size:12px">Saldo inicial del libro${si.fecha?` · desde ${_fechaCorta(si.fecha)}`:''}</div>
+        <div class="bold" style="font-size:20px;color:${si.valor>=0?'var(--tertiary)':'var(--error)'}">${si.definido?money(si.valor):'Sin definir'}</div>
+      </div>
+      <button class="btn ${si.definido?'btn-ghost':'btn-primary'} btn-sm" onclick="saldoInicialModal()"><span class="ms">${si.definido?'edit':'add'}</span>${si.definido?'Editar saldo inicial':'Agregar saldo inicial'}</button>
+    </div></div>`;
+}
+
 function renderConta(){
   setHeader('Contabilidad');
   destruirGraficos();   // sin esto Chart.js acumula instancias sobre canvas muertos
   const movs=DB.conta.movimientos;
-  const ing=movs.filter(m=>m.tipo==='Ingreso').reduce((a,b)=>a+b.valor,0);
-  const gas=movs.filter(m=>m.tipo==='Gasto').reduce((a,b)=>a+b.valor,0);
-  const bal=ing-gas;
+  const ing=movs.filter(m=>m.tipo==='Ingreso').reduce((a,b)=>a+(Number(b.valor)||0),0);
+  const gas=movs.filter(m=>m.tipo==='Gasto').reduce((a,b)=>a+(Number(b.valor)||0),0);
+  const si=contaSaldoInicial();
+  const bal=si.valor+ing-gas;   // saldo actual del libro
   let body='';
   if(_contaTab==='resumen'){
     body=`
+      ${_cardSaldoInicial(si)}
       <div class="grid grid-4 mb-md">
         <div class="kpi kpi-fill"><div class="kpi-ico"><span class="ms">trending_up</span></div><div class="kpi-l">Ingresos</div><div class="kpi-v" id="conta-ing">${money(ing)}</div></div>
         <div class="kpi"><div class="kpi-ico kpi-ico-e"><span class="ms">trending_down</span></div><div class="kpi-l">Gastos</div><div class="kpi-v" id="conta-gas">${money(gas)}</div></div>
-        <div class="kpi ${bal>=0?'':'kpi-fill'}"><div class="kpi-ico kpi-ico-t"><span class="ms">balance</span></div><div class="kpi-l">Balance</div><div class="kpi-v" id="conta-bal" style="color:${bal>=0?'var(--tertiary)':'var(--error)'}">${money(bal)}</div></div>
+        <div class="kpi ${bal>=0?'':'kpi-fill'}"><div class="kpi-ico kpi-ico-t"><span class="ms">balance</span></div><div class="kpi-l">Saldo actual${si.definido?' (con saldo inicial)':''}</div><div class="kpi-v" id="conta-bal" style="color:${bal>=0?'var(--tertiary)':'var(--error)'}">${money(bal)}</div></div>
         <div class="kpi"><div class="kpi-ico kpi-ico-p"><span class="ms">list_alt</span></div><div class="kpi-l">Movimientos</div><div class="kpi-v">${movs.length}</div></div>
       </div>
       <div class="card"><div class="card-h"><div class="card-t">Últimos movimientos</div></div><div class="card-b"><table class="d"><thead><tr><th>Fecha</th><th>Tipo</th><th>Descripción</th><th>Categoría</th><th>Valor</th></tr></thead><tbody>${movs.slice(-10).reverse().map(m=>`<tr><td>${m.fecha}</td><td><span class="badge ${m.tipo==='Ingreso'?'badge-success':'badge-error'}">${m.tipo}</span></td><td>${m.descripcion}</td><td>${m.categoria}</td><td class="num bold">${money(m.valor)}</td></tr>`).join('')||'<tr><td colspan="5" class="empty">Sin movimientos</td></tr>'}</tbody></table></div></div>
@@ -3996,40 +4026,50 @@ function renderConta(){
       </div></div>
     `;
   } else if(_contaTab==='historial'){
-    const ingF=movs.filter(m=>m.tipo==='Ingreso').reduce((a,b)=>a+b.valor,0);
-    const gasF=movs.filter(m=>m.tipo==='Gasto').reduce((a,b)=>a+b.valor,0);
+    const orden=[...movs].sort((a,b)=>{
+      const fc = (b.fecha||'').localeCompare(a.fecha||'');   // fecha más reciente primero
+      if(fc!==0) return fc;
+      // misma fecha: Ingresos antes que Gastos
+      if(a.tipo!==b.tipo) return a.tipo==='Ingreso'?-1:1;
+      return (b.id||'').localeCompare(a.id||'');
+    });
+    // Saldo acumulado: se recorre del más antiguo al más reciente partiendo del saldo inicial.
+    const saldoDe={}; let acc=si.valor;
+    [...orden].reverse().forEach(m=>{ acc+=_netoMov(m); saldoDe[m.id]=acc; });
     body=`
+      ${_cardSaldoInicial(si)}
       <div class="grid grid-4 mb-md">
-        <div class="kpi"><div class="kpi-l">Ingresos filtrados</div><div class="kpi-v">${money(ingF)}</div></div>
-        <div class="kpi"><div class="kpi-l">Gastos filtrados</div><div class="kpi-v">${money(gasF)}</div></div>
-        <div class="kpi"><div class="kpi-l">Balance filtro</div><div class="kpi-v">${money(ingF-gasF)}</div></div>
-        <div class="kpi"><div class="kpi-l">Registros</div><div class="kpi-v">${movs.length}</div></div>
+        <div class="kpi"><div class="kpi-l">Saldo inicial</div><div class="kpi-v">${money(si.valor)}</div></div>
+        <div class="kpi"><div class="kpi-l">Ingresos</div><div class="kpi-v">${money(ing)}</div></div>
+        <div class="kpi"><div class="kpi-l">Gastos</div><div class="kpi-v">${money(gas)}</div></div>
+        <div class="kpi"><div class="kpi-l">Saldo final</div><div class="kpi-v" style="color:${bal>=0?'var(--tertiary)':'var(--error)'}">${money(bal)}</div></div>
       </div>
-      <div class="tw"><table class="d"><thead><tr><th>Fecha</th><th>Tipo</th><th>Descripción</th><th>Categoría</th><th>Valor</th><th></th></tr></thead><tbody>
-        ${movs.length===0?'<tr><td colspan="6" class="empty">Sin movimientos</td></tr>':[...movs].sort((a,b)=>{
-          const fc = (b.fecha||'').localeCompare(a.fecha||'');   // fecha más reciente primero
-          if(fc!==0) return fc;
-          // misma fecha: Ingresos antes que Gastos
-          if(a.tipo!==b.tipo) return a.tipo==='Ingreso'?-1:1;
-          return (b.id||'').localeCompare(a.id||'');
-        }).map(m=>`<tr><td>${m.fecha}</td><td><span class="badge ${m.tipo==='Ingreso'?'badge-success':'badge-error'}">${m.tipo}</span></td><td>${m.descripcion}</td><td>${m.categoria}</td><td class="num bold">${money(m.valor)}</td><td><button class="btn btn-ghost btn-sm" onclick="editMov('${m.id}')"><span class="ms">edit</span></button><button class="btn btn-danger btn-sm" onclick="delMov('${m.id}')"><span class="ms">delete</span></button></td></tr>`).join('')}
+      <div class="tw"><table class="d"><thead><tr><th>Fecha</th><th>Tipo</th><th>Descripción</th><th>Categoría</th><th>Valor</th><th>Saldo</th><th></th></tr></thead><tbody>
+        ${orden.map(m=>`<tr><td>${m.fecha}</td><td><span class="badge ${m.tipo==='Ingreso'?'badge-success':'badge-error'}">${m.tipo}</span></td><td>${m.descripcion}</td><td>${m.categoria}</td><td class="num bold">${money(m.valor)}</td><td class="num" style="color:${saldoDe[m.id]>=0?'var(--tertiary)':'var(--error)'}">${money(saldoDe[m.id])}</td><td><button class="btn btn-ghost btn-sm" onclick="editMov('${m.id}')"><span class="ms">edit</span></button><button class="btn btn-danger btn-sm" onclick="delMov('${m.id}')"><span class="ms">delete</span></button></td></tr>`).join('')}
+        ${si.definido?`<tr style="background:var(--surface-container-low)"><td>${si.fecha}</td><td><span class="badge">Saldo inicial</span></td><td colspan="3" class="muted">Saldo con el que inició el libro</td><td class="num bold">${money(si.valor)}</td><td><button class="btn btn-ghost btn-sm" onclick="saldoInicialModal()"><span class="ms">edit</span></button></td></tr>`:''}
+        ${movs.length===0&&!si.definido?'<tr><td colspan="7" class="empty">Sin movimientos</td></tr>':''}
       </tbody></table></div>
       <button class="btn btn-secondary mt-md" onclick="exportarContaCSV()"><span class="ms">download</span>Exportar Excel</button>
     `;
   } else if(_contaTab==='flujo'){
-    const year=new Date().getFullYear();
+    const year=Number(_contaYear)||new Date().getFullYear();
     let meses='';
     const mesesN=['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
     let totIng=0,totGas=0;
+    const apertura=contaSaldoApertura(year);
+    let saldoMes=apertura;
     mesesN.forEach((mn,i)=>{
-      const mi=movs.filter(m=>m.fecha.startsWith(year+'-')&&Number(m.fecha.slice(5,7))===i+1&&m.tipo==='Ingreso').reduce((a,b)=>a+b.valor,0);
-      const mg=movs.filter(m=>m.fecha.startsWith(year+'-')&&Number(m.fecha.slice(5,7))===i+1&&m.tipo==='Gasto').reduce((a,b)=>a+b.valor,0);
+      const delMes=m=>String(m.fecha||'').startsWith(year+'-')&&Number(String(m.fecha).slice(5,7))===i+1;
+      const mi=movs.filter(m=>delMes(m)&&m.tipo==='Ingreso').reduce((a,b)=>a+(Number(b.valor)||0),0);
+      const mg=movs.filter(m=>delMes(m)&&m.tipo==='Gasto').reduce((a,b)=>a+(Number(b.valor)||0),0);
       totIng+=mi;totGas+=mg;
-      meses+=`<tr><td>${mn}</td><td class="num">${money(mi)}</td><td class="num">${money(mg)}</td><td class="num bold" style="color:${mi-mg>=0?'var(--tertiary)':'var(--error)'}">${money(mi-mg)}</td><td>${mi+mg>0?Math.round((mi-mg)/(mi+mg)*100):0}%</td></tr>`;
+      saldoMes+=mi-mg;
+      meses+=`<tr><td>${mn}</td><td class="num">${money(mi)}</td><td class="num">${money(mg)}</td><td class="num bold" style="color:${mi-mg>=0?'var(--tertiary)':'var(--error)'}">${money(mi-mg)}</td><td>${mi+mg>0?Math.round((mi-mg)/(mi+mg)*100):0}%</td><td class="num" style="color:${saldoMes>=0?'var(--tertiary)':'var(--error)'}">${money(saldoMes)}</td></tr>`;
     });
     body=`
-      <div class="ph"><div class="flex gap"><label>Año:</label><input id="flujo-year" type="number" value="${year}" onchange="_contaYear=this.value;renderConta()" style="width:100px"/></div></div>
-      <div class="tw"><table class="d"><thead><tr><th>Mes</th><th>Ingresos</th><th>Gastos</th><th>Ganancia/Pérdida</th><th>Rentabilidad</th></tr></thead><tbody>${meses}<tr style="background:var(--surface-container-low)" class="bold"><td>Año</td><td class="num">${money(totIng)}</td><td class="num">${money(totGas)}</td><td class="num" style="color:${totIng-totGas>=0?'var(--tertiary)':'var(--error)'}">${money(totIng-totGas)}</td><td>${totIng+totGas>0?Math.round((totIng-totGas)/(totIng+totGas)*100):0}%</td></tr></tbody></table></div>
+      ${_cardSaldoInicial(si)}
+      <div class="ph"><div class="flex gap"><label>Año:</label><input id="flujo-year" type="number" value="${year}" onchange="_contaYear=Number(this.value)||new Date().getFullYear();renderConta()" style="width:100px"/></div></div>
+      <div class="tw"><table class="d"><thead><tr><th>Mes</th><th>Ingresos</th><th>Gastos</th><th>Ganancia/Pérdida</th><th>Rentabilidad</th><th>Saldo final</th></tr></thead><tbody><tr style="background:var(--surface-container-low)"><td class="bold">Saldo inicial ${year}</td><td></td><td></td><td></td><td></td><td class="num bold">${money(apertura)}</td></tr>${meses}<tr style="background:var(--surface-container-low)" class="bold"><td>Año</td><td class="num">${money(totIng)}</td><td class="num">${money(totGas)}</td><td class="num" style="color:${totIng-totGas>=0?'var(--tertiary)':'var(--error)'}">${money(totIng-totGas)}</td><td>${totIng+totGas>0?Math.round((totIng-totGas)/(totIng+totGas)*100):0}%</td><td class="num" style="color:${saldoMes>=0?'var(--tertiary)':'var(--error)'}">${money(saldoMes)}</td></tr></tbody></table></div>
       <button class="btn btn-secondary mt-md" onclick="exportarFlujoCSV()"><span class="ms">download</span>Exportar Flujo (Excel)</button>
     `;
   } else if(_contaTab==='categorias'){
@@ -4156,11 +4196,11 @@ function pintarGraficos(){
   }, delAno.length>0);
 
   /* 2 — Balance acumulado */
-  let acc = 0;
+  let acc = contaSaldoApertura(year);   // parte del saldo inicial con que abre el año
   const balAcum = MESES.map((_,i)=>{ acc += ingMes[i]-gasMes[i]; return acc; });
   mkChart('g2', {
     type:'line',
-    data:{ labels:MESES, datasets:[{label:'Balance acumulado', data:balAcum, borderColor:'#3525cd',
+    data:{ labels:MESES, datasets:[{label:'Saldo acumulado', data:balAcum, borderColor:'#3525cd',
       backgroundColor:'rgba(53,37,205,.12)', fill:true, tension:.35, pointRadius:4, borderWidth:3}]},
     options: estOpts()
   }, delAno.length>0);
@@ -4524,18 +4564,23 @@ function exportarContaCSV(){
   if(movs.length===0){ toast('No hay movimientos para exportar','error'); return; }
   // Mismo orden que se ve en pantalla: lo más reciente primero.
   const orden = [...movs].sort((a,b)=>(b.fecha||'').localeCompare(a.fecha||'') || (b.id||'').localeCompare(a.id||''));
-  const ing = movs.filter(m=>m.tipo==='Ingreso').reduce((a,b)=>a+b.valor,0);
-  const gas = movs.filter(m=>m.tipo==='Gasto').reduce((a,b)=>a+b.valor,0);
-  const fechas = movs.map(m=>m.fecha).filter(Boolean).sort();
-  let saldo = 0;
+  const ing = movs.filter(m=>m.tipo==='Ingreso').reduce((a,b)=>a+(Number(b.valor)||0),0);
+  const gas = movs.filter(m=>m.tipo==='Gasto').reduce((a,b)=>a+(Number(b.valor)||0),0);
+  const si = contaSaldoInicial();
+  const fechas = movs.map(m=>m.fecha).filter(Boolean).concat(si.definido&&si.fecha?[si.fecha]:[]).sort();
+  let saldo = si.valor;   // el saldo acumulado arranca en el saldo inicial
   const filas = [...orden].reverse().map((m,i)=>{
     const esIngreso = m.tipo==='Ingreso';
-    saldo += esIngreso ? m.valor : -m.valor;
+    const v = Number(m.valor)||0;
+    saldo += _netoMov(m);
     return [i+1, _fechaCorta(m.fecha), m.tipo, m.categoria||'', m.descripcion||'',
-            esIngreso?m.valor:'', esIngreso?'':m.valor, saldo];
+            esIngreso?v:'', m.tipo==='Gasto'?v:'', saldo];
   }).reverse();
   // Renumerar de arriba hacia abajo tras invertir, para que el # siga al orden visible.
   filas.forEach((f,i)=>{ f[0] = i+1; });
+  // Fila del saldo inicial al final (es lo más antiguo). El # va en null para que
+  // el conteo de movimientos del resumen (COUNTA de esa columna) no la cuente.
+  if(si.definido) filas.push([null, _fechaCorta(si.fecha), 'Saldo inicial', '', 'Saldo con el que inició el libro', '', '', si.valor]);
 
   exportarReporte({
     archivo: `Contabilidad_Historial_${todayKey()}`,
@@ -4555,26 +4600,31 @@ function exportarContaCSV(){
     filas,
     resumen: [
       ['Movimientos registrados', {conteo:true, alt:movs.length}, true],
+      ['Saldo inicial',  si.valor],
       ['Total ingresos', {suma:'Ingreso', alt:ing}],
       ['Total gastos',   {suma:'Gasto', alt:gas}],
-      ['Balance',        {f:'SUM(@[Ingreso])-SUM(@[Gasto])', alt:ing - gas}]
+      ['Balance del período', {f:'SUM(@[Ingreso])-SUM(@[Gasto])', alt:ing - gas}],
+      ['Saldo final',    {f:`(${si.valor})+SUM(@[Ingreso])-SUM(@[Gasto])`, alt:si.valor + ing - gas}]
     ]
   });
 }
 function exportarFlujoCSV(){
   const movs = DB.conta.movimientos;
   if(movs.length===0){ toast('No hay movimientos para exportar','error'); return; }
-  const year = new Date().getFullYear();
+  const year = Number(_contaYear) || new Date().getFullYear();
   const mesesN=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
   let totIng=0, totGas=0;
+  const apertura = contaSaldoApertura(year);
+  let saldo = apertura;
   const filas = mesesN.map((mn,i)=>{
     const delMes = m=>m.fecha && m.fecha.startsWith(year+'-') && Number(m.fecha.slice(5,7))===i+1;
-    const mi = movs.filter(m=>delMes(m) && m.tipo==='Ingreso').reduce((a,b)=>a+b.valor,0);
-    const mg = movs.filter(m=>delMes(m) && m.tipo==='Gasto').reduce((a,b)=>a+b.valor,0);
+    const mi = movs.filter(m=>delMes(m) && m.tipo==='Ingreso').reduce((a,b)=>a+(Number(b.valor)||0),0);
+    const mg = movs.filter(m=>delMes(m) && m.tipo==='Gasto').reduce((a,b)=>a+(Number(b.valor)||0),0);
     totIng += mi; totGas += mg;
-    return [mn, mi, mg, mi-mg, mi>0 ? Math.round((mi-mg)/mi*100) : 0];
+    saldo += mi - mg;
+    return [mn, mi, mg, mi-mg, mi>0 ? Math.round((mi-mg)/mi*100) : 0, saldo];
   });
-  filas.push(['TOTAL AÑO', totIng, totGas, totIng-totGas, totIng>0?Math.round((totIng-totGas)/totIng*100):0]);
+  filas.push(['TOTAL AÑO', totIng, totGas, totIng-totGas, totIng>0?Math.round((totIng-totGas)/totIng*100):0, saldo]);
 
   exportarReporte({
     archivo: `Flujo_de_Caja_${year}`,
@@ -4590,13 +4640,18 @@ function exportarFlujoCSV(){
       {titulo:'Balance', ancho:16, moneda:true, formulaFila:'@[Ingresos]-@[Gastos]'},
       {titulo:'Margen %', ancho:12, fmt:'0"%"',
         formulaFila:'IF(@[Ingresos]=0,0,ROUND((@[Ingresos]-@[Gastos])/@[Ingresos]*100,0))',
-        formula:'IF(SUM(@[Ingresos])=0,0,ROUND((SUM(@[Ingresos])-SUM(@[Gastos]))/SUM(@[Ingresos])*100,0))'}
+        formula:'IF(SUM(@[Ingresos])=0,0,ROUND((SUM(@[Ingresos])-SUM(@[Gastos]))/SUM(@[Ingresos])*100,0))'},
+      // Saldo al cierre de cada mes (parte del saldo con que abre el año). En la
+      // fila TOTAL no se suma: se toma el saldo de diciembre.
+      {titulo:'Saldo final', ancho:18, moneda:true, formula:'INDEX(@self,ROWS(@self))'}
     ],
     filas,
     resumen: [
+      ['Saldo inicial del año', apertura],
       ['Ingresos del año', {suma:'Ingresos', alt:totIng}],
       ['Gastos del año',   {suma:'Gastos', alt:totGas}],
       ['Balance del año',  {f:'SUM(@[Ingresos])-SUM(@[Gastos])', alt:totIng - totGas}],
+      ['Saldo final del año', {f:`(${apertura})+SUM(@[Ingresos])-SUM(@[Gastos])`, alt:apertura + totIng - totGas}],
       ['Margen del año',   {f:'IF(SUM(@[Ingresos])=0,0,ROUND((SUM(@[Ingresos])-SUM(@[Gastos]))/SUM(@[Ingresos])*100,0))',
                             alt:(totIng>0 ? Math.round((totIng-totGas)/totIng*100) : 0), fmt:'0"%"'}, true]
     ]
@@ -4949,7 +5004,6 @@ window.addEventListener('pagehide', ()=>saveDB(true));
 awBootstrap(refrescarVistaActiva);
 initConnectivityIndicator();
 </script>
-<script src="costos.js?v=2026-09-25-2"></script>
-<script src="ruta.js?v=2026-09-25-3"></script>
+<script src="costos.js"></script>
 </body>
 </html>
