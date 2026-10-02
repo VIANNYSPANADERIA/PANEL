@@ -7,10 +7,10 @@
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
   <link href="https://fonts.googleapis.com/css2?family=Geist:wght@100..900&family=Geist+Mono:wght@100..900&family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/pocketbase@0.26.2/dist/pocketbase.umd.js"></script>
+  <script src="vendor/chart.umd.min.js"></script>
+  <link rel="stylesheet" href="vendor/leaflet/leaflet.css"/>
+  <script src="vendor/leaflet/leaflet.js"></script>
+  <script src="vendor/pocketbase.umd.js"></script>
   <script src="pocketbaseConfig.js"></script>
   <script src="pocketbaseService.js"></script>
   <style>
@@ -4390,7 +4390,7 @@ function _cargarSheetJS(){
   if(_xlsxPromesa) return _xlsxPromesa;
   _xlsxPromesa = new Promise((resolver, rechazar)=>{
     const s = document.createElement('script');
-    s.src = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
+    s.src = 'vendor/xlsx.full.min.js';
     s.onload = ()=> window.XLSX ? resolver(window.XLSX) : rechazar(new Error('XLSX no disponible'));
     s.onerror = ()=>{ _xlsxPromesa = null; rechazar(new Error('No se pudo descargar el generador de Excel')); };
     document.head.appendChild(s);
