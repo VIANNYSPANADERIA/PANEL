@@ -1377,9 +1377,9 @@ const appwriteService = {
    *     arrobasBase,                         // escala en que se ingresó la receta (1, 0.5, …)
    *     ingredientes:[{insumoId, cantidad}],  // cantidad en unidad base PARA arrobasBase
    *     parametros:{librasPorArroba, kgRefPorArroba, pepasPorArroba, bolitasPorPepa},
-   *     adicionales:[{insumoId, cantidad, base:'arroba'|'lote'}],   // una vez por lote
+   *     adicionales:[{insumoId, cantidad, base:'arroba'|'lote', gramosPorUnidad}],   // una vez por lote
    *     productos:[{lineaId, productoId, bolitasPorPan, panesPorLata|null,
-   *                 adicionales:[{insumoId, cantidad, base:'pan'|'grupo'|'arroba'|'lote', grupo}]}],
+   *                 adicionales:[{insumoId, cantidad, base:'pan'|'grupo'|'arroba'|'lote', grupo, gramosPorUnidad}]}],
    *     repartoPredeterminado:{ [lineaId]: porcentajeDeBolitas } }
    */
   async guardarCategoriaMasa(data) {
@@ -1409,7 +1409,10 @@ const appwriteService = {
       insumoId: a.insumoId,
       cantidad: _num(a.cantidad),
       base: bases.includes(a.base) ? a.base : bases[0],
-      grupo: a.base === 'grupo' ? Math.max(1, Math.round(_num(a.grupo, 1))) : null
+      grupo: a.base === 'grupo' ? Math.max(1, Math.round(_num(a.grupo, 1))) : null,
+      // Si se ingresó en gramos de un insumo por unidad (huevo ≈ 50 g):
+      // `cantidad` sigue en unidades (fracción) y esto solo sirve para mostrarlo.
+      gramosPorUnidad: _num(a.gramosPorUnidad) > 0 ? _num(a.gramosPorUnidad) : null
     });
     obj.adicionales = (obj.adicionales || []).map((a) => normAd(a, ['arroba', 'lote']))
       .filter((a) => a.insumoId && a.cantidad > 0);
