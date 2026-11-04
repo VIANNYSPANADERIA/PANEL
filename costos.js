@@ -161,11 +161,47 @@ const coProducto = (id) => DB.productos.find(p => p.id === id) || null;
 /** ¿El insumo se puede costear? Un paquete sin contenido declarado NO. */
 function coEstadoInsumo(ins) {
   if (!ins) return { ok: false, motivo: 'insumo eliminado' };
+  if (ins.esMezcla) {
+    // El precio de una mezcla se recalcula SIEMPRE con los precios de hoy de sus
+    // ingredientes; se deja en memoria para que el resto del módulo lo lea igual
+    // que el de cualquier insumo.
+    const m = coCosteoMezcla(ins);
+    if (m.ok) { ins.precioBase = m.precioBase; ins.precioCompra = m.costoTotal; }
+    return { ok: m.ok, motivo: m.motivo };
+  }
   if (CO_CONTENEDOR.includes(ins.unidadCompra) && !(coNum(ins.contenidoPorUnidad) > 0)) {
     return { ok: false, motivo: `falta indicar cuántas unidades trae cada ${ins.unidadCompra}` };
   }
   if (!(coNum(ins.precioBase) > 0)) return { ok: false, motivo: 'sin precio de compra' };
   return { ok: true, motivo: '' };
+}
+
+/**
+ * MEZCLA GENERAL: insumo propio (esMezcla) armado con otros insumos.
+ *   componentes = [{insumoId, cantidad}]  (cantidad en unidad base del insumo)
+ *   rendimiento = gramos de mezcla que salen de esas cantidades
+ *   precioBase  = Σ cantidad × precioBase / rendimiento   ($ por gramo de mezcla)
+ * Lo que sobra se usa en la siguiente tanda, así que a cada tipo de pan solo se
+ * le cobran los gramos de mezcla que lleva. No se permiten mezclas dentro de mezclas.
+ */
+function coCosteoMezcla(m) {
+  const rend = coNum(m?.rendimiento);
+  const detalle = (m?.componentes || []).map(g => {
+    const ins = coInsumo(g.insumoId);
+    const st = ins && !ins.esMezcla ? coEstadoInsumo(ins) : { ok: false, motivo: ins ? 'no se permite una mezcla dentro de otra' : 'insumo eliminado' };
+    const costo = st.ok ? coNum(g.cantidad) * coNum(ins.precioBase) : null;
+    return { insumoId: g.insumoId, nombre: ins ? ins.nombre : '(insumo eliminado)',
+      unidad: ins ? coBaseLabel(ins.unidadCompra) : '', cantidad: coNum(g.cantidad),
+      precioBase: st.ok ? coNum(ins.precioBase) : null, costo, ok: st.ok, motivo: st.motivo };
+  });
+  const malos = detalle.filter(d => !d.ok);
+  const costoTotal = detalle.reduce((a, d) => a + (d.costo || 0), 0);
+  let motivo = '';
+  if (!detalle.length) motivo = 'la mezcla no tiene ingredientes';
+  else if (malos.length) motivo = `mezcla: ${malos[0].nombre} ${malos[0].motivo}`;
+  else if (!(rend > 0)) motivo = 'falta cuántos gramos rinde la mezcla';
+  const ok = !motivo;
+  return { detalle, costoTotal, rendimiento: rend, ok, motivo, precioBase: ok ? costoTotal / rend : null };
 }
 
 /** Fotografía del precio vigente de un insumo (se congela en cada registro). */
@@ -1086,6 +1122,7 @@ function coTabInsumos() {
   return `
     <div class="flex gap mb-md" style="flex-wrap:wrap;align-items:center">
       <button class="btn btn-primary" onclick="coInsumoModal()"><span class="ms">add</span>Nuevo Insumo</button>
+      <button class="btn btn-secondary" onclick="coMezclaModal()" title="Mezcla general hecha con insumos que ya tienes (ej: cubierta de azúcar y canela)"><span class="ms">blender</span>Nueva mezcla</button>
       <input placeholder="Buscar insumo o categoría..." value="${coEsc(_coBusqueda)}" oninput="_coBusqueda=this.value;coRefrescarTabla()" style="max-width:280px"/>
       <span class="muted" style="font-size:12px">${lista.length} insumo(s)</span>
     </div>
@@ -1095,6 +1132,23 @@ function coTabInsumos() {
       <th>Precio unitario</th><th>Precio / kg</th><th>Última variación</th><th>Proveedor</th><th></th>
     </tr></thead><tbody>
       ${lista.map(i => {
+        if (i.esMezcla) {
+          const m = coCosteoMezcla(i);
+          return `<tr>
+          <td class="bold">${coEsc(i.nombre)} <span class="badge" style="background:#ede7f6;color:#5e35b1">Mezcla</span></td>
+          <td><span class="badge">Mezclas</span></td>
+          <td class="num">Rinde ${num(m.rendimiento, 2)} g <span class="muted">· ${m.detalle.length} ingrediente(s)</span></td>
+          <td class="num">${m.ok ? money(m.costoTotal) : '-'}</td>
+          <td class="num bold">${m.ok ? `$${num(m.precioBase, 4)} <span class="muted">/ g</span>` : `<span class="badge badge-warn" title="${coEsc(m.motivo)}">Costeo incompleto</span>`}</td>
+          <td class="num">${m.ok ? money(m.precioBase * 1000) : '-'}</td>
+          <td><span class="muted">Precios de hoy</span></td>
+          <td>-</td>
+          <td>
+            <button class="btn btn-ghost btn-sm" onclick="coMezclaModal('${i.id}')"><span class="ms">edit</span></button>
+            <button class="btn btn-danger btn-sm" onclick="coDelInsumo('${i.id}')"><span class="ms">delete</span></button>
+          </td>
+        </tr>`;
+        }
         const h = i.historial || [];
         const v = h.length >= 2 ? coNum(h[h.length - 1].variacion) : 0;
         const base = coBaseLabel(i.unidadCompra);
@@ -1134,6 +1188,7 @@ function coRefrescarTabla() {
 }
 
 function coInsumoModal(id) {
+  if (id && coInsumo(id)?.esMezcla) return coMezclaModal(id);
   const i = id ? coInsumo(id) : {
     nombre: '', categoria: 'Harinas', unidadCompra: 'kg', cantidadComprada: 0, contenidoPorUnidad: '',
     precioCompra: 0, proveedor: '', fechaCompra: todayKey(), observaciones: ''
@@ -1226,9 +1281,119 @@ async function coGuardarInsumo(id) {
   } catch (e) { /* el servicio ya mostró el motivo real y revirtió la copia local */ }
 }
 
+/* ---------- Mezclas generales ---------- */
+
+let _coMezBuf = null;   // {id, nombre, rendimiento, componentes:[{insumoId, cantidad}], observaciones}
+
+function coMezclaModal(id) {
+  const m = id ? coInsumo(id) : null;
+  if (id && !m) return;
+  if (!(DB.costos.insumos || []).some(i => !i.esMezcla)) { toast('Primero registra los insumos que lleva la mezcla', 'error'); return; }
+  _coMezBuf = m
+    ? { id: m.id, nombre: m.nombre, rendimiento: coNum(m.rendimiento), observaciones: m.observaciones || '',
+        componentes: (m.componentes || []).map(g => ({ ...g })) }
+    : { id: '', nombre: '', rendimiento: 0, observaciones: '', componentes: [] };
+  const opc = (DB.costos.insumos || []).filter(i => !i.esMezcla).sort((a, b) => a.nombre.localeCompare(b.nombre))
+    .map(i => `<option value="${i.id}">${coEsc(i.nombre)} (${coEstadoInsumo(i).ok ? `$${num(i.precioBase, 4)}/${coBaseLabel(i.unidadCompra)}` : 'sin costeo'})</option>`).join('');
+  modal(id ? `Editar mezcla · ${coEsc(m.nombre)}` : 'Nueva mezcla general', `
+    <div class="muted mb-md" style="font-size:12px">Una mezcla que preparas aparte con insumos que ya tienes (ej: cubierta de azúcar, canela y mantequilla) y que solo llevan <b>algunos</b> tipos de pan.
+      Después la agregas en <b>Categoría de masa → tipo de pan → Adicionales</b>, indicando cuántos gramos de mezcla lleva cada pan.</div>
+    <div class="gf">
+      <div class="field"><label>Nombre de la mezcla *</label><input id="mz-nombre" value="${coEsc(_coMezBuf.nombre)}" placeholder="Ej: Mezcla agridulce"/></div>
+      <div class="field"><label>¿Cuántos gramos de mezcla salen? *</label>
+        <input id="mz-rend" type="text" inputmode="decimal" value="${_coMezBuf.rendimiento ? String(_coMezBuf.rendimiento).replace('.', ',') : ''}" placeholder="Vacío = suma de ingredientes" oninput="coMezPreview()"/></div>
+    </div>
+    <h3 class="mt-md mb-sm">Ingredientes de la mezcla</h3>
+    <div class="gf3" style="align-items:end">
+      <div class="field"><label>Insumo</label><select id="mz-ins">${opc}</select></div>
+      <div class="field"><label>Cantidad (g, ml o und)</label><input id="mz-cant" type="text" inputmode="decimal" placeholder="Ej: 1000"/></div>
+      <button class="btn btn-secondary" onclick="coMezAdd()"><span class="ms">add</span>Agregar</button>
+    </div>
+    <div id="mz-dyn"></div>
+    <div class="field mt-md"><label>Observaciones</label><input id="mz-obs" value="${coEsc(_coMezBuf.observaciones)}"/></div>
+    <div class="muted mt-sm" style="font-size:11.5px">Lo que sobra de la mezcla se usa en la siguiente tanda: no se cobra como pérdida. A cada pan solo se le cobran los gramos de mezcla que lleva.</div>
+  `, `<button class="btn btn-ghost" onclick="closeModal()">Cancelar</button>
+      <button class="btn btn-primary" onclick="coGuardarMezcla()">Guardar mezcla</button>`, 'lg');
+  coMezPreview();
+}
+/** Rendimiento escrito o, si está vacío, la suma de los ingredientes en g/ml. */
+function coMezRend() {
+  const v = coDec($('#mz-rend')?.value);
+  if (v > 0) return v;
+  return _coMezBuf.componentes.reduce((a, g) => {
+    const ins = coInsumo(g.insumoId);
+    return a + (ins && coBaseDe(ins.unidadCompra) !== 'und' ? coNum(g.cantidad) : 0);
+  }, 0);
+}
+function coMezPreview() {
+  const el = $('#mz-dyn');
+  if (!el || !_coMezBuf) return;
+  const m = coCosteoMezcla({ componentes: _coMezBuf.componentes, rendimiento: coMezRend() });
+  el.innerHTML = (m.detalle.length === 0 ? '<div class="empty">Sin ingredientes todavía.</div>' : `
+    <div class="tw"><table class="d"><thead><tr><th>Insumo</th><th>Cantidad</th><th>Precio unitario</th><th>Costo</th><th></th></tr></thead><tbody>
+      ${m.detalle.map((g, i) => `<tr>
+        <td class="bold">${coEsc(g.nombre)}</td>
+        <td><input type="text" inputmode="decimal" value="${String(g.cantidad).replace('.', ',')}" onchange="coMezSet(${i},this.value)" style="width:110px"/> <span class="muted">${g.unidad}</span></td>
+        <td class="num">${g.ok ? '$' + num(g.precioBase, 4) : `<span class="badge badge-warn">${coEsc(g.motivo)}</span>`}</td>
+        <td class="num bold">${coM(g.costo)}</td>
+        <td><button class="btn btn-danger btn-sm" onclick="coMezDel(${i})"><span class="ms">delete</span></button></td>
+      </tr>`).join('')}
+    </tbody></table></div>`) + `
+    <div class="card mt-md" style="background:var(--surface-container-low)"><div class="card-b" style="font-family:var(--font-mono);font-size:13px;line-height:1.8">
+      Costo total de la mezcla: <b>${money(m.costoTotal)}</b><br>
+      Rinde: <b>${num(m.rendimiento, 2)} g</b>${coDec($('#mz-rend')?.value) > 0 ? '' : ' <span class="muted">(suma de ingredientes)</span>'}<br>
+      Costo por gramo de mezcla: <b>${m.ok ? '$' + num(m.precioBase, 4) : '—'}</b>
+      ${m.ok ? ` · por 10 g: <b>${money(m.precioBase * 10)}</b>` : ''}
+      ${!m.ok && m.detalle.length ? `<br><span style="color:var(--error)">⚠ ${coEsc(m.motivo)}</span>` : ''}
+    </div></div>`;
+}
+function coMezAdd() {
+  const insumoId = $('#mz-ins').value;
+  const cantidad = coDec($('#mz-cant').value);
+  if (!insumoId) return;
+  if (!(cantidad > 0)) { toast('Cantidad inválida', 'error'); return; }
+  const ex = _coMezBuf.componentes.find(g => g.insumoId === insumoId);
+  if (ex) ex.cantidad = coNum(ex.cantidad) + cantidad;
+  else _coMezBuf.componentes.push({ insumoId, cantidad });
+  $('#mz-cant').value = '';
+  coMezPreview();
+}
+function coMezSet(i, v) {
+  const n = coDec(v);
+  if (n > 0) _coMezBuf.componentes[i].cantidad = n; else toast('Cantidad inválida', 'error');
+  coMezPreview();
+}
+function coMezDel(i) { _coMezBuf.componentes.splice(i, 1); coMezPreview(); }
+async function coGuardarMezcla() {
+  const b = _coMezBuf;
+  const nombre = $('#mz-nombre').value.trim();
+  const rendimiento = coMezRend();
+  if (!nombre) { toast('La mezcla necesita un nombre', 'error'); return; }
+  if (!b.componentes.length) { toast('Agrega al menos un ingrediente', 'error'); return; }
+  if (!(rendimiento > 0)) { toast('Indica cuántos gramos de mezcla salen', 'error'); return; }
+  if ((DB.costos.insumos || []).some(i => i.id !== b.id && i.nombre.trim().toLowerCase() === nombre.toLowerCase())) {
+    toast(`Ya existe un insumo llamado "${nombre}"`, 'error'); return;
+  }
+  const m = coCosteoMezcla({ componentes: b.componentes, rendimiento });
+  const data = {
+    nombre, esMezcla: true, categoria: 'Mezclas',
+    componentes: b.componentes.map(g => ({ insumoId: g.insumoId, cantidad: coNum(g.cantidad) })),
+    rendimiento,
+    // Para el servicio es un insumo comprado "en gramos": rinde X g y cuesta Σ ingredientes.
+    unidadCompra: 'g', cantidadComprada: rendimiento, precioCompra: m.costoTotal, contenidoPorUnidad: null,
+    proveedor: '', fechaCompra: todayKey(), observaciones: $('#mz-obs').value.trim()
+  };
+  try {
+    await appwriteService.guardarInsumo(b.id ? { id: b.id, ...data } : data);
+    saveDB(); closeModal(); _coMezBuf = null; renderCostos();
+    toast('Mezcla guardada · agrégala en el tipo de pan que la lleva', 'success');
+  } catch (e) { /* el servicio ya mostró el motivo */ }
+}
+
 function coDelInsumo(id) {
   const i = coInsumo(id);
   if (!i) return;
+  const usaMezcla = (DB.costos.insumos || []).filter(m => m.esMezcla && (m.componentes || []).some(g => g.insumoId === id));
   const usaReceta = (DB.costos.recetas || []).filter(r => (r.ingredientes || []).some(g => g.insumoId === id));
   const usaCat = coCategorias().filter(c =>
     (c.ingredientes || []).some(g => g.insumoId === id) ||
@@ -1239,6 +1404,7 @@ function coDelInsumo(id) {
     ${usaCat.length ? `<p class="mt-md" style="color:var(--error)"><b>Atención:</b> se usa en <b>${usaCat.length} categoría(s) de masa</b>
       (${usaCat.map(c => coEsc(c.nombre)).join(', ')}). Su costeo quedará como <b>Costeo incompleto</b> hasta reemplazarlo.</p>` : ''}
     ${usaReceta.length ? `<p class="mt-md" style="color:var(--error)">También aparece en <b>${usaReceta.length} receta(s) antigua(s) por lata</b>.</p>` : ''}
+    ${usaMezcla.length ? `<p class="mt-md" style="color:var(--error)">Es ingrediente de <b>${usaMezcla.length} mezcla(s)</b> (${usaMezcla.map(m => coEsc(m.nombre)).join(', ')}): quedarán con costeo incompleto.</p>` : ''}
     <p class="muted mt-md" style="font-size:12px">Las producciones ya registradas conservan su costo congelado.</p>`,
     `<button class="btn btn-ghost" onclick="closeModal()">Cancelar</button>
      <button class="btn btn-danger" onclick="coDelInsumoOk('${id}')">Eliminar</button>`);
@@ -1404,8 +1570,9 @@ async function coMigrar() {
 
 /* ---------- Modal de categoría de masa ---------- */
 
-const coOpcInsumos = (sel) => (DB.costos.insumos || []).slice().sort((a, b) => a.nombre.localeCompare(b.nombre))
-  .map(i => `<option value="${i.id}" ${i.id === sel ? 'selected' : ''}>${coEsc(i.nombre)} (${coEstadoInsumo(i).ok ? `$${num(i.precioBase, 4)}/${coBaseLabel(i.unidadCompra)}` : 'sin costeo'})</option>`).join('');
+const coOpcInsumos = (sel) => (DB.costos.insumos || []).slice()
+  .sort((a, b) => (b.esMezcla ? 1 : 0) - (a.esMezcla ? 1 : 0) || a.nombre.localeCompare(b.nombre))
+  .map(i => `<option value="${i.id}" ${i.id === sel ? 'selected' : ''}>${i.esMezcla ? 'MEZCLA · ' : ''}${coEsc(i.nombre)} (${coEstadoInsumo(i).ok ? `$${num(i.precioBase, 4)}/${coBaseLabel(i.unidadCompra)}` : 'sin costeo'})</option>`).join('');
 
 function coCatModal(id) {
   const c = id ? coCategoria(id) : null;
@@ -1607,8 +1774,11 @@ function coAdMedida(pref) {
     const previo = todos.find(a => a.insumoId === sel.value && a.gramosPorUnidad);
     if (previo) gpu.value = String(previo.gramosPorUnidad).replace('.', ',');
   }
-  $(`#${pref}-cantlbl`).textContent = enGramos ? 'Cantidad (gramos)' : `Cantidad (${ins ? coBaseLabel(ins.unidadCompra) : 'unidad base'})`;
-  $(`#${pref}-hint`).textContent = enGramos
+  $(`#${pref}-cantlbl`).textContent = ins?.esMezcla ? 'Gramos de mezcla'
+    : enGramos ? 'Cantidad (gramos)' : `Cantidad (${ins ? coBaseLabel(ins.unidadCompra) : 'unidad base'})`;
+  $(`#${pref}-hint`).textContent = ins?.esMezcla
+    ? 'Mezcla general: escribe cuántos gramos de mezcla lleva y elige la base (normalmente "Por pan"). Solo se cobra a este tipo de pan.'
+    : enGramos
     ? 'Ej: si 1 huevo pesa 50 g y cada pan lleva 2 g, escribe 50 arriba y 2 aquí → se cobra 0,04 huevos por pan.'
     : porUnidad ? 'Si usas solo una parte de la unidad (ej: unos gramos de huevo), elige "Medir en: Gramos".' : '';
 }
