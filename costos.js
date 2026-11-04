@@ -128,6 +128,12 @@ function coDec(v) {
   return Number.isFinite(n) ? n : NaN;
 }
 
+/** Bolitas por pan: admite decimales (0,72) con 4 cifras. null si no es válido. */
+function coLeerBpp(v) {
+  const n = coDec(v);
+  return n > 0 ? Math.round(n * 10000) / 10000 : null;
+}
+
 /** Escapa texto del usuario antes de insertarlo en HTML. */
 const coEsc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 /** Número con hasta `d` decimales, sin rellenar ceros. */
@@ -1524,7 +1530,7 @@ function coTablaProductosCategoria(snap, rc) {
       const u = coCosteoUnitario(snap, l, rc);
       return `<tr>
         <td class="bold">${coEsc(l.nombre)}</td>
-        <td class="center">${num(l.bolitasPorPan)}</td>
+        <td class="center">${coN(l.bolitasPorPan, 4)}</td>
         <td class="center">${u.panesPorArroba == null ? '-' : num(u.panesPorArroba)}</td>
         <td class="num">${coM(u.masaPorPan)}</td>
         <td class="num">${coM(u.adicionalesPorPan)}${u.porGrupo ? ' <span class="muted" title="Promedio por grupo completo; el costo real depende del tamaño del lote">*</span>' : ''}
@@ -1682,7 +1688,7 @@ function coCatRender() {
     <div class="gf3" style="align-items:end">
       <div class="field"><label>Producto del catálogo</label>
         <select id="cm-prod">${disponibles.map(p => `<option value="${p.id}">${coEsc(p.nombre)} (${money(p.precio)})</option>`).join('') || '<option value="">(todos asociados)</option>'}</select></div>
-      <div class="field"><label>Bolitas por pan *</label><input id="cm-lbpp" type="number" min="1" step="1" value="1"/></div>
+      <div class="field"><label>Bolitas por pan * <span class="muted" style="font-weight:400">(acepta decimales: 0,72)</span></label><input id="cm-lbpp" type="text" inputmode="decimal" value="1"/></div>
       <div class="field"><label>Panes por lata (opcional)</label><input id="cm-lppl" type="number" min="1" step="1" placeholder="Sin latas"/></div>
     </div>
     <div class="flex gap mb-sm" style="flex-wrap:wrap">
@@ -1706,7 +1712,7 @@ function coCatRender() {
         const u = coCosteoUnitario(snap, sl, rc);
         return `<tr>
           <td class="bold">${coEsc(sl.nombre)}</td>
-          <td><input type="number" min="1" step="1" value="${l.bolitasPorPan}" onchange="coCatSetLinea(${i},'bolitasPorPan',this.value)" style="width:70px"/></td>
+          <td><input type="text" inputmode="decimal" value="${String(l.bolitasPorPan).replace('.', ',')}" onchange="coCatSetLinea(${i},'bolitasPorPan',this.value)" style="width:70px"/></td>
           <td><input type="number" min="1" step="1" value="${l.panesPorLata ?? ''}" placeholder="—" onchange="coCatSetLinea(${i},'panesPorLata',this.value)" style="width:70px"/></td>
           <td class="num bold">${coM(u.variablePorPan)}</td>
           <td><button class="btn btn-ghost btn-sm" onclick="coCatToggleLinea(${i})"><span class="ms">shopping_bag</span>${(l.adicionales || []).length}</button></td>
@@ -1833,8 +1839,8 @@ function coCatDelAd(j) { _coCatBuf.adicionales.splice(j, 1); coCatCampos(); }
 function coCatAddLinea() {
   const productoId = $('#cm-prod').value;
   if (!productoId) { toast('No hay productos disponibles para asociar', 'error'); return; }
-  const bpp = coNum($('#cm-lbpp').value);
-  if (!(bpp > 0) || Math.round(bpp) !== bpp) { toast('Las bolitas por pan deben ser un entero positivo', 'error'); return; }
+  const bpp = coLeerBpp($('#cm-lbpp').value);
+  if (!bpp) { toast('Las bolitas por pan deben ser mayores a 0', 'error'); return; }
   const ppl = coNum($('#cm-lppl').value);
   if (ppl && (ppl < 1 || Math.round(ppl) !== ppl)) { toast('Panes por lata debe ser un entero positivo', 'error'); return; }
   _coCatBuf.productos.push({ lineaId: appwriteService.genId('CML'), productoId, bolitasPorPan: bpp, panesPorLata: ppl || null, adicionales: [] });
@@ -1843,8 +1849,11 @@ function coCatAddLinea() {
 function coCatSetLinea(i, k, v) {
   const n = coNum(v);
   if (k === 'panesPorLata') _coCatBuf.productos[i].panesPorLata = n > 0 ? Math.round(n) : null;
-  else if (n > 0) _coCatBuf.productos[i][k] = Math.round(n);
-  else toast('Las bolitas por pan deben ser un entero positivo', 'error');
+  else {
+    const bpp = coLeerBpp(v);
+    if (bpp) _coCatBuf.productos[i][k] = bpp;
+    else toast('Las bolitas por pan deben ser mayores a 0', 'error');
+  }
   coCatCampos();
 }
 function coCatDelLinea(i) {
@@ -1869,10 +1878,10 @@ function coCatDelAdLinea(i, j) { _coCatBuf.productos[i].adicionales.splice(j, 1)
 async function coCatNuevoProducto() {
   const nombre = $('#cm-np-nombre').value.trim();
   const precio = coNum($('#cm-np-precio').value);
-  const bpp = coNum($('#cm-lbpp').value);
+  const bpp = coLeerBpp($('#cm-lbpp').value);
   if (!nombre) { toast('El producto necesita un nombre', 'error'); return; }
   if (!(precio > 0)) { toast('El precio de venta debe ser mayor a 0', 'error'); return; }
-  if (!(bpp > 0) || Math.round(bpp) !== bpp) { toast('Las bolitas por pan deben ser un entero positivo', 'error'); return; }
+  if (!bpp) { toast('Las bolitas por pan deben ser mayores a 0', 'error'); return; }
   try {
     const p = await appwriteService.guardarProducto({ nombre, precio, imagen: '' });
     saveDB();
@@ -2199,7 +2208,7 @@ function coProdTablaGrupo(g, gi, inicial) {
       ${snap.lineas.map((l, li) => {
         const v = inicial(g, l);
         return `<tr>
-          <td class="bold">${coEsc(l.nombre)}<div class="muted" style="font-size:11px;font-weight:400">${num(l.bolitasPorPan)} bolita(s) por pan${l.panesPorLata ? ` · ${num(l.panesPorLata)} panes por lata` : ''}</div></td>
+          <td class="bold">${coEsc(l.nombre)}<div class="muted" style="font-size:11px;font-weight:400">${coN(l.bolitasPorPan, 4)} bolita(s) por pan${l.panesPorLata ? ` · ${num(l.panesPorLata)} panes por lata` : ''}</div></td>
           <td><input id="cp-q-${gi}-${li}" type="text" inputmode="decimal" value="${dec(v.cantidad)}" placeholder="0" oninput="coProdRecalc()" style="width:90px"/></td>
           <td><select id="cp-u-${gi}-${li}" onchange="coProdRecalc()">
             ${Object.entries(CO_UNI_PROD).filter(([k]) => k !== 'latas' || l.panesPorLata)
@@ -2391,7 +2400,7 @@ function coProdDetalle(id) {
     ${res.reparto.length ? `<h3 class="mb-sm">Reparto</h3>
     <div class="tw mb-md"><table class="d"><thead><tr><th>Pan</th><th>Bolitas</th><th>Bol./pan</th><th>Estimados</th><th>Reales</th><th>Remanente</th><th>Latas</th><th>Masa</th><th>Adicionales</th><th>Parte masa-cat.</th><th>Total</th><th>Por pan</th></tr></thead><tbody>
       ${res.reparto.map(l => `<tr>
-        <td class="bold">${coEsc(l.nombre)}</td><td class="num">${coN(l.bolitasAsignadas, 2)}</td><td class="center">${l.bolitasPorPan}</td>
+        <td class="bold">${coEsc(l.nombre)}</td><td class="num">${coN(l.bolitasAsignadas, 2)}</td><td class="center">${coN(l.bolitasPorPan, 4)}</td>
         <td class="num">${num(l.panesEstimados)}</td><td class="num">${l.panesConfirmados == null ? '-' : num(l.panesConfirmados)}</td>
         <td class="num">${coN(l.bolitasRemanentes, 2)}</td>
         <td>${l.latas ? `${l.latas.necesarias} (${l.latas.completas} completas, última ${coN(l.latas.panesUltimaLata)})` : 'Sin configuración de latas'}</td>

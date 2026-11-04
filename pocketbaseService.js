@@ -1427,8 +1427,9 @@ const appwriteService = {
       if (!l.productoId) throw _invalido('Cada tipo de pan asociado necesita un producto.');
       if (vistos.has(l.productoId)) throw _invalido('Un producto solo puede asociarse una vez a la misma categoría.');
       vistos.add(l.productoId);
-      const bpp = _num(l.bolitasPorPan);
-      if (!(bpp > 0) || Math.round(bpp) !== bpp) throw _invalido('Las bolitas por pan deben ser un entero positivo.');
+      // Se admiten decimales: un pan de 60 g con bolitas de ~83 g lleva 0,72 bolitas.
+      const bpp = Math.round(_num(l.bolitasPorPan) * 10000) / 10000;
+      if (!(bpp > 0)) throw _invalido('Las bolitas por pan deben ser mayores a 0.');
       const ppl = _nul(l.panesPorLata);
       if (ppl !== null && !(ppl > 0 && Math.round(ppl) === ppl)) throw _invalido('Panes por lata debe ser un entero positivo o quedar vacío.');
       return {
