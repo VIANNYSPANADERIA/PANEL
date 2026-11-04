@@ -1048,8 +1048,50 @@ function verPedidoGuardado(id){
 function eliminarPedidoGuardado(id){
   modal('Eliminar pedido','<p>¿Eliminar este pedido guardado del día?</p>',`<button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><button class="btn btn-danger" onclick="_delPedidoGuardado('${id}')">Eliminar</button>`);
 }
+/* Elimina un pedido y deshace en Cartera todo lo que su fila de recaudo había
+   registrado: la deuda que dejó (_last_deuda), el "le debemos" (_last_debeCliente)
+   y el saldo a favor que consumió (saldoFavorAplicado). Así, si ese pedido era
+   el que había quedado como deuda, la deuda desaparece junto con él.
+   Los abonos a deuda VIEJA hechos en esa fila son plata real ya recibida: no se
+   revierten, se pasan a una fila "solo abono" del cliente en ese día. */
+async function eliminarPedidoConCartera(id){
+  const p = DB.pedidos.find(x=>x.id===id);
+  const fila = p ? DB.recaudo[p.fecha]?.[id] : null;
+  let abonos = [];
+  if(fila && fila.clienteId){
+    const cid = fila.clienteId, f = p.fecha;
+    const deuda = Number(fila._last_deuda)||0;
+    if(deuda) registrarMovCartera(cid,'deuda',-deuda,`Pedido cancelado ${f}: se anula su deuda`);
+    const debe = Number(fila._last_debeCliente)||0;
+    if(debe) registrarMovCartera(cid,'debo_cliente',-debe,`Pedido cancelado ${f}: se anula lo que le quedamos debiendo`);
+    const favor = Number(fila.saldoFavorAplicado)||0;
+    if(favor) registrarMovCartera(cid,'debo_cliente',favor,`Pedido cancelado ${f}: se devuelve el saldo a favor usado`);
+    abonos = Array.isArray(fila.pagosDeuda) ? fila.pagosDeuda.slice() : [];
+  }
+  await appwriteService.eliminarPedido(id);
+  if(abonos.length){
+    const cid = fila.clienteId, f = p.fecha;
+    const dia = (DB.recaudo[f] ??= {});
+    const otra = Object.values(dia).find(x=>x.clienteId===cid);
+    const destino = otra || {
+      pedidoId:`DEUDA-${cid}`, clienteId:cid, cliente:fila.cliente||'', tipo:fila.tipo||'',
+      subtotal:0, deuda:0, entregado:false, recibido:false, recaudado:false,
+      nequi:0, bancolombia:0, deudaPago:0, debeCliente:0, faltante:0, salida:0,
+      observacion:'', efectivo:0, fecha:f, pagosDeuda:[], _deudaSeparada:true, soloDeuda:true
+    };
+    if(!Array.isArray(destino.pagosDeuda)) destino.pagosDeuda = [];
+    destino.pagosDeuda.push(...abonos);
+    _recalcPagosDeuda(destino);
+    recalcEfectivoFila(destino);
+    if(destino.id) _encolarRecaudo(destino);
+    else {
+      try{ const saved = await appwriteService.guardarRecaudo(destino); if(saved) destino.id = saved.id; }catch(e){}
+      dia[destino.pedidoId] = destino;
+    }
+  }
+}
 async function _delPedidoGuardado(id){
-  try{ await appwriteService.eliminarPedido(id); saveDB(); closeModal(); renderClientes(); toast('Pedido eliminado','success'); }
+  try{ await eliminarPedidoConCartera(id); saveDB(); closeModal(); renderClientes(); toast('Pedido eliminado','success'); }
   catch(e){ toast('No se pudo eliminar el pedido','error'); }
 }
 function colorPickerHtml(selected){
@@ -1440,7 +1482,7 @@ async function confirmarLimpiarPedido(){
   const fecha = _clientesFecha || todayKey();
   const existente = _currentCliente ? DB.pedidos.find(p=>p.clienteId===_currentCliente && p.fecha===fecha) : null;
   if(existente){
-    await appwriteService.eliminarPedido(existente.id);
+    await eliminarPedidoConCartera(existente.id);
     saveDB();
     toast('Pedido eliminado y retirado del recaudo','success');
   }
@@ -1460,7 +1502,7 @@ async function guardarPedido(silent){
   // Pedido en cero / limpio: se elimina el pedido existente y su fila de recaudo
   if(items.length===0){
     if(existente){
-      await appwriteService.eliminarPedido(existente.id);
+      await eliminarPedidoConCartera(existente.id);
       saveDB();
       if(!silent) toast('Pedido guardado en 0 y retirado del recaudo','success');
     } else {
@@ -2187,6 +2229,9 @@ let _recaudoBusqueda = '';
 let _recaudoZona = '';
 function _filasRecaudoFiltradas(filas){
   return filas.filter(f=>{
+    // Las filas "solo abono" (Pagar deuda cartera) no van en la tabla de
+    // pedidos: se muestran en el recuadro "Abonos de cartera" de la izquierda.
+    if(f.soloDeuda) return false;
     if(_recaudoBusqueda && !(f.cliente||'').toLowerCase().includes(_recaudoBusqueda.toLowerCase())) return false;
     if(_recaudoZona && f.tipo !== _recaudoZona) return false;
     switch(_recaudoFiltro){
@@ -2366,7 +2411,9 @@ function renderRecaudo(){
       ${chips.map(([k,l])=>`<button data-f="${k}" class="${_recaudoFiltro===k?'active':''}" onclick="setRecaudoFiltro('${k}')">${l}</button>`).join('')}
     </div>
 
-    <div class="tw rec-tw">
+    <div style="display:flex;gap:12px;align-items:flex-start">
+    <div class="card" id="rec-abonos" style="width:230px;flex-shrink:0">${_panelAbonosHTML()}</div>
+    <div class="tw rec-tw" style="flex:1;min-width:0">
       <table class="d">
         <thead><tr>
           <th>Recibido</th><th>Cliente</th><th>Pedido</th><th>Cartera</th><th>Forma de pago</th>
@@ -2376,6 +2423,7 @@ function renderRecaudo(){
           ${visibles.length===0?`<tr><td colspan="9" class="empty">No hay pedidos con este filtro</td></tr>`:visibles.map(_filaRecaudoHTML).join('')}
         </tbody>
       </table>
+    </div>
     </div>
 
     <div class="card mt-md">
@@ -2688,7 +2736,7 @@ async function pagarDeudaCarteraConfirm(clienteId, medio){
   //    esos campos son del cobro del pedido de hoy y mezclarlos cruza los dos pagos.
   const fila = await _filaParaAbonoCartera(clienteId);
   if(!Array.isArray(fila.pagosDeuda)) fila.pagosDeuda = [];
-  fila.pagosDeuda.push({ monto, medio });
+  fila.pagosDeuda.push({ monto, medio, origen:'cartera' });
   _recalcPagosDeuda(fila);
   recalcEfectivoFila(fila);
   _encolarRecaudo(fila);
@@ -2700,6 +2748,62 @@ async function pagarDeudaCarteraConfirm(clienteId, medio){
   const quedaDebe = Math.max(0, debe - monto);
   toast(`Deuda abonada: ${money(monto)} · ${cat}${quedaDebe>0?` · aún debe ${money(quedaDebe)}`:monto>debe?` · a favor ${money(monto-debe)}`:' · queda al día'}`,'success');
   } finally { _pdcGuardando = false; }
+}
+/* ---- Recuadro "Abonos de cartera" (a la izquierda de la tabla) ----
+   Lista los pagos hechos con "Pagar deuda (cartera)" en el día: todos los de
+   filas "solo abono" y los marcados origen:'cartera' en filas con pedido. */
+function _abonosCarteraDia(){
+  const out = [];
+  for(const f of Object.values(DB.recaudo[_recaudoFecha]||{})){
+    (Array.isArray(f.pagosDeuda) ? f.pagosDeuda : []).forEach((p,idx)=>{
+      if(f.soloDeuda || p.origen==='cartera') out.push({f, p, idx});
+    });
+  }
+  return out;
+}
+function _panelAbonosHTML(){
+  const abonos = _abonosCarteraDia();
+  const nombresMedio = {efectivo:'Efectivo', nequi:'Nequi', bancolombia:'Bancolombia'};
+  const total = abonos.reduce((a,x)=>a+(Number(x.p.monto)||0),0);
+  const items = abonos.length===0
+    ? `<div class="muted" style="font-size:12px">Sin abonos hoy</div>`
+    : abonos.map(({f,p,idx})=>{
+        const color = (f.clienteId && DB.clientes.find(c=>c.id===f.clienteId)?.color) || 'var(--primary)';
+        return `<div style="border-left:4px solid ${color};background:var(--surface-container-low);border-radius:8px;padding:6px 8px;margin-bottom:6px;display:flex;align-items:center;gap:6px">
+          <div style="flex:1;min-width:0">
+            <div class="bold" style="font-size:12px;color:${color};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${f.cliente||'Cliente'}</div>
+            <div style="font-size:11px"><b style="font-family:var(--font-mono)">${money(p.monto)}</b> · ${nombresMedio[p.medio]||p.medio}</div>
+          </div>
+          <button class="btn btn-ghost btn-sm" style="color:var(--error);padding:2px 4px" title="Quitar abono (vuelve a subir la deuda)" onclick="quitarAbonoCartera('${f.pedidoId}',${idx})"><span class="ms" style="font-size:16px">delete</span></button>
+        </div>`;
+      }).join('');
+  return `<div class="card-h" style="padding:10px 12px"><div class="card-t" style="font-size:13px"><span class="ms" style="font-size:16px;vertical-align:-3px">volunteer_activism</span> Abonos de cartera</div></div>
+    <div class="card-b" style="padding:8px 12px;max-height:420px;overflow:auto">${items}</div>
+    ${abonos.length?`<div class="flex fb bold" style="padding:8px 12px;border-top:1px solid var(--outline-variant);font-size:12px"><span>Total</span><span style="font-family:var(--font-mono)">${money(total)}</span></div>`:''}`;
+}
+function _repintarPanelAbonos(){
+  const el = document.getElementById('rec-abonos');
+  if(el) el.innerHTML = _panelAbonosHTML();
+}
+function quitarAbonoCartera(pedidoId, idx){
+  const r = DB.recaudo[_recaudoFecha] && DB.recaudo[_recaudoFecha][pedidoId]; if(!r) return;
+  const p = Array.isArray(r.pagosDeuda) && r.pagosDeuda[idx]; if(!p) return;
+  if(!confirm(`¿Quitar el abono de ${money(p.monto)} de ${r.cliente||'este cliente'}? La deuda en cartera vuelve a subir.`)) return;
+  if(r.clienteId) registrarMovCartera(r.clienteId,'deuda',p.monto,`Reversa abono deuda ${_recaudoFecha}`);
+  r.pagosDeuda.splice(idx,1);
+  _recalcPagosDeuda(r);
+  recalcEfectivoFila(r);
+  // Una fila "solo abono" que se queda sin abonos ya no tiene razón de existir.
+  if(r.soloDeuda && r.pagosDeuda.length===0){
+    delete DB.recaudo[_recaudoFecha][pedidoId];
+    if(r.id) appwriteService.eliminarRecaudo(r.id).catch(()=>{});
+    saveDB();
+  } else {
+    saveDB(); _encolarRecaudo(r);
+  }
+  _repintarTablaRecaudo();
+  _repintarTotalesRecaudo();
+  toast('Abono quitado','default');
 }
 
 function recalcEfectivoFila(r){
@@ -2971,6 +3075,7 @@ function _repintarTotalesRecaudo(){
   set('liq-deudas', t.deudasHoy);
   set('liq-faltantes', t.falt);
   set('liq-salidas', t.sal);
+  _repintarPanelAbonos();
 }
 /* El botón "Recaudo" ya NO abre ventana: solo selecciona / quita la fila para la
    liquidación y su monto suma (o resta) al KPI "Total a recibir del
