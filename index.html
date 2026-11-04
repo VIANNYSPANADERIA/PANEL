@@ -3181,10 +3181,16 @@ function abrirLiquidacionRecaudo(){
     // descuenta de la factura de hoy, así que RESTA del total del día.
     const btnFavor = favorMax>0
       ? `<button class="btn btn-sm" style="background:#004b98;color:#fff" onclick="_liqToggleFavor(${i})"><span class="ms">remove_circle</span>Descontar lo que le debo</button>` : '';
+    // No se descuenta el 100% por defecto: el usuario escribe CUÁNTO descontar
+    // hoy y el resto sigue a favor del cliente en cartera.
     const bloqueFavor = favorMax>0 ? `
       <div id="liq-favor-wrap-${i}" class="field mt-sm" style="${favorIni>0?'':'display:none;'}background:#e8f0fb;padding:8px 10px;border-radius:var(--r-lg)">
-        <label>Le debo al cliente: descontar de la factura de hoy (máx. ${money(favorMax)})</label>
-        <input id="liq-favor-${i}" type="number" min="0" max="${favorMax}" value="${favorIni}" data-max="${favorMax}" oninput="_liqAutoEfectivo(${i})"/>
+        <label>Le debo <b>${money(favorDisp)}</b> a este cliente. ¿Cuánto le descuento de la factura de hoy? (máx. ${money(favorMax)})</label>
+        <div class="flex" style="gap:6px;align-items:center">
+          <input id="liq-favor-${i}" type="number" min="0" max="${favorMax}" value="${favorIni||''}" placeholder="Escribe el valor a descontar" data-max="${favorMax}" data-disp="${favorDisp}" oninput="_liqAutoEfectivo(${i})" style="flex:1"/>
+          <button class="btn btn-ghost btn-sm" style="border:1px solid #004b98;color:#004b98" onclick="_liqFavorTodo(${i})" title="Descontar el máximo posible">Todo</button>
+        </div>
+        <div id="liq-favor-resta-${i}" style="font-size:11px;margin-top:4px;color:#004b98">${favorIni>0?`Se descuentan <b>${money(favorIni)}</b> hoy · le seguiré debiendo <b>${money(Math.max(0, favorDisp - favorIni))}</b>`:''}</div>
       </div>` : '';
     return `<div class="card" style="margin-bottom:10px;border-left:5px solid ${color}"><div class="card-b">
       ${cabecera(`<span class="muted" style="font-size:12px">· Factura del día: <b>${money(subtotal)}</b></span>`, btnFavor)}
@@ -3275,15 +3281,30 @@ function _liqToggleFavor(i){
   if(!wrap || !inp) return;
   const abrir = wrap.style.display==='none';
   wrap.style.display = abrir ? '' : 'none';
-  inp.value = abrir ? (Number(inp.dataset.max)||0) : 0;
+  // Al abrir se deja VACÍO: el usuario decide cuánto descontar (no siempre es el 100%).
+  inp.value = '';
   _liqAutoEfectivo(i);
-  if(abrir){ inp.focus(); inp.select(); }
+  if(abrir) inp.focus();
+}
+function _liqFavorTodo(i){
+  const inp = document.getElementById('liq-favor-'+i); if(!inp) return;
+  inp.value = Number(inp.dataset.max)||0;
+  _liqAutoEfectivo(i);
 }
 /* Al escribir Nequi / Bancolombia / saldo a favor se sugiere el efectivo restante. */
 function _liqAutoEfectivo(i){
   const v = _liqValores(i); if(!v || v.solo) return;
   const efeEl = document.getElementById('liq-efe-'+i);
   if(efeEl) efeEl.value = Math.max(0, v.subtotal - v.neq - v.ban - v.favor - (_liqDeudaBase[i]||0));
+  // Cuánto le seguiremos debiendo al cliente después de este descuento.
+  const inp = document.getElementById('liq-favor-'+i);
+  const resta = document.getElementById('liq-favor-resta-'+i);
+  if(inp && resta){
+    const disp = Number(inp.dataset.disp)||0;
+    resta.innerHTML = v.favor>0
+      ? `Se descuentan <b>${money(v.favor)}</b> hoy · le seguiré debiendo <b>${money(Math.max(0, disp - v.favor))}</b>`
+      : '';
+  }
   _liqPreview();
 }
 function _liqNoCancelo(i){
@@ -3517,7 +3538,8 @@ function abrirModalRecibido(pedidoId){
   const favorDisp  = _saldoFavorDisponible(r);
   const favorMax   = Math.min(favorDisp, subtotal);
   const yaAplicado = Math.max(0, Number(r.saldoFavorAplicado)||0);
-  const favorIni   = Math.min(yaAplicado>0 ? yaAplicado : favorMax, favorMax);
+  // No se aplica el 100% por defecto: el usuario escribe cuánto descontar.
+  const favorIni   = Math.min(yaAplicado, favorMax);
 
   // Deuda que la fila ya traía: se respeta al abrir para no borrarla sola. Si el
   // cliente sí paga, basta con subir el efectivo y la deuda baja al confirmar.
