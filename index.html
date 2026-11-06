@@ -1518,7 +1518,11 @@ async function guardarPedido(silent){
     } else {
       await appwriteService.guardarPedido({clienteId:_currentCliente, fecha, items, comentario:_comentarioPedido, total, modoCondicion:_modoCondicion});
     }
-    sincronizarRecaudoDia(fecha);
+    // Se espera la fila de recaudo: el saldo a favor se cruza sobre ella y el
+    // ticket se imprime justo después con ese cruce ya hecho.
+    await sincronizarRecaudoDia(fecha);
+    const pedidoGuardado = DB.pedidos.find(p=>p.clienteId===_currentCliente && p.fecha===fecha);
+    _autoAplicarSaldoFavorFila(pedidoGuardado ? DB.recaudo[fecha]?.[pedidoGuardado.id] : null);
     saveDB();
     if(!silent){
       toast('Pedido guardado','success');
@@ -1613,9 +1617,18 @@ function componerTicketHTML(items, total, cliNombre, comentario, numTicket, clie
   let deudaInfo = null;
   const mostrarDeudaFlag = (typeof _pedidoMostrarDeuda === 'boolean' ? _pedidoMostrarDeuda : true) && f.mostrarDeuda!==false;
   if(clienteId && mostrarDeudaFlag){
-    const saldo = getSaldoCliente(clienteId);
+    // El pedido guardado ya pudo consumir saldo a favor en cartera: se suma de
+    // vuelta para mostrar el saldo que tenía ANTES de este pedido. Así el ticket
+    // sale igual aunque se reimprima.
+    const fechaPed = _clientesFecha || todayKey();
+    const ped = DB.pedidos.find(p=>p.clienteId===clienteId && p.fecha===fechaPed);
+    const fila = ped ? DB.recaudo[fechaPed]?.[ped.id] : null;
+    const yaAplicado = Math.max(0, Number(fila?.saldoFavorAplicado)||0);
+    const saldo = getSaldoCliente(clienteId) + yaAplicado;
     if(saldo<0) deudaInfo = {tipo:'debe', valor:Math.abs(saldo)};          // cliente le debe a la empresa
-    else if(saldo>0) deudaInfo = {tipo:'debo', valor:saldo};                // empresa le debe al cliente
+    else if(saldo>0) deudaInfo = {tipo:'debo', valor:saldo,                 // empresa le debe al cliente
+      // Sin fila (vista previa) se muestra lo que se aplicaría.
+      aplicado: fila ? yaAplicado : Math.min(saldo, total)};
   }
   f.orden.forEach(key=>{
     if(key==='encabezado' && f.encabezado) b += `<div ${sty(f.tamEncabezado||16,f.negEncabezado,f.alineaEncabezado||'center',f.colorEncabezado||'#000')}>${esc(f.encabezado)}</div>`;
@@ -1679,8 +1692,14 @@ if(vCada>0 && vActivo && vCant>0){
         const colorDeuda = deudaInfo.tipo==='debe' ? (f.colorDeuda||'#ba1a1a') : (f.colorFavor||'#005338');
         const labelText = deudaInfo.tipo==='debe' ? lblDebe : lblDebo;
         b += `<div ${sty(f.tamDeuda||18,true,'center',colorDeuda,`margin-top:2px`)}>${esc(labelText)}: ${money(deudaInfo.valor)}</div>`;
-        // TOTAL A COBRAR: suma la deuda (cliente debe) o resta el saldo a favor (empresa debe)
-        const totalCobrar = deudaInfo.tipo==='debe' ? total + deudaInfo.valor : Math.max(0, total - deudaInfo.valor);
+        const aplicado = deudaInfo.aplicado||0;
+        if(aplicado>0){
+          b += `<div ${sty(f.tamDeuda||18,true,'center',colorDeuda,`margin-top:2px`)}>SALDO USADO EN ESTE PEDIDO: -${money(aplicado)}</div>`;
+          b += `<div ${sty(f.tamDeuda||18,true,'center',colorDeuda,`margin-top:2px`)}>SALDO RESTANTE A FAVOR: ${money(deudaInfo.valor - aplicado)}</div>`;
+        }
+        // TOTAL A COBRAR: suma la deuda (cliente debe) o resta el saldo a favor usado.
+        // Si el pedido supera el saldo, lo que falta es lo que el cliente debe pagar.
+        const totalCobrar = deudaInfo.tipo==='debe' ? total + deudaInfo.valor : Math.max(0, total - aplicado);
         b += cut;
         b += `<div ${sty((f.tamTotal||22)+2,true,f.alineaTotal||'center','#000','margin-top:4px')}>TOTAL A COBRAR: ${money(totalCobrar)}</div>`;
       }
@@ -2607,9 +2626,29 @@ function _aplicarSaldoFavorFila(r, nuevoMonto){
   r.saldoFavorAplicado = nuevo;
   // Cartera: usar el saldo a favor lo BAJA (delta>0); devolverlo lo SUBE (delta<0).
   if(r.clienteId) registrarMovCartera(r.clienteId,'debo_cliente',-delta,
-    delta>0 ? `Saldo a favor aplicado al pedido ${_recaudoFecha}`
-            : `Reversa saldo a favor aplicado ${_recaudoFecha}`);
+    delta>0 ? `Saldo a favor aplicado al pedido ${r.fecha||_recaudoFecha}`
+            : `Reversa saldo a favor aplicado ${r.fecha||_recaudoFecha}`);
   return delta;
+}
+/* Saldo a favor que se cruza solo contra el pedido: todo lo disponible, sin pasar
+   de lo que el pedido aún no tenga pagado por transferencia. */
+function _objetivoSaldoFavorAuto(r){
+  const porCubrir = Math.max(0, (Number(r.subtotal)||0) - (Number(r.nequi)||0) - (Number(r.bancolombia)||0));
+  return Math.round(Math.min(_saldoFavorDisponible(r), porCubrir));
+}
+/* Al guardar un pedido se le cruza de una vez el saldo a favor del cliente, y lo
+   que no alcance a cubrir queda como efectivo por cobrar. Es idempotente: reimprimir
+   no descuenta otra vez y editar el pedido solo ajusta la diferencia. Si el cobro ya
+   se confirmó (Recibido / Liquidar) no se toca lo que el usuario decidió ahí. */
+function _autoAplicarSaldoFavorFila(r){
+  if(!r || !r.clienteId || r.soloDeuda || r.recibido || r.liquidado) return;
+  _adoptarDescuentoLeDeboPrevio(r);
+  const objetivo = _objetivoSaldoFavorAuto(r);
+  if(objetivo === Math.max(0, Math.round(Number(r.saldoFavorAplicado)||0))) return;
+  r._favorAuto = objetivo > 0;
+  _aplicarSaldoFavorFila(r, objetivo);
+  recalcEfectivoFila(r);
+  if(r.id) _encolarRecaudo(r);
 }
 /* Saldo a favor que esta fila puede usar. Se reconstruye el saldo del cliente
    como si esta fila todavía no hubiera tocado nada:
@@ -3511,7 +3550,8 @@ function updRecibido(id, val){
     // por pagar de menos y el saldo a favor que se consumió. Si no, desmarcar
     // dejaba al cliente con una deuda fantasma y su sobrante gastado.
     if(r._deudaDeRecibido){ _setDeudaFila(r, 0); r._deudaDeRecibido = false; }
-    _aplicarSaldoFavorFila(r, 0);
+    // Si el pedido ya salió con el saldo cruzado en el ticket, se conserva ese cruce.
+    _aplicarSaldoFavorFila(r, r._favorAuto ? _objetivoSaldoFavorAuto(r) : 0);
     recalcEfectivoFila(r);
     _guardarYRepintarFila(r, id);
     return;
