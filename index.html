@@ -3,7 +3,9 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <title>ERP Panadería - Panel</title>
+  <title>Vianny's · Panel ERP</title>
+  <link rel="icon" type="image/png" href="logo.png"/>
+  <meta name="theme-color" content="#3a2814"/>
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
   <link href="https://fonts.googleapis.com/css2?family=Geist:wght@100..900&family=Geist+Mono:wght@100..900&family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
@@ -15,19 +17,21 @@
   <script src="pocketbaseService.js"></script>
   <style>
 :root{
-  --primary:#3525cd;--on-primary:#fff;--primary-container:#4f46e5;--on-primary-container:#dad7ff;
-  --primary-fixed:#e2dfff;--primary-fixed-dim:#c3c0ff;
-  --secondary:#904d00;--on-secondary:#fff;--secondary-container:#fe932c;--on-secondary-container:#663500;
-  --secondary-fixed:#ffdcc3;--secondary-fixed-dim:#ffb77d;
+  /* Paleta de marca VIANNY'S (tomada del logo): café tostado + dorado trigo */
+  --brand-dark:#3a2814;--brand-gold:#c8892a;--brand-gold-light:#e3b04f;
+  --primary:#8a5a1c;--on-primary:#fff;--primary-container:#c8892a;--on-primary-container:#fff4e0;
+  --primary-fixed:#f6e7cb;--primary-fixed-dim:#e8c98f;
+  --secondary:#9a5f12;--on-secondary:#fff;--secondary-container:#f0c26a;--on-secondary-container:#4a2e08;
+  --secondary-fixed:#fbe9c8;--secondary-fixed-dim:#f0c26a;
   --tertiary:#005338;--on-tertiary:#fff;--tertiary-container:#006e4b;--on-tertiary-container:#67f4b7;
   --tertiary-fixed:#6ffbbe;--tertiary-fixed-dim:#4edea3;
   --error:#ba1a1a;--on-error:#fff;--error-container:#ffdad6;--on-error-container:#93000a;
-  --background:#f9f9ff;--on-background:#151c27;--surface:#f9f9ff;--on-surface:#151c27;
-  --on-surface-variant:#464555;--surface-variant:#dce2f3;
-  --surface-container-lowest:#fff;--surface-container-low:#f0f3ff;--surface-container:#e7eefe;
-  --surface-container-high:#e2e8f8;--surface-container-highest:#dce2f3;
-  --outline:#777587;--outline-variant:#c7c4d8;
-  --inverse-surface:#2a313d;--inverse-on-surface:#ebf1ff;
+  --background:#fbf7f0;--on-background:#2b1d0e;--surface:#fbf7f0;--on-surface:#2b1d0e;
+  --on-surface-variant:#5c4a35;--surface-variant:#e8dcc8;
+  --surface-container-lowest:#fff;--surface-container-low:#f7f0e4;--surface-container:#f1e7d6;
+  --surface-container-high:#ebdfcb;--surface-container-highest:#e4d6bf;
+  --outline:#86735b;--outline-variant:#e0d2bb;
+  --inverse-surface:#3a2814;--inverse-on-surface:#fbf1e1;
   --nequi:#d6006e;--bancolombia:#ffdd00;--bancolombia-blue:#004b98;
   --r-sm:.125rem;--r-default:.25rem;--r-md:.375rem;--r-lg:.5rem;--r-xl:.75rem;--r-2xl:1rem;--r-full:9999px;
   --s-xs:4px;--s-sm:8px;--s-md:16px;--s-lg:24px;--s-xl:40px;
@@ -47,6 +51,14 @@ input,select,textarea{font-family:inherit}
 .header{position:sticky;top:0;z-index:40;height:var(--header-h);background:rgba(255,255,255,.85);backdrop-filter:blur(12px);border-bottom:1px solid var(--outline-variant);padding:0 var(--s-lg);display:flex;align-items:center;gap:var(--s-md)}
 .content{padding:var(--s-lg);max-width:var(--container-max);width:100%;margin:0 auto}
 .sb-brand{display:flex;align-items:center;gap:var(--s-sm);padding:var(--s-sm) var(--s-xs);margin-bottom:var(--s-md)}
+.sb-logo{display:flex;flex-direction:column;align-items:center;gap:2px;padding:4px 0 var(--s-md);margin-bottom:var(--s-sm);border-bottom:1px solid var(--outline-variant);position:relative}
+.sb-logo img{width:150px;max-width:100%;height:auto;display:block}
+.sidebar{border-top:4px solid var(--brand-gold)}
+.sb-logo .sb-close{position:absolute;top:0;right:0}
+.header .h-logo{height:34px;width:auto;display:none}
+@media(max-width:768px){.header .h-logo{display:block}}
+.nav-item.active{box-shadow:inset 0 0 0 1px var(--primary-fixed)}
+.nav-item.active .ms{color:var(--brand-gold)}
 .sb-brand-ico{width:38px;height:38px;border-radius:var(--r-lg);background:var(--primary-container);color:var(--on-primary);display:grid;place-items:center}
 .sb-brand-t{font-size:17px;font-weight:700;line-height:20px}
 .sb-brand-s{font-size:11px;color:var(--on-surface-variant)}
@@ -59,15 +71,15 @@ input,select,textarea{font-family:inherit}
 .h-spacer{flex:1}
 .search{position:relative;display:flex;align-items:center}
 .search input{background:var(--surface-container-low);border:1px solid var(--outline-variant);border-radius:var(--r-full);padding:8px 12px 8px 36px;font-size:14px;color:var(--on-surface);outline:none;width:300px}
-.search input:focus{border-color:var(--primary);box-shadow:0 0 0 3px rgba(53,37,205,.12)}
+.search input:focus{border-color:var(--primary);box-shadow:0 0 0 3px rgba(138,90,28,.12)}
 .search .ms{position:absolute;left:10px;color:var(--on-surface-variant);font-size:20px;pointer-events:none}
 .icon-btn{width:38px;height:38px;border-radius:var(--r-lg);background:transparent;border:none;color:var(--on-surface-variant);display:grid;place-items:center;transition:background .15s,color .15s}
 .icon-btn:hover{background:var(--surface-container-low);color:var(--primary)}
 .avatar{width:32px;height:32px;border-radius:50%;background:var(--primary);color:var(--on-primary);display:grid;place-items:center;font-weight:600;font-size:13px}
 .btn{display:inline-flex;align-items:center;gap:6px;justify-content:center;padding:8px 16px;border-radius:var(--r-lg);font-weight:600;font-size:14px;border:1px solid transparent;transition:transform .12s,background .15s,opacity .15s;white-space:nowrap}
 .btn:active{transform:scale(.98)}
-.btn-primary{background:var(--primary);color:var(--on-primary);box-shadow:0 4px 12px rgba(53,37,205,.2)}
-.btn-primary:hover{background:#2d1fbb}
+.btn-primary{background:var(--primary);color:var(--on-primary);box-shadow:0 4px 12px rgba(138,90,28,.2)}
+.btn-primary:hover{background:#6f4714}
 .btn-secondary{background:var(--secondary-container);color:var(--on-secondary-container)}
 .btn-tertiary{background:var(--tertiary-container);color:var(--on-tertiary)}
 .btn-ghost{background:var(--surface-container-lowest);border-color:var(--outline-variant);color:var(--on-surface)}
@@ -112,7 +124,7 @@ table.d tr:hover td{background:var(--surface-container-low)}
 .field{display:flex;flex-direction:column;gap:4px;margin-bottom:var(--s-md)}
 .field label{font-size:12px;color:var(--on-surface-variant);font-weight:500}
 .field input,.field select,.field textarea{background:var(--surface-container-low);border:1px solid var(--outline-variant);border-radius:var(--r-lg);padding:8px 12px;font-size:14px;color:var(--on-surface);outline:none;width:100%}
-.field input:focus,.field select:focus,.field textarea:focus{border-color:var(--primary);box-shadow:0 0 0 3px rgba(53,37,205,.12)}
+.field input:focus,.field select:focus,.field textarea:focus{border-color:var(--primary);box-shadow:0 0 0 3px rgba(138,90,28,.12)}
 .gf{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--s-md)}
 .gf3{grid-template-columns:repeat(3,minmax(0,1fr))}
 .gf4{grid-template-columns:repeat(4,minmax(0,1fr))}
@@ -151,7 +163,7 @@ table.d tr:hover td{background:var(--surface-container-low)}
 .ccard::before{content:'';position:absolute;left:0;top:0;bottom:0;width:6px;background:var(--card-color,var(--primary))}
 .ccard:hover{transform:translateY(-2px);box-shadow:var(--shadow-pop);border-color:var(--primary)}
 .ccard.dragging{opacity:.4;cursor:grabbing}
-.ccard.drag-over{border-color:var(--primary);box-shadow:0 0 0 3px rgba(53,37,205,.2)}
+.ccard.drag-over{border-color:var(--primary);box-shadow:0 0 0 3px rgba(138,90,28,.2)}
 .ccard-name{font-size:16px;font-weight:700;margin-bottom:6px;margin-left:8px}
 .ccard-row{display:flex;justify-content:space-between;font-size:13px;margin-top:4px;margin-left:8px}
 .ccard-del{position:absolute;top:8px;right:8px;width:28px;height:28px;border-radius:50%;background:transparent;border:none;color:var(--error);display:grid;place-items:center;opacity:0;transition:opacity .15s;z-index:3}
@@ -188,7 +200,7 @@ table.d tr:hover td{background:var(--surface-container-low)}
 .toggle{display:inline-flex;border:1px solid var(--outline-variant);border-radius:var(--r-full);padding:2px;gap:2px}
 .toggle button{border:none;background:transparent;padding:6px 14px;border-radius:var(--r-full);font-size:12px;font-weight:600;color:var(--on-surface-variant)}
 .toggle button.active{background:var(--primary);color:var(--on-primary)}
-.fab{position:fixed;right:var(--s-lg);bottom:var(--s-lg);width:56px;height:56px;border-radius:50%;background:var(--primary);color:var(--on-primary);border:none;box-shadow:0 6px 16px rgba(53,37,205,.4);font-size:28px;display:grid;place-items:center;z-index:40}
+.fab{position:fixed;right:var(--s-lg);bottom:var(--s-lg);width:56px;height:56px;border-radius:50%;background:var(--primary);color:var(--on-primary);border:none;box-shadow:0 6px 16px rgba(138,90,28,.4);font-size:28px;display:grid;place-items:center;z-index:40}
 .bottom-nav{position:fixed;left:0;right:0;bottom:0;display:none;background:var(--surface-container-lowest);border-top:1px solid var(--outline-variant);padding:6px 0;z-index:60;justify-content:space-around}
 .bottom-nav button{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;font-size:10px;color:var(--on-surface-variant);background:none;border:none;padding:4px}
 .bottom-nav button.active{color:var(--primary)}
@@ -224,9 +236,9 @@ table.d tr:hover td{background:var(--surface-container-low)}
 .cal-grid-head>div{text-align:center;font-size:11px;font-weight:700;color:var(--on-surface-variant);text-transform:uppercase;letter-spacing:.04em}
 .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:6px}
 .cal-cell{min-height:96px;background:var(--surface-container-lowest);border:1px solid var(--outline-variant);border-radius:12px;padding:6px;cursor:pointer;transition:border-color .15s,box-shadow .15s;overflow:hidden}
-.cal-cell:hover{border-color:var(--primary);box-shadow:0 2px 8px rgba(53,37,205,.12)}
+.cal-cell:hover{border-color:var(--primary);box-shadow:0 2px 8px rgba(138,90,28,.12)}
 .cal-empty{background:transparent;border:none;cursor:default}
-.cal-today{border:2px solid var(--primary);background:#f0f3ff}
+.cal-today{border:2px solid var(--primary);background:var(--surface-container-low)}
 .cal-daynum{font-size:13px;font-weight:800;color:#000;margin-bottom:4px;display:flex;align-items:center;gap:4px}
 .cal-hoy{font-size:9px;background:var(--primary);color:#fff;padding:1px 5px;border-radius:6px;font-weight:700}
 .cal-chips{display:flex;flex-direction:column;gap:3px}
@@ -838,10 +850,9 @@ function renderShell(){
     {route:'calendario',icon:'calendar_month',label:'Calendario',corto:'Agenda'},
   ];
   $('#sidebar').innerHTML = `
-    <div class="sb-brand">
-      <div class="sb-brand-ico"><span class="ms" style="font-size:22px">bakery_dining</span></div>
-      <div><div class="sb-brand-t">Panadería</div><div class="sb-brand-s">Panel ERP</div></div>
-      <div class="h-spacer"></div>
+    <div class="sb-logo">
+      <img src="logo.png" alt="Vianny's Panadería y Distribuidora"/>
+      <div class="sb-brand-s">Panel ERP</div>
       <button class="icon-btn sb-close" onclick="cerrarSidebar()" aria-label="Cerrar menú"><span class="ms">close</span></button>
     </div>
     <nav class="nav">${items.map(i=>`<div class="nav-item" data-route="${i.route}"><span class="ms">${i.icon}</span><span>${i.label}</span></div>`).join('')}</nav>
@@ -854,7 +865,7 @@ function renderShell(){
     <button class="icon-btn" onclick="toggleSidebar()" aria-label="Menú"><span class="ms">menu</span></button>
     <div class="h-t" id="hdr-title">Clientes</div>
     <div class="h-spacer"></div>
-    <div class="avatar">P</div>
+    <img class="h-logo" src="logo.png" alt="Vianny's"/>
   `;
   $('#bottomNav').innerHTML = items.slice(0,5).map(i=>`<button data-route="${i.route}"><span class="ms">${i.icon}</span><span>${i.corto}</span></button>`).join('')
     + `<button data-menu="1"><span class="ms">more_horiz</span><span>Más</span></button>`;
@@ -880,7 +891,7 @@ function getDeudaCliente(clienteId){
 let _searchTerm = '';
 let _clientesFecha = todayKey();
 let _dragSrc = null;
-const CLIENT_COLORS = ['#3525cd','#fe932c','#006e4b','#ba1a1a','#d6006e','#004b98','#904d00','#7b1fa2','#00838f','#c2185b','#e65100','#2e7d32'];
+const CLIENT_COLORS = ['#8a5a1c','#fe932c','#006e4b','#ba1a1a','#d6006e','#004b98','#904d00','#7b1fa2','#00838f','#c2185b','#e65100','#2e7d32'];
 
 let _mapaClientesAbierto = false;
 function renderClientes(){
@@ -1100,7 +1111,7 @@ function colorPickerHtml(selected){
       ${CLIENT_COLORS.map(c=>`<div class="swatch ${c===selected?'selected':''}" data-color="${c}" style="background:${c}" onclick="selColorCliente('${c}',this)"></div>`).join('')}
     </div>
     <div class="flex gap-sm" style="align-items:center;margin-top:8px">
-      <input type="color" id="nc-color-custom" value="${selected||'#3525cd'}" onchange="selColorCliente(this.value)"/>
+      <input type="color" id="nc-color-custom" value="${selected||'#8a5a1c'}" onchange="selColorCliente(this.value)"/>
       <span class="muted" style="font-size:12px">o elija un color personalizado</span>
     </div>
     <input type="hidden" id="nc-color" value="${selected||CLIENT_COLORS[0]}"/>
@@ -1236,7 +1247,7 @@ function initMapaClientes(focusId){
   const cnt = document.getElementById('clientesMapCount');
   if(cnt) cnt.textContent = conCoords.length + ' cliente(s) con ubicación';
   conCoords.forEach(c=>{
-    const color = c.color || '#3525cd';
+    const color = c.color || '#8a5a1c';
     const m = L.circleMarker([Number(c.lat),Number(c.lng)],{radius:11,color:'#fff',weight:2,fillColor:color,fillOpacity:0.95}).addTo(_cliMapInstance);
     const total = getCurrentPedidoTotal(c.id, _clientesFecha);
     const deuda = getDeudaCliente(c.id);
@@ -1247,7 +1258,7 @@ function initMapaClientes(focusId){
       `${total>0?`<br><b>Pedido hoy: ${money(total)}</b>`:''}`+
       `${deuda>0?`<br><span style="color:#ba1a1a">Debe: ${money(deuda)}</span>`:''}`+
       `${deuda<0?`<br><span style="color:#005338">A favor: ${money(-deuda)}</span>`:''}`+
-      `<br><a href="https://www.google.com/maps/dir/?api=1&destination=${Number(c.lat)},${Number(c.lng)}" target="_blank" style="color:#3525cd">Cómo llegar</a>`+
+      `<br><a href="https://www.google.com/maps/dir/?api=1&destination=${Number(c.lat)},${Number(c.lng)}" target="_blank" style="color:#8a5a1c">Cómo llegar</a>`+
       `<br><button onclick="abrirPedido('${c.id}')" style="margin-top:4px">Abrir pedido</button>`);
     if(focusId===c.id) _cliMapInstance.setView([Number(c.lat),Number(c.lng)],16);
   });
@@ -3446,34 +3457,63 @@ function confirmarLiquidacionRecaudo(){
   toast(`Liquidación registrada · ${partes.join(' · ')}`,'success');
 }
 /* Deshacer la liquidación de UNA fila: la devuelve a "seleccionada, sin liquidar"
-   (sigue sumando en el KPI y vuelve a aparecer en el botón Liquidar) SIN tocar
-   Cartera. La deuda, el "le debemos", el saldo a favor aplicado y los abonos se
-   quedan como están: al volver a liquidar, los setters (_setDeudaFila,
-   _setDebeClienteFila, _aplicarSaldoFavorFila) mueven cartera SOLO por la
-   diferencia contra lo ya registrado, así que nada se cuenta dos veces.
-   Antes se revertía todo en cartera y, si el cliente había abonado entretanto
-   con "Pagar deuda (cartera)", la reversa le volvía a subir la deuda (o lo
-   dejaba con saldo a favor falso). */
+   y REVIERTE en Cartera lo que esa liquidación registró:
+     · la deuda que dejó el pedido ("quedó debiendo")  → se quita de cartera
+     · el "le quedamos debiendo" (pagó de más)          → se quita de cartera
+     · los abonos a deuda hechos DENTRO de la liquidación (marcados `liq`)
+       → se reversan, para que al liquidar de nuevo no se cuenten dos veces.
+   Los abonos hechos por fuera (botón "Pagar deuda") y el saldo a favor que se
+   cruzó al guardar el pedido NO se tocan: no los hizo la liquidación.
+   Los setters mueven cartera solo por la diferencia, así que es idempotente. */
+function _resumenDeshacerLiquidacion(r){
+  const deuda = Math.max(0, Number(r._last_deuda)||0);
+  const debe  = Math.max(0, Number(r._last_debeCliente)||0);
+  const abonos = (Array.isArray(r.pagosDeuda) ? r.pagosDeuda : [])
+    .filter(p=>p && p.liq).reduce((a,p)=>a+(Number(p.monto)||0),0);
+  return {deuda, debe, abonos};
+}
 function confirmarDeshacerLiquidacion(id){
   const r = DB.recaudo[_recaudoFecha] && DB.recaudo[_recaudoFecha][id]; if(!r) return;
+  const x = _resumenDeshacerLiquidacion(r);
+  const lineas = [];
+  if(x.deuda>0)  lineas.push(`<li>Se <b>quita de cartera</b> la deuda de este pedido: ${money(x.deuda)}</li>`);
+  if(x.debe>0)   lineas.push(`<li>Se <b>quita de cartera</b> lo que le quedamos debiendo: ${money(x.debe)}</li>`);
+  if(x.abonos>0) lineas.push(`<li>Se <b>reversa</b> el abono a deuda hecho en la liquidación: ${money(x.abonos)}</li>`);
   modal(`Deshacer liquidación · ${r.cliente||'Cliente'}`, `
-    <p>Esta fila vuelve a quedar pendiente por liquidar. <b>La cartera del cliente no cambia</b>: deudas, abonos y saldos a favor se mantienen y, al liquidar de nuevo, solo se ajusta la diferencia.</p>
+    <p>Esta fila vuelve a quedar pendiente por liquidar.</p>
+    ${lineas.length ? `<ul style="margin:8px 0 0 18px">${lineas.join('')}</ul>` : '<p class="muted">La cartera del cliente no tiene movimientos de esta liquidación.</p>'}
   `, `<button class="btn btn-ghost" onclick="closeModal()">Cancelar</button>
       <button class="btn btn-danger" onclick="deshacerLiquidacion('${id}')">Deshacer liquidación</button>`);
 }
 function deshacerLiquidacion(id){
   const r = DB.recaudo[_recaudoFecha] && DB.recaudo[_recaudoFecha][id]; if(!r) return;
-  // Los abonos hechos en la liquidación ya son plata recibida y ya bajaron la
-  // deuda en cartera: se conservan, pero dejan de ser "de la liquidación" para
-  // que el formulario no los trate como nuevos.
-  if(Array.isArray(r.pagosDeuda)) r.pagosDeuda.forEach(p=>{ if(p.liq) delete p.liq; });
+  if(!r.liquidado){ closeModal(); return; }   // doble clic: no revertir dos veces
+  // 1) Abonos hechos dentro de la liquidación: se reversan en cartera y se quitan.
+  if(Array.isArray(r.pagosDeuda) && r.pagosDeuda.some(p=>p && p.liq)){
+    r.pagosDeuda.forEach(p=>{
+      if(p && p.liq && r.clienteId) registrarMovCartera(r.clienteId,'deuda',Number(p.monto)||0,`Reversa abono (deshacer liquidación) ${_recaudoFecha}`);
+    });
+    r.pagosDeuda = r.pagosDeuda.filter(p=>!(p && p.liq));
+    _recalcPagosDeuda(r);
+  }
+  // 2) Deuda / "le debemos" que dejó el pedido: vuelven a 0 en la fila y en cartera.
+  if(!r.soloDeuda){
+    _setDeudaFila(r, 0, `Deshacer liquidación: se quita la deuda ${_recaudoFecha}`);
+    _setDebeClienteFila(r, 0, `Deshacer liquidación: se quita lo que le debemos ${_recaudoFecha}`);
+    r._deudaDeRecibido = false;
+  }
   if(!r.soloDeuda) r.recibido = false;
   r.liquidado = false;
   r.recaudado = true;
   recalcEfectivoFila(r);
   _guardarYRepintarFila(r, id);
+  // Otras filas del mismo cliente muestran su saldo de cartera: repintarlas.
+  if(r.clienteId){
+    Object.values(DB.recaudo[_recaudoFecha]||{}).forEach(o=>{ if(o.clienteId===r.clienteId && o.pedidoId!==id) _repintarFilaRecaudo(o.pedidoId); });
+  }
+  _repintarTotalesRecaudo();
   closeModal();
-  toast('Liquidación deshecha: vuelve a estar pendiente por liquidar','default');
+  toast('Liquidación deshecha · cartera revertida · pendiente por liquidar','default');
 }
 /* Modal del botón "Recaudo": muestra el pedido, el efectivo calculado, y deja
    elegir explícitamente si la deuda de cartera de este cliente entra en el
@@ -3930,7 +3970,7 @@ function abrirMenuSecretoRecaudo(){
   if(filas.length===0){ toast('No hay clientes en recaudo para esta fecha','error'); return; }
   const cards = filas.map(f=>{
     const cli = DB.clientes.find(c=>c.id===f.clienteId);
-    const color = (cli&&cli.color) || '#3525cd';
+    const color = (cli&&cli.color) || '#8a5a1c';
     return `<div class="card" style="cursor:pointer;margin-bottom:8px" onclick="descontarClienteRecaudo('${f.pedidoId}')">
       <div class="card-b flex fb" style="gap:12px">
         <div style="display:flex;align-items:center;gap:10px;min-width:0">
@@ -4802,7 +4842,7 @@ function mkChart(id, config, hayDatos){
   _charts.push(new Chart(cv.getContext('2d'), config));
 }
 
-const EST_COLORS = ['#3525cd','#00897b','#f9a825','#e53935','#8e24aa','#1e88e5','#43a047','#fb8c00','#6d4c41','#546e7a','#d81b60','#00acc1'];
+const EST_COLORS = ['#8a5a1c','#00897b','#f9a825','#e53935','#8e24aa','#1e88e5','#43a047','#fb8c00','#6d4c41','#546e7a','#d81b60','#00acc1'];
 /** Opciones base. Se construyen NUEVAS en cada llamada: Chart.js muta el objeto
     de opciones, y compartir una misma referencia entre gráficos los corrompe. */
 function estOpts(extra){
@@ -4847,8 +4887,8 @@ function pintarGraficos(){
   const balAcum = MESES.map((_,i)=>{ acc += ingMes[i]-gasMes[i]; return acc; });
   mkChart('g2', {
     type:'line',
-    data:{ labels:MESES, datasets:[{label:'Saldo acumulado', data:balAcum, borderColor:'#3525cd',
-      backgroundColor:'rgba(53,37,205,.12)', fill:true, tension:.35, pointRadius:4, borderWidth:3}]},
+    data:{ labels:MESES, datasets:[{label:'Saldo acumulado', data:balAcum, borderColor:'#8a5a1c',
+      backgroundColor:'rgba(138,90,28,.12)', fill:true, tension:.35, pointRadius:4, borderWidth:3}]},
     options: estOpts()
   }, delAno.length>0);
 
@@ -4896,7 +4936,7 @@ function pintarGraficos(){
   mkChart('g6', {
     type:'bar',
     data:{ labels:top.map(t=>t[0]), datasets:[{label:'Unidades', data:top.map(t=>t[1]),
-      backgroundColor:'#3525cd', borderRadius:6}]},
+      backgroundColor:'#8a5a1c', borderRadius:6}]},
     options: estOpts({ indexAxis:'y',
       scales:{ x:{ticks:{color:'#000',font:{weight:'600'},precision:0},grid:{color:'#e5e7eb'}},
                y:{ticks:{color:'#000',font:{weight:'700'}},grid:{display:false}} },
@@ -5409,7 +5449,7 @@ let _calSelDay = null;
 const CAL_MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 const CAL_DIAS = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
 const CAL_CATEGORIAS = ['General','Pago','Cobro','Producción','Compra','Cumpleaños','Festivo','Recordatorio','Reunión'];
-const CAL_COLORS = ['#3525cd','#fe932c','#006e4b','#ba1a1a','#d6006e','#004b98','#7b1fa2','#00838f','#e65100','#2e7d32'];
+const CAL_COLORS = ['#8a5a1c','#fe932c','#006e4b','#ba1a1a','#d6006e','#004b98','#7b1fa2','#00838f','#e65100','#2e7d32'];
 
 function _cal2(n){ return String(n).padStart(2,'0'); }
 function _calKey(y,m,d){ return `${y}-${_cal2(m+1)}-${_cal2(d)}`; }        // fecha completa
@@ -5477,7 +5517,7 @@ function renderCalendario(){
     <div class="cal-grid-head">${CAL_DIAS.map(d=>`<div>${d}</div>`).join('')}</div>
     <div class="cal-grid">${celdas}</div>
     <div class="cal-legend">
-      <span><span class="cal-dot" style="background:#3525cd"></span> ↻ = evento fijo (se repite cada año)</span>
+      <span><span class="cal-dot" style="background:#8a5a1c"></span> ↻ = evento fijo (se repite cada año)</span>
     </div>`;
 }
 

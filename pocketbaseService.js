@@ -827,16 +827,17 @@ async function awLogout() {
 /** Estilos del portal de acceso (inyectados una sola vez). */
 const _LOGIN_CSS = `
 #aw-login{position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;
-  background:#f1f5f9;font-family:system-ui,-apple-system,'Segoe UI',sans-serif}
-#aw-login .box{background:#fff;padding:32px 28px;border-radius:16px;width:min(360px,90vw);
-  box-shadow:0 10px 40px rgba(15,23,42,.12);border:1px solid #e2e8f0}
-#aw-login h2{margin:0 0 4px;font-size:20px;color:#0f172a}
-#aw-login p.sub{margin:0 0 20px;font-size:13px;color:#64748b}
-#aw-login label{display:block;font-size:12px;font-weight:600;color:#475569;margin:0 0 6px}
-#aw-login input{width:100%;box-sizing:border-box;padding:11px 12px;margin-bottom:14px;border:1px solid #cbd5e1;
+  background:radial-gradient(circle at 50% 0%,#fbf1df 0%,#f3e6cf 60%,#ead8b8 100%);font-family:system-ui,-apple-system,'Segoe UI',sans-serif}
+#aw-login .box{background:#fff;padding:28px 28px 32px;border-radius:16px;width:min(360px,90vw);
+  box-shadow:0 10px 40px rgba(58,40,20,.18);border:1px solid #e0d2bb;border-top:4px solid #c8892a}
+#aw-login .logo{display:block;width:170px;max-width:70%;height:auto;margin:0 auto 14px}
+#aw-login h2{margin:0 0 4px;font-size:20px;color:#3a2814;text-align:center}
+#aw-login p.sub{margin:0 0 20px;font-size:13px;color:#5c4a35;text-align:center}
+#aw-login label{display:block;font-size:12px;font-weight:600;color:#5c4a35;margin:0 0 6px}
+#aw-login input{width:100%;box-sizing:border-box;padding:11px 12px;margin-bottom:14px;border:1px solid #e0d2bb;
   border-radius:9px;font-size:14px;outline:none;transition:border-color .15s}
-#aw-login input:focus{border-color:#4f46e5}
-#aw-login button{width:100%;padding:12px;border:0;border-radius:9px;background:#4f46e5;color:#fff;
+#aw-login input:focus{border-color:#8a5a1c}
+#aw-login button{width:100%;padding:12px;border:0;border-radius:9px;background:#8a5a1c;color:#fff;
   font-size:14px;font-weight:600;cursor:pointer}
 #aw-login button:disabled{opacity:.6;cursor:default}
 #aw-login .err{min-height:18px;margin:10px 0 0;font-size:12.5px;color:#dc2626;text-align:center}`;
@@ -855,7 +856,8 @@ function _pedirLogin() {
     wrap.id = 'aw-login';
     wrap.innerHTML = `
       <div class="box">
-        <h2>Panadería · Panel ERP</h2>
+        <img class="logo" src="logo.png" alt="Vianny's Panadería y Distribuidora" onerror="this.remove()">
+        <h2>Panel ERP</h2>
         <p class="sub">Inicia sesión para sincronizar tus datos.</p>
         <label for="aw-email">Correo</label>
         <input id="aw-email" type="email" autocomplete="username" placeholder="tucorreo@ejemplo.com">
@@ -1561,7 +1563,7 @@ const appwriteService = {
       await _persistir(() => actualizar('calendarioEventos', data.id, obj), 'No se pudo actualizar el evento');
       return obj;
     }
-    const obj = { id: _genId('EV'), color: '#3525cd', categoria: 'General', tipo: 'temporal', ...data };
+    const obj = { id: _genId('EV'), color: '#8a5a1c', categoria: 'General', tipo: 'temporal', ...data };
     DB.calendario.push(obj);
     await _persistir(() => crear('calendarioEventos', obj, obj.id), 'No se pudo crear el evento');
     return obj;

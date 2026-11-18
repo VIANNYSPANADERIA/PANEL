@@ -76,7 +76,7 @@ const CO_CAT_INDIRECTO = ['Producción', 'Administración', 'Ventas', 'Transport
 /** Divisor para prorratear cualquier periodicidad a COSTO POR DÍA. */
 const CO_DIAS = { diario: 1, semanal: 7, quincenal: 15, mensual: 30, anual: 365 };
 
-const CO_COLORS = ['#3525cd', '#00897b', '#f9a825', '#e53935', '#8e24aa', '#1e88e5', '#43a047', '#fb8c00', '#6d4c41', '#546e7a'];
+const CO_COLORS = ['#8a5a1c', '#00897b', '#f9a825', '#e53935', '#8e24aa', '#1e88e5', '#43a047', '#fb8c00', '#6d4c41', '#546e7a'];
 
 /** Bases de aplicación de adicionales/empaques. */
 const CO_BASES_AD = {
@@ -2768,7 +2768,7 @@ function coPintarGraficos() {
   /* 3 · Rentabilidad diaria (%) */
   coChart('cg3', {
     type: 'line',
-    data: { labels: etiq, datasets: [{ label: 'Rentabilidad', data: dias.map(d => d.rentabilidad == null ? null : Number(d.rentabilidad.toFixed(1))), borderColor: '#3525cd', backgroundColor: 'rgba(53,37,205,.12)', fill: true, tension: .3, borderWidth: 3, pointRadius: 2 }] },
+    data: { labels: etiq, datasets: [{ label: 'Rentabilidad', data: dias.map(d => d.rentabilidad == null ? null : Number(d.rentabilidad.toFixed(1))), borderColor: '#8a5a1c', backgroundColor: 'rgba(138,90,28,.12)', fill: true, tension: .3, borderWidth: 3, pointRadius: 2 }] },
     options: coOpts({
       plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => ` ${c.parsed.y}%` } } },
       scales: { x: { ticks: { color: '#000', font: { weight: '600' }, maxTicksLimit: 10 }, grid: { display: false } }, y: { ticks: { color: '#000', font: { weight: '600' }, callback: v => v + '%' }, grid: { color: '#e5e7eb' } } }
@@ -2809,7 +2809,7 @@ function coPintarGraficos() {
   const totComp = totMasa + totAd + totLata + totCI;
   coChart('cg6', {
     type: 'doughnut',
-    data: { labels: ['Masa', 'Adicionales y empaques', 'Por lata (antiguos)', 'Costos indirectos'], datasets: [{ data: [totMasa, totAd, totLata, totCI], backgroundColor: ['#e53935', '#fb8c00', '#6d4c41', '#3525cd'], borderWidth: 2, borderColor: '#fff' }] },
+    data: { labels: ['Masa', 'Adicionales y empaques', 'Por lata (antiguos)', 'Costos indirectos'], datasets: [{ data: [totMasa, totAd, totLata, totCI], backgroundColor: ['#e53935', '#fb8c00', '#6d4c41', '#8a5a1c'], borderWidth: 2, borderColor: '#fff' }] },
     options: {
       responsive: true, maintainAspectRatio: false, cutout: '55%',
       plugins: {
