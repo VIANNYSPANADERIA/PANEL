@@ -1624,7 +1624,13 @@ function componerTicketHTML(items, total, cliNombre, comentario, numTicket, clie
     const ped = DB.pedidos.find(p=>p.clienteId===clienteId && p.fecha===fechaPed);
     const fila = ped ? DB.recaudo[fechaPed]?.[ped.id] : null;
     const yaAplicado = Math.max(0, Number(fila?.saldoFavorAplicado)||0);
-    const saldo = getSaldoCliente(clienteId) + yaAplicado;
+    // Si en recaudo el pendiente del pedido de HOY ya se cargó a cartera como
+    // deuda (o lo que pagó de más quedó "a favor"), se descuenta aquí: el ticket
+    // suma el pedido de hoy aparte y, sin esto, lo contaba dos veces al reimprimir.
+    // Los abonos a deuda sí se reflejan, porque ya están en el saldo de cartera.
+    const deudaPropia = Math.max(0, Number(fila?._last_deuda)||0);
+    const debePropio  = Math.max(0, Number(fila?._last_debeCliente)||0);
+    const saldo = getSaldoCliente(clienteId) + deudaPropia - debePropio + yaAplicado;
     if(saldo<0) deudaInfo = {tipo:'debe', valor:Math.abs(saldo)};          // cliente le debe a la empresa
     else if(saldo>0) deudaInfo = {tipo:'debo', valor:saldo,                 // empresa le debe al cliente
       // Sin fila (vista previa) se muestra lo que se aplicaría.
