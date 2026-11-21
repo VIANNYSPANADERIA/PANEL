@@ -2658,12 +2658,13 @@ function _objetivoSaldoFavorAuto(r){
    no descuenta otra vez y editar el pedido solo ajusta la diferencia. Si el cobro ya
    se confirmó (Recibido / Liquidar) no se toca lo que el usuario decidió ahí. */
 function _autoAplicarSaldoFavorFila(r){
+  // Ya NO se cruza el saldo a favor al guardar/imprimir: solo se usa cuando el
+  // usuario lo aplica a mano desde Recaudo. Si un pedido quedó con un cruce
+  // automático de antes (y aún no se confirmó el cobro), se devuelve a cartera.
   if(!r || !r.clienteId || r.soloDeuda || r.recibido || r.liquidado) return;
-  _adoptarDescuentoLeDeboPrevio(r);
-  const objetivo = _objetivoSaldoFavorAuto(r);
-  if(objetivo === Math.max(0, Math.round(Number(r.saldoFavorAplicado)||0))) return;
-  r._favorAuto = objetivo > 0;
-  _aplicarSaldoFavorFila(r, objetivo);
+  if(!r._favorAuto) return;
+  r._favorAuto = false;
+  _aplicarSaldoFavorFila(r, 0);
   recalcEfectivoFila(r);
   if(r.id) _encolarRecaudo(r);
 }
@@ -3596,8 +3597,7 @@ function updRecibido(id, val){
     // por pagar de menos y el saldo a favor que se consumió. Si no, desmarcar
     // dejaba al cliente con una deuda fantasma y su sobrante gastado.
     if(r._deudaDeRecibido){ _setDeudaFila(r, 0); r._deudaDeRecibido = false; }
-    // Si el pedido ya salió con el saldo cruzado en el ticket, se conserva ese cruce.
-    _aplicarSaldoFavorFila(r, r._favorAuto ? _objetivoSaldoFavorAuto(r) : 0);
+    _aplicarSaldoFavorFila(r, 0);
     recalcEfectivoFila(r);
     _guardarYRepintarFila(r, id);
     return;
