@@ -1644,8 +1644,10 @@ function componerTicketHTML(items, total, cliNombre, comentario, numTicket, clie
     const saldo = getSaldoCliente(clienteId) + deudaPropia - debePropio + yaAplicado;
     if(saldo<0) deudaInfo = {tipo:'debe', valor:Math.abs(saldo)};          // cliente le debe a la empresa
     else if(saldo>0) deudaInfo = {tipo:'debo', valor:saldo,                 // empresa le debe al cliente
-      // Sin fila (vista previa) se muestra lo que se aplicaría.
-      aplicado: fila ? yaAplicado : Math.min(saldo, total)};
+      // El ticket SIEMPRE descuenta el saldo a favor del TOTAL A COBRAR, pero
+      // imprimir NO lo toca en cartera: eso solo pasa al confirmarlo en Recaudo.
+      // Si en Recaudo ya se aplicó un monto, se respeta ese monto.
+      aplicado: yaAplicado > 0 ? yaAplicado : Math.min(saldo, total)};
   }
   f.orden.forEach(key=>{
     if(key==='encabezado' && f.encabezado) b += `<div ${sty(f.tamEncabezado||16,f.negEncabezado,f.alineaEncabezado||'center',f.colorEncabezado||'#000')}>${esc(f.encabezado)}</div>`;
