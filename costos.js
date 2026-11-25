@@ -1698,6 +1698,45 @@ async function coMigrar() {
 
 /* ---------- Modal de categoría de masa ---------- */
 
+/* PANES POR PESO (no por pique)
+ *   Se pesa la masa cruda que sale de 1 arroba (pesoMasaKg de la categoría).
+ *   peso de 1 bolita  = pesoMasa por arroba ÷ bolitas por arroba
+ *   costo por gramo   = costo de masa por arroba ÷ pesoMasa por arroba
+ *   bolitas por pan   = (gramos de la pieza ÷ partes en que se corta) ÷ peso de 1 bolita
+ * El resto del módulo sigue trabajando con bolitasPorPan, así que producción,
+ * reparto y utilidad no cambian. */
+let _coLModo = 'bolitas';
+
+/** Gramos de masa cruda que salen de 1 arroba (null si no se ha indicado). */
+function coPesoMasaArrobaG(b) {
+  const kg = coDec(b?.pesoMasaKg);
+  return kg > 0 ? kg * 1000 : null;
+}
+/** Suma de los ingredientes en g/ml por 1 arroba (estimado: el agua suele no estar como insumo). */
+function coSumaIngArrobaG(b) {
+  const ab = coNum(b?.arrobasBase);
+  if (!(ab > 0)) return null;
+  let s = 0;
+  (b.ingredientes || []).forEach(g => {
+    const ins = coInsumo(g.insumoId);
+    if (ins && coBaseDe(ins.unidadCompra) !== 'und') s += coNum(g.cantidad);
+  });
+  return s > 0 ? s / ab : null;
+}
+/** Peso (g) de 1 bolita según el peso de la masa de la categoría. */
+function coPesoBolitaG(b) {
+  const pm = coPesoMasaArrobaG(b);
+  const p = coParams(b?.parametros);
+  const bpa = p.pepasPorArroba * p.bolitasPorPepa;
+  return pm && bpa > 0 ? pm / bpa : null;
+}
+/** Bolitas por pan a partir de gramos de la pieza y partes. null si falta el peso de la masa. */
+function coBppDeGramos(b, gramos, piezas) {
+  const pb = coPesoBolitaG(b);
+  const g = coDec(gramos), n = Math.max(1, Math.round(coDec(piezas) || 1));
+  return pb && g > 0 ? coLeerBpp(g / n / pb) : null;
+}
+
 const coOpcInsumos = (sel) => (DB.costos.insumos || []).slice()
   .sort((a, b) => (b.esMezcla ? 1 : 0) - (a.esMezcla ? 1 : 0) || a.nombre.localeCompare(b.nombre))
   .map(i => `<option value="${i.id}" ${i.id === sel ? 'selected' : ''}>${i.esMezcla ? 'MEZCLA · ' : ''}${coEsc(i.nombre)} (${coEstadoInsumo(i).ok ? `$${num(i.precioBase, 4)}/${coBaseLabel(i.unidadCompra)}` : 'sin costeo'})</option>`).join('');
@@ -1712,6 +1751,7 @@ function coCatModal(id) {
   };
   _coCatBuf.parametros = coParams(_coCatBuf.parametros);
   _coCatAbierta = -1;
+  _coLModo = 'bolitas';
   const ab = coNum(_coCatBuf.arrobasBase, 1);
   const esp = ab !== 1 && ab !== 0.5;
   const p = _coCatBuf.parametros;
@@ -1766,6 +1806,14 @@ function coCatCampos() {
     pepasPorArroba: coNum($('#cm-ppa')?.value),
     bolitasPorPepa: coNum($('#cm-bpp')?.value)
   };
+  const pm = $('#cm-pm');
+  if (pm) { const v = coDec(pm.value); b.pesoMasaKg = v > 0 ? v : null; }
+  // Los panes armados por peso se reconvierten a bolitas con el peso vigente.
+  b.productos.forEach(l => {
+    if (!(coNum(l.gramosMasa) > 0)) return;
+    const bpp = coBppDeGramos(b, l.gramosMasa, l.piezas);
+    if (bpp) l.bolitasPorPan = bpp;
+  });
   coCatRender();
 }
 
@@ -1778,6 +1826,10 @@ function coCatRender() {
   const ab = coNum(b.arrobasBase);
   const usados = new Set(b.productos.map(l => l.productoId));
   const disponibles = DB.productos.filter(p => p.activo && !usados.has(p.id)).sort((x, y) => x.orden - y.orden);
+  const sumaIng = coSumaIngArrobaG(b);
+  const pesoBol = coPesoBolitaG(b);
+  const pmG = coPesoMasaArrobaG(b);
+  const cxg = pmG && rc.costoMasaPorArroba != null ? rc.costoMasaPorArroba / pmG : null;
 
   el.innerHTML = `
     <h3 class="mt-md mb-sm">Ingredientes para ${ab > 0 ? coN(ab) + ' arroba(s)' : '—'}</h3>
@@ -1806,13 +1858,40 @@ function coCatRender() {
     <button class="btn btn-secondary btn-sm mb-sm" onclick="coCatAddAd()"><span class="ms">add</span>Agregar adicional</button>
     ${coCatTablaAd(snap.adicionales, 'coCatDelAd', null)}
 
+    <div class="card mt-md" style="background:#fff8e6;border:1px solid #f0d48a"><div class="card-b">
+      <div class="bold" style="font-size:13.5px"><span class="ms" style="vertical-align:-4px">scale</span> Panes por peso (los que no van por pique)</div>
+      <div class="muted mb-sm" style="font-size:11.5px">Pesa la masa <b>cruda</b> que sale de 1 arroba, ya amasada, y escríbela aquí. Con ese dato el panel sabe cuánto vale cada gramo de masa y puedes armar cualquier pan escribiendo sus gramos (panzotes, tiras, molde, tajado…).</div>
+      <div class="gf3" style="align-items:end">
+        <div class="field"><label>Peso de la masa de 1 arroba (kg)</label>
+          <input id="cm-pm" type="text" inputmode="decimal" value="${coPesoMasaArrobaG(b) ? String(coDec(b.pesoMasaKg)).replace('.', ',') : ''}" placeholder="Ej: 19,5" onchange="coCatCampos()"/></div>
+        ${sumaIng ? `<div class="field"><label>Suma de los ingredientes</label>
+          <div class="flex gap" style="align-items:center"><b>${coN(sumaIng / 1000, 2)} kg</b>
+          <button class="btn btn-ghost btn-sm" onclick="coCatUsarSuma()">Usar este peso</button></div></div>` : ''}
+      </div>
+      ${sumaIng ? `<div class="muted" style="font-size:11px">La suma no incluye el agua ni lo que no esté como insumo; lo más exacto es pesar la masa.</div>` : ''}
+      ${pesoBol ? `<div class="mt-sm" style="font-family:var(--font-mono);font-size:13px;line-height:1.8">
+          1 bolita ≈ <b>${coN(pesoBol, 1)} g</b>
+          ${cxg != null ? ` · 1 g de masa = <b>$${coN(cxg, 2)}</b> · 100 g = <b>${money(cxg * 100)}</b>` : ''}</div>`
+        : `<div class="mt-sm" style="font-size:12px;color:#8a5a00">Escribe el peso para poder armar panes por gramos.</div>`}
+    </div></div>
+
     <h3 class="mt-md mb-sm">Tipos de pan de esta masa</h3>
+    <div class="flex gap mb-sm" style="flex-wrap:wrap;align-items:center">
+      <span class="muted" style="font-size:12px">¿Cómo se arma este pan?</span>
+      <button class="btn btn-sm ${_coLModo === 'bolitas' ? 'btn-primary' : 'btn-ghost'}" onclick="coCatLModo('bolitas')"><span class="ms">bubble_chart</span>Por bolitas (pique)</button>
+      <button class="btn btn-sm ${_coLModo === 'peso' ? 'btn-primary' : 'btn-ghost'}" onclick="coCatLModo('peso')"><span class="ms">scale</span>Por peso (gramos)</button>
+    </div>
     <div class="gf3" style="align-items:end">
       <div class="field"><label>Producto del catálogo</label>
         <select id="cm-prod">${disponibles.map(p => `<option value="${p.id}">${coEsc(p.nombre)} (${money(p.precio)})</option>`).join('') || '<option value="">(todos asociados)</option>'}</select></div>
-      <div class="field"><label>Bolitas por pan * <span class="muted" style="font-weight:400">(acepta decimales: 0,72)</span></label><input id="cm-lbpp" type="text" inputmode="decimal" value="1"/></div>
-      <div class="field"><label>Panes por lata (opcional)</label><input id="cm-lppl" type="number" min="1" step="1" placeholder="Sin latas"/></div>
+      ${_coLModo === 'peso' ? `
+      <div class="field"><label>Gramos de masa cruda de la pieza *</label><input id="cm-lg" type="text" inputmode="decimal" placeholder="Ej: 600" oninput="coCatPrevPeso()"/></div>
+      <div class="field"><label>¿En cuántas partes se corta?</label><input id="cm-lpz" type="number" min="1" step="1" value="1" oninput="coCatPrevPeso()"/></div>`
+      : `<div class="field"><label>Bolitas por pan * <span class="muted" style="font-weight:400">(acepta decimales: 0,72)</span></label><input id="cm-lbpp" type="text" inputmode="decimal" value="1"/></div>`}
+      <div class="field"><label>${_coLModo === 'peso' ? 'Unidades por lata (opcional)' : 'Panes por lata (opcional)'}</label><input id="cm-lppl" type="number" min="1" step="1" placeholder="Sin latas"/></div>
     </div>
+    ${_coLModo === 'peso' ? `<div id="cm-lprev" class="mb-sm" style="font-size:12.5px"></div>
+      <div class="muted mb-sm" style="font-size:11px">Si la pieza se corta (ej: panzote de 600 g en 10 tiras), cada parte es la unidad que vendes: el panel costea cada tira. Las unidades por lata también van en partes (4 panzotes × 10 tiras = 40).</div>` : ''}
     <div class="flex gap mb-sm" style="flex-wrap:wrap">
       <button class="btn btn-secondary btn-sm" onclick="coCatAddLinea()"><span class="ms">add</span>Asociar producto</button>
       <button class="btn btn-ghost btn-sm" onclick="const f=$('#cm-np');f.style.display=f.style.display==='none'?'':'none'"><span class="ms">add_circle</span>Crear producto nuevo</button>
@@ -1823,18 +1902,27 @@ function coCatRender() {
         <div class="field"><label>Precio de venta ($)</label><input id="cm-np-precio" type="number" step="any"/></div>
         <button class="btn btn-primary btn-sm" onclick="coCatNuevoProducto()">Crear y asociar</button>
       </div>
-      <div class="muted" style="font-size:11px">Se crea en el catálogo de productos (pedidos y facturación) con las bolitas por pan indicadas arriba.</div>
+      <div class="muted" style="font-size:11px">Se crea en el catálogo de productos (pedidos y facturación) con la masa por pan indicada arriba (bolitas o gramos).</div>
     </div></div>
     ${b.productos.length === 0 ? '<div class="empty">Sin tipos de pan asociados.</div>' : `
     <div class="tw"><table class="d"><thead><tr>
-      <th>Producto</th><th>Bolitas / pan</th><th>Panes / lata</th><th>Variable / pan</th><th>Adicionales</th><th></th>
+      <th>Producto</th><th>Masa por pan</th><th>Panes / lata</th><th>Variable / pan</th><th>Adicionales</th><th></th>
     </tr></thead><tbody>
       ${b.productos.map((l, i) => {
         const sl = snap.lineas[i];
         const u = coCosteoUnitario(snap, sl, rc);
+        const porPeso = coNum(l.gramosMasa) > 0;
+        const piezas = Math.max(1, Math.round(coNum(l.piezas, 1)));
+        const lnk = 'style="font-size:11px;color:var(--primary);cursor:pointer;text-decoration:underline"';
+        const celdaMasa = porPeso
+          ? `<div style="white-space:nowrap"><input type="text" inputmode="decimal" value="${String(l.gramosMasa).replace('.', ',')}" onchange="coCatSetGramos(${i},'gramosMasa',this.value)" style="width:64px" title="Gramos de masa cruda de la pieza"/> g
+              ÷ <input type="number" min="1" step="1" value="${piezas}" onchange="coCatSetGramos(${i},'piezas',this.value)" style="width:48px" title="Partes en que se corta"/> partes</div>
+             <div class="muted" style="font-size:11px">${piezas > 1 ? `${coN(l.gramosMasa / piezas, 1)} g c/u · ` : ''}= ${coN(l.bolitasPorPan, 4)} bolitas · <a ${lnk} onclick="coCatLineaModo(${i},'bolitas')">usar bolitas</a></div>`
+          : `<input type="text" inputmode="decimal" value="${String(l.bolitasPorPan).replace('.', ',')}" onchange="coCatSetLinea(${i},'bolitasPorPan',this.value)" style="width:70px"/> bolitas
+             <div class="muted" style="font-size:11px">${pesoBol ? `≈ ${coN(l.bolitasPorPan * pesoBol, 0)} g · ` : ''}<a ${lnk} onclick="coCatLineaModo(${i},'peso')">pasar a gramos</a></div>`;
         return `<tr>
-          <td class="bold">${coEsc(sl.nombre)}</td>
-          <td><input type="text" inputmode="decimal" value="${String(l.bolitasPorPan).replace('.', ',')}" onchange="coCatSetLinea(${i},'bolitasPorPan',this.value)" style="width:70px"/></td>
+          <td class="bold">${coEsc(sl.nombre)}${porPeso ? ' <span class="badge" style="font-size:10px">por peso</span>' : ''}</td>
+          <td>${celdaMasa}</td>
           <td><input type="number" min="1" step="1" value="${l.panesPorLata ?? ''}" placeholder="—" onchange="coCatSetLinea(${i},'panesPorLata',this.value)" style="width:70px"/></td>
           <td class="num bold">${coM(u.variablePorPan)}</td>
           <td><button class="btn btn-ghost btn-sm" onclick="coCatToggleLinea(${i})"><span class="ms">shopping_bag</span>${(l.adicionales || []).length}</button></td>
@@ -1856,7 +1944,8 @@ function coCatRender() {
       Bolitas por arroba: <b>${num(rc.bolitasPorArroba)}</b> (${coN(snap.parametros.pepasPorArroba)} pepas × ${coN(snap.parametros.bolitasPorPepa)})<br>
       Costo receta base (${coN(ab)} @): <b>${coM(rc.costoRecetaBase)}</b><br>
       Costo de masa por arroba: <b>${coM(rc.costoMasaPorArroba)}</b> · media arroba: <b>${coM(rc.costoMasaMediaArroba)}</b><br>
-      Costo por bolita: <b>${coM2(rc.costoPorBolita)}</b>
+      Costo por bolita: <b>${coM2(rc.costoPorBolita)}</b>${pesoBol ? ` (1 bolita ≈ ${coN(pesoBol, 1)} g)` : ''}
+      ${cxg != null ? `<br>Costo por gramo de masa: <b>$${coN(cxg, 2)}</b> · por kilo: <b>${money(cxg * 1000)}</b>` : ''}
       ${rc.motivos.length ? `<br><span style="color:var(--error)">⚠ Costeo incompleto: ${rc.motivos.map(coEsc).join(' · ')}</span>` : ''}
     </div></div>`;
   coAdMedida('cm-ad');
@@ -1947,6 +2036,14 @@ function coCatAddIng() {
   else _coCatBuf.ingredientes.push({ insumoId, cantidad });
   coCatCampos();
 }
+/** Toma la suma de ingredientes por arroba como peso de la masa. */
+function coCatUsarSuma() {
+  const s = coSumaIngArrobaG(_coCatBuf);
+  if (!s) return;
+  const el = $('#cm-pm');
+  if (el) el.value = String(Math.round(s / 10) / 100).replace('.', ',');
+  coCatCampos();
+}
 function coCatSetIng(i, v) { _coCatBuf.ingredientes[i].cantidad = coNum(v); coCatCampos(); }
 function coCatDelIng(i) { _coCatBuf.ingredientes.splice(i, 1); coCatCampos(); }
 
@@ -1958,14 +2055,88 @@ function coCatAddAd() {
 }
 function coCatDelAd(j) { _coCatBuf.adicionales.splice(j, 1); coCatCampos(); }
 
+/** Lee la masa por pan del formulario (bolitas o gramos ÷ partes). null con aviso si falta algo. */
+function coCatLeerMasaForm() {
+  if (_coLModo === 'peso') {
+    const g = coCant($('#cm-lg')?.value);
+    const n = Math.round(coDec($('#cm-lpz')?.value) || 1);
+    if (!(g > 0)) { toast('Escribe los gramos de masa cruda de la pieza', 'error'); return null; }
+    if (!(n >= 1)) { toast('Las partes deben ser 1 o más', 'error'); return null; }
+    const pm = coDec($('#cm-pm')?.value);
+    if (pm > 0) _coCatBuf.pesoMasaKg = pm;
+    const bpp = coBppDeGramos(_coCatBuf, g, n);
+    if (!bpp) { toast('Primero escribe el peso de la masa de 1 arroba (recuadro amarillo)', 'error'); $('#cm-pm')?.focus(); return null; }
+    return { bolitasPorPan: bpp, gramosMasa: g, piezas: n };
+  }
+  const bpp = coLeerBpp($('#cm-lbpp')?.value);
+  if (!bpp) { toast('Las bolitas por pan deben ser mayores a 0', 'error'); return null; }
+  return { bolitasPorPan: bpp, gramosMasa: null, piezas: null };
+}
+/** Cambia cómo se arma el pan en el formulario (conserva el producto elegido). */
+function coCatLModo(m) {
+  const prod = $('#cm-prod')?.value, ppl = $('#cm-lppl')?.value;
+  _coLModo = m;
+  coCatCampos();
+  if (prod && $('#cm-prod')) $('#cm-prod').value = prod;
+  if (ppl && $('#cm-lppl')) $('#cm-lppl').value = ppl;
+  if (m === 'peso') $('#cm-lg')?.focus();
+}
+/** Vista previa en vivo: gramos → bolitas y costo de masa por unidad. */
+function coCatPrevPeso() {
+  const el = $('#cm-lprev');
+  if (!el) return;
+  const g = coCant($('#cm-lg')?.value);
+  const n = Math.max(1, Math.round(coDec($('#cm-lpz')?.value) || 1));
+  if (!(g > 0)) { el.innerHTML = ''; return; }
+  const b = _coCatBuf;
+  const bpp = coBppDeGramos(b, g, n);
+  if (!bpp) { el.innerHTML = '<span style="color:#8a5a00">Escribe arriba el peso de la masa de 1 arroba para calcular.</span>'; return; }
+  const rc = coCosteoReceta(coSnapshotCategoria({ ...b, parametros: coParams(b.parametros) }));
+  const masa = rc.costoPorBolita != null ? rc.costoPorBolita * bpp : null;
+  el.innerHTML = `<div style="background:#eef6dc;border-radius:8px;padding:8px 12px">
+    ${n > 1 ? `Pieza de <b>${coN(g, 1)} g</b> ÷ ${n} partes = <b>${coN(g / n, 1)} g</b> cada una → ` : `<b>${coN(g, 1)} g</b> → `}
+    <b>${coN(bpp, 4)} bolitas</b> por unidad
+    ${masa != null ? ` · masa: <b>${money(masa)}</b> por unidad${n > 1 ? ` (${money(masa * n)} la pieza entera)` : ''}` : ''}
+    <div class="muted" style="font-size:11px">Los adicionales (relleno, bolsa…) se agregan después en el botón de la bolsa.</div></div>`;
+}
+/** Cambia los gramos o las partes de un pan armado por peso. */
+function coCatSetGramos(i, k, v) {
+  const l = _coCatBuf.productos[i];
+  if (k === 'piezas') {
+    const n = Math.round(coDec(v));
+    if (!(n >= 1)) { toast('Las partes deben ser 1 o más', 'error'); coCatCampos(); return; }
+    l.piezas = n;
+  } else {
+    const g = coCant(v);
+    if (!(g > 0)) { toast('Los gramos deben ser mayores a 0', 'error'); coCatCampos(); return; }
+    l.gramosMasa = g;
+  }
+  if (!coPesoBolitaG(_coCatBuf)) toast('Escribe el peso de la masa de 1 arroba para recalcular las bolitas', 'error');
+  coCatCampos();
+}
+/** Pasa un pan ya asociado de bolitas a gramos o al revés (sin cambiar su costo). */
+function coCatLineaModo(i, m) {
+  const l = _coCatBuf.productos[i];
+  if (m === 'peso') {
+    const pb = coPesoBolitaG(_coCatBuf);
+    if (!pb) { toast('Primero escribe el peso de la masa de 1 arroba (recuadro amarillo)', 'error'); $('#cm-pm')?.focus(); return; }
+    l.gramosMasa = Math.round(coNum(l.bolitasPorPan) * pb);
+    l.piezas = 1;
+  } else {
+    l.gramosMasa = null;
+    l.piezas = null;
+  }
+  coCatCampos();
+}
+
 function coCatAddLinea() {
   const productoId = $('#cm-prod').value;
   if (!productoId) { toast('No hay productos disponibles para asociar', 'error'); return; }
-  const bpp = coLeerBpp($('#cm-lbpp').value);
-  if (!bpp) { toast('Las bolitas por pan deben ser mayores a 0', 'error'); return; }
+  const masa = coCatLeerMasaForm();
+  if (!masa) return;
   const ppl = coNum($('#cm-lppl').value);
   if (ppl && (ppl < 1 || Math.round(ppl) !== ppl)) { toast('Panes por lata debe ser un entero positivo', 'error'); return; }
-  _coCatBuf.productos.push({ lineaId: appwriteService.genId('CML'), productoId, bolitasPorPan: bpp, panesPorLata: ppl || null, adicionales: [] });
+  _coCatBuf.productos.push({ lineaId: appwriteService.genId('CML'), productoId, ...masa, panesPorLata: ppl || null, adicionales: [] });
   coCatCampos();
 }
 function coCatSetLinea(i, k, v) {
@@ -2000,15 +2171,15 @@ function coCatDelAdLinea(i, j) { _coCatBuf.productos[i].adicionales.splice(j, 1)
 async function coCatNuevoProducto() {
   const nombre = $('#cm-np-nombre').value.trim();
   const precio = coNum($('#cm-np-precio').value);
-  const bpp = coLeerBpp($('#cm-lbpp').value);
   if (!nombre) { toast('El producto necesita un nombre', 'error'); return; }
   if (!(precio > 0)) { toast('El precio de venta debe ser mayor a 0', 'error'); return; }
-  if (!bpp) { toast('Las bolitas por pan deben ser mayores a 0', 'error'); return; }
+  const masa = coCatLeerMasaForm();
+  if (!masa) return;
   try {
     const p = await appwriteService.guardarProducto({ nombre, precio, imagen: '' });
     saveDB();
     const ppl = coNum($('#cm-lppl').value);
-    _coCatBuf.productos.push({ lineaId: appwriteService.genId('CML'), productoId: p.id, bolitasPorPan: bpp, panesPorLata: ppl > 0 ? Math.round(ppl) : null, adicionales: [] });
+    _coCatBuf.productos.push({ lineaId: appwriteService.genId('CML'), productoId: p.id, ...masa, panesPorLata: ppl > 0 ? Math.round(ppl) : null, adicionales: [] });
     toast(`Producto "${nombre}" creado en el catálogo`, 'success');
     coCatCampos();
   } catch (e) { /* el servicio ya mostró el error y no dejó copia local */ }

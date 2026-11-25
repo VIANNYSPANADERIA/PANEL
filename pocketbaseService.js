@@ -1439,6 +1439,10 @@ const appwriteService = {
         productoId: l.productoId,
         bolitasPorPan: bpp,
         panesPorLata: ppl,
+        // Pan armado por PESO (no por pique): gramos de masa cruda de la pieza y en
+        // cuántas partes se corta. Solo informativo: bolitasPorPan ya viene calculado.
+        gramosMasa: _num(l.gramosMasa) > 0 ? _num(l.gramosMasa) : null,
+        piezas: _num(l.gramosMasa) > 0 ? Math.max(1, Math.round(_num(l.piezas, 1))) : null,
         adicionales: (l.adicionales || []).map((a) => normAd(a, ['pan', 'grupo', 'arroba', 'lote']))
           .filter((a) => a.insumoId && a.cantidad > 0)
       };
