@@ -419,6 +419,13 @@ table.fx .fx-tot{background:#eef3fc;font-weight:700}
 table.fx .fx-vacio{background:#f4f4f4}
 table.fx .fx-neg{color:#ba1a1a}
 table.fx .fx-auto{display:inline-block;margin-left:6px;font-size:10px;font-weight:600;background:#e3f5d0;color:#3d5a00;border-radius:4px;padding:1px 5px}
+table.fx .fx-auto-ed{background:#fff1d6;color:#8a5a00}
+table.fx td.fx-edit{padding:0;background:#fffbea}
+table.fx td.fx-edit.fx-hoy{background:#fff4c2}
+table.fx .fx-in{width:100%;min-width:70px;box-sizing:border-box;border:0;background:transparent;text-align:right;font:inherit;padding:6px 8px;color:inherit;cursor:text}
+table.fx .fx-in::placeholder{color:#c9b98a}
+table.fx .fx-in:hover{background:#fff3cc}
+table.fx .fx-in:focus{outline:2px solid #b3d028;outline-offset:-2px;background:#fff}
 .fx-sem{margin-bottom:14px}
 .fx-aviso{background:#fff8e1;border:1px solid #f3d27a;color:#6b4e00;border-radius:8px;padding:8px 12px;font-size:12.5px;margin-bottom:12px}
 .fx-kpis{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-bottom:14px}
@@ -4746,8 +4753,43 @@ function _flujoBase(){
   (DB.conta.transferencias||[]).forEach(t=>{
     if(t && t.origen==='(Aporte de dinero)') sumar(fin, String(t.fecha||'').slice(0,10), t.valor);
   });
-  return {op, eg, fin, otros, desde: contaSaldoInicial().fecha || ''};
+  // Lo que se escribe a mano en la fila "Ingreso por financiamiento" del flujo.
+  const finAuto = Object.assign({}, fin);
+  const man = _flujoFinManual();
+  Object.keys(man).forEach(f=>sumar(fin, f, man[f]));
+  return {op, eg, fin, finAuto, otros, desde: contaSaldoInicial().fecha || ''};
 }
+/** Financiamiento escrito a mano en la hoja del flujo: {fecha: valor}. */
+function _flujoFinManual(){
+  const m = DB.facturaConfig && DB.facturaConfig.flujoFinanciamiento;
+  return (m && typeof m === 'object') ? m : {};
+}
+/** Guarda el valor que se escribió en una celda de "Ingreso por financiamiento".
+    El valor escrito es el total del día; lo que ya venía de Contabilidad
+    (préstamos, aportes…) se descuenta y solo se guarda la diferencia. */
+async function flujoEditarFin(el){
+  const f = el.dataset.f;
+  const auto = Number(el.dataset.auto)||0;
+  const total = Math.round(Number(String(el.value||'').replace(/[^\d-]/g,''))||0);
+  const man = Object.assign({}, _flujoFinManual());
+  const nuevo = total - auto;
+  if(nuevo) man[f] = nuevo; else delete man[f];
+  if((_flujoFinManual()[f]||0) === (man[f]||0)) { el.value = total ? money(total) : ''; return; }
+  // Re-render después de que el foco pase a la siguiente celda (Tab) y devolverlo ahí.
+  setTimeout(async ()=>{
+    const act = document.activeElement;
+    const sig = act && act.classList && act.classList.contains('fx-in') ? act.dataset.f : null;
+    try{
+      await appwriteService.guardarFacturaConfig({flujoFinanciamiento: man});
+      saveDB();
+    }catch(e){ toast('No se pudo guardar el financiamiento','error'); }
+    renderConta();
+    if(sig){ const n = document.querySelector(`.fx-in[data-f="${sig}"]`); if(n){ n.focus(); n.select(); } }
+  }, 0);
+}
+function _flujoFinFocus(el){ const v = Number(String(el.value).replace(/[^\d-]/g,''))||0; el.value = v ? v : ''; el.select(); }
+function _flujoFinBlur(el){ const v = Number(String(el.value).replace(/[^\d-]/g,''))||0; el.value = v ? money(v) : ''; }
+function _flujoFinKey(ev, el){ if(ev.key==='Enter'){ ev.preventDefault(); el.blur(); } }
 /** Neto (ingresos operativos + financiamiento − egresos) de todos los días antes de `corte`. */
 function _flujoNetoAntes(base, corte){
   const fechas = new Set([...Object.keys(base.op), ...Object.keys(base.eg), ...Object.keys(base.fin)]);
@@ -4787,7 +4829,7 @@ function flujoMes(year, mes, base){
   const io = dias.reduce((a,x)=>a+x.io,0), eo = dias.reduce((a,x)=>a+x.eo,0), fi = dias.reduce((a,x)=>a+x.fi,0);
   const totalIng = io + fi;
   return {
-    year, mes, nombre:FLUJO_MESES[mes], saldoIni, dias, semanas, otros,
+    year, mes, nombre:FLUJO_MESES[mes], saldoIni, dias, semanas, otros, finAuto: base.finAuto || {},
     ingOp:io, egrOp:eo, saldoOp:io-eo, ingFin:fi, saldoFin:fi,
     totalIng, saldoFinal:saldoIni + (io-eo) + fi,
     pctVentas: totalIng ? io/totalIng : 0, pctFin: totalIng ? fi/totalIng : 0
@@ -4807,11 +4849,18 @@ function _flujoHojaMesHTML(F){
   const filaTot = (lbl, ing, egr, sal, cls='') => `<tr class="${cls}"><td class="fx-nav">${lbl}</td><td class="n">${ing===null?'':_fxM(ing)}</td><td class="n">${egr===null?'':_fxM(egr)}</td><td class="n fx-b">${_fxM(sal)}</td></tr>`;
   const semana = S => {
     const celdas = Array.from({length:7}, (_,i)=>S.dias[i]||null);
+    const celdaFin = x => {
+      const auto = F.finAuto ? (F.finAuto[x.f]||0) : 0;
+      return `<td class="n fx-edit ${x.f===hoy?'fx-hoy':''}"><input class="fx-in" inputmode="numeric" data-f="${x.f}" data-auto="${auto}"
+        value="${x.fi?money(x.fi):''}" placeholder="+"
+        title="Escribe el financiamiento del ${_fechaCorta(x.f)}${auto?` (incluye ${money(auto)} de Contabilidad)`:''}"
+        onfocus="_flujoFinFocus(this)" onkeydown="_flujoFinKey(event,this)" onchange="flujoEditarFin(this)" onblur="_flujoFinBlur(this)"></td>`;
+    };
     const fila = (lbl, key, total, opts={}) => `<tr>
-      <td class="fx-lbl ${opts.b?'fx-b':''}">${lbl}${opts.auto?'<span class="fx-auto">pedidos</span>':''}</td>
-      ${celdas.map(x=>x
-        ? `<td class="n ${opts.b?'fx-b':''} ${x.f===hoy?'fx-hoy':''}" ${opts.auto&&x.io?`title="${money(x.io)} en pedidos del ${_fechaCorta(x.f)}"`:''}>${(opts.b||x[key])?_fxM(x[key]):''}</td>`
-        : '<td class="fx-vacio"></td>').join('')}
+      <td class="fx-lbl ${opts.b?'fx-b':''}">${lbl}${opts.auto?'<span class="fx-auto">pedidos</span>':''}${opts.edit?'<span class="fx-auto fx-auto-ed">editable</span>':''}</td>
+      ${celdas.map(x=>!x ? '<td class="fx-vacio"></td>'
+        : opts.edit ? celdaFin(x)
+        : `<td class="n ${opts.b?'fx-b':''} ${x.f===hoy?'fx-hoy':''}" ${opts.auto&&x.io?`title="${money(x.io)} en pedidos del ${_fechaCorta(x.f)}"`:''}>${(opts.b||x[key])?_fxM(x[key]):''}</td>`).join('')}
       <td class="n fx-tot">${_fxM(total)}</td></tr>`;
     return `<div class="fx-sem fx-wrap"><table class="fx">
       <thead><tr><th class="fx-nav" style="text-align:left">Concepto</th>
@@ -4822,7 +4871,7 @@ function _flujoHojaMesHTML(F){
         ${fila('Ingresos operativos','io',S.io,{auto:true})}
         ${fila('Egresos operativos','eo',S.eo)}
         ${fila('Saldo operativo','so',S.so,{b:true})}
-        ${fila('Ingreso por financiamiento','fi',S.fi)}
+        ${fila('Ingreso por financiamiento','fi',S.fi,{edit:true})}
         ${fila('Saldo general','sg',S.sg,{b:true})}
       </tbody></table></div>`;
   };
