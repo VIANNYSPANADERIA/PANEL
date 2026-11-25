@@ -1000,6 +1000,7 @@ function renderCostos() {
     <div class="ph">
       <div><h1>Costos y Rentabilidad</h1><div class="sub">Masas por arroba, producción en libras o arrobas, punto de equilibrio y resultado del día</div></div>
       <div class="h-spacer"></div>
+      <button class="btn btn-primary" style="align-self:flex-end" onclick="coExportarCosteoExcel()" title="Descarga un Excel con el costeo completo de todos los panes"><span class="ms">table_view</span>Exportar costeo a Excel</button>
       <div class="field" style="margin:0">
         <label>Día de análisis</label>
         <input type="date" value="${_coFecha}" onchange="coSetFecha(this.value)" style="width:170px"/>
@@ -3159,6 +3160,460 @@ function coPintarGraficos() {
     data: { labels: etiq, datasets: [{ label: 'Costo / pan', data: dias.map(d => d.costoPromedioPan == null ? null : Number(d.costoPromedioPan.toFixed(0))), borderColor: '#546e7a', backgroundColor: 'rgba(84,110,122,.14)', fill: true, tension: .3, borderWidth: 3, pointRadius: 2, spanGaps: true }] },
     options: coOpts({ plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => ` ${money(c.parsed.y)} por pan` } } } })
   }, dias.some(d => d.costoPromedioPan > 0));
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * EXPORTAR COSTEO COMPLETO A EXCEL
+ * ---------------------------------------------------------------------------
+ * Libro con fórmulas vivas, armado con los datos reales del panel:
+ *   Resumen · Parámetros · Panes · Masas · Adicionales · Insumos · Costos fijos
+ * Costo total por pan = masa + merma + adicionales/empaque + vendajes (variable)
+ *                     + costo fijo asignado (indirectos + nómina, en proporción
+ *                       a lo que vale el pan: precio × %costo fijo sobre ventas).
+ * Las celdas amarillas con letra azul son supuestos editables.
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+let _coXlsxStyle = null;
+/** Carga xlsx-js-style (SheetJS con colores). Si falla usa el SheetJS normal. */
+function coCargarXlsxEstilos() {
+  if (_coXlsxStyle) return Promise.resolve(_coXlsxStyle);
+  return new Promise((ok) => {
+    const previo = window.XLSX;
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js';
+    s.onload = () => { _coXlsxStyle = window.XLSX; if (previo) window.XLSX = previo; ok(_coXlsxStyle); };
+    s.onerror = () => { if (previo) window.XLSX = previo; ok(null); };
+    document.head.appendChild(s);
+  }).then(x => x || (typeof _cargarSheetJS === 'function' ? _cargarSheetJS() : null));
+}
+
+/** Ventas de los pedidos de los últimos 90 días, llevadas a un mes de 30 días. */
+function coXVentasMes() {
+  const k = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const hoy = new Date(todayKey() + 'T12:00:00');
+  const ini = new Date(hoy); ini.setDate(ini.getDate() - 89);
+  const hoyK = k(hoy), iniK = k(ini);
+  const peds = (DB.pedidos || []).filter(p => { const f = String(p.fecha || '').slice(0, 10); return f >= iniK && f <= hoyK; });
+  let primera = hoyK, total = 0;
+  const porProd = {};
+  peds.forEach(p => {
+    const f = String(p.fecha).slice(0, 10);
+    if (f < primera) primera = f;
+    total += coNum(p.total);
+    (p.items || []).forEach(it => {
+      const o = porProd[it.productoId] || (porProd[it.productoId] = { cant: 0, vend: 0 });
+      o.cant += coNum(it.cantidad);
+      o.vend += coNum(it.vendajes);
+    });
+  });
+  const dias = peds.length ? Math.min(90, Math.round((hoy - new Date(primera + 'T12:00:00')) / 864e5) + 1) : 0;
+  const f = dias > 0 ? 30 / dias : 0;
+  Object.values(porProd).forEach(o => { o.cantMes = o.cant * f; o.pctVend = o.cant > 0 ? o.vend / o.cant : 0; });
+  return { ventasMes: total * f, dias, pedidos: peds.length, porProd };
+}
+
+async function coExportarCosteoExcel() {
+  const cats = coCategorias().filter(c => c.activo !== false);
+  if (!cats.length) { toast('No hay categorías de masa activas para costear', 'error'); return; }
+  toast('Armando el Excel de costeo…', 'info');
+  const X = await coCargarXlsxEstilos().catch(() => null);
+  if (!X) { toast('No se pudo cargar el generador de Excel (revisa internet)', 'error'); return; }
+
+  /* ---------- estilos ---------- */
+  const CAFE = '8A5A1C', CAFE_OSC = '5D3A10', CREMA = 'F6EBDD';
+  const BRD = { top: { style: 'thin', color: { rgb: 'D9CBB8' } }, bottom: { style: 'thin', color: { rgb: 'D9CBB8' } }, left: { style: 'thin', color: { rgb: 'D9CBB8' } }, right: { style: 'thin', color: { rgb: 'D9CBB8' } } };
+  const ST = {
+    tit: { font: { bold: true, sz: 16, color: { rgb: 'FFFFFF' } }, fill: { fgColor: { rgb: CAFE } }, alignment: { vertical: 'center' } },
+    sub: { font: { italic: true, sz: 10, color: { rgb: '6B5B4B' } } },
+    nota: { font: { sz: 10, color: { rgb: '555555' } }, alignment: { wrapText: true, vertical: 'top' } },
+    sec: { font: { bold: true, sz: 12, color: { rgb: CAFE_OSC } }, fill: { fgColor: { rgb: CREMA } } },
+    head: { font: { bold: true, color: { rgb: 'FFFFFF' } }, fill: { fgColor: { rgb: CAFE_OSC } }, alignment: { horizontal: 'center', vertical: 'center', wrapText: true }, border: BRD },
+    td: { border: BRD, alignment: { vertical: 'center' } },
+    lbl: { border: BRD, font: { bold: true }, alignment: { vertical: 'center', wrapText: true } },
+    inp: { border: BRD, font: { color: { rgb: '0000FF' } }, fill: { fgColor: { rgb: 'FFF2CC' } } },
+    tot: { border: BRD, font: { bold: true }, fill: { fgColor: { rgb: 'EDE3D3' } } },
+    big: { border: BRD, font: { bold: true, sz: 13 } },
+    bad: { fill: { fgColor: { rgb: 'F8D7DA' } }, font: { bold: true, color: { rgb: '9C0006' } } },
+    warn: { fill: { fgColor: { rgb: 'FFEB9C' } }, font: { bold: true, color: { rgb: '9C5700' } } },
+    ok: { fill: { fgColor: { rgb: 'C6EFCE' } }, font: { bold: true, color: { rgb: '006100' } } }
+  };
+  const M0 = '"$"#,##0', M2 = '"$"#,##0.00', P1 = '0.0%', N2 = 'AUTO', N4 = '0.0000';
+  const fmtN = (z, v) => z === 'AUTO' ? (typeof v === 'number' && !Number.isInteger(v) ? '#,##0.00' : '#,##0') : z;
+  const mix = (z, ...ss) => {
+    const o = {};
+    ss.filter(Boolean).forEach(s => Object.keys(s).forEach(k => { o[k] = typeof s[k] === 'object' ? { ...(o[k] || {}), ...s[k] } : s[k]; }));
+    if (z) o.numFmt = z;
+    return o;
+  };
+  const C = (v, z, ...ss) => { z = fmtN(z, v); return { v: v ?? '', t: typeof v === 'number' ? 'n' : 's', z, s: mix(z, ST.td, ...ss) }; };
+  const F = (f, v, z, ...ss) => { z = fmtN(z, v); return { f, v: typeof v === 'string' ? v : (Number.isFinite(v) ? v : 0), t: typeof v === 'string' ? 's' : 'n', z, s: mix(z, ST.td, ...ss) }; };
+  const T = (v, st) => ({ v, t: 's', s: st });
+  const hoja = () => { const S = { rows: [], merges: [], cols: [] }; S.add = (cells) => { S.rows.push(cells); return S.rows.length; }; return S; };
+  const titulo = (S, txt, ancho, sub) => {
+    S.add([T(txt, ST.tit), ...Array(ancho - 1).fill(T('', ST.tit))]);
+    S.merges.push({ s: { r: S.rows.length - 1, c: 0 }, e: { r: S.rows.length - 1, c: ancho - 1 } });
+    if (sub) S.add([T(sub, ST.sub)]);
+    S.add([]);
+  };
+  const aWs = (S) => {
+    const ws = {};
+    let maxC = 0;
+    S.rows.forEach((cells, r) => cells.forEach((c, ci) => {
+      if (c == null) return;
+      const cell = typeof c === 'object' ? { ...c } : { v: c, t: typeof c === 'number' ? 'n' : 's' };
+      if (cell.f && cell.f.startsWith('=')) cell.f = cell.f.slice(1);
+      ws[X.utils.encode_cell({ r, c: ci })] = cell;
+      maxC = Math.max(maxC, ci);
+    }));
+    ws['!ref'] = X.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: Math.max(0, S.rows.length - 1), c: maxC } });
+    ws['!merges'] = S.merges;
+    ws['!cols'] = S.cols.map(w => ({ wch: w }));
+    return ws;
+  };
+  const col = (i) => X.utils.encode_col(i);
+  const SH = { res: "'Resumen'", par: "'Parámetros'", pan: "'Panes'", mas: "'Masas'", ad: "'Adicionales'", ins: "'Insumos'", cf: "'Costos fijos'" };
+
+  /* ---------- datos base ---------- */
+  const ven = coXVentasMes();
+  const fc = DB.facturaConfig || {};
+  const negocio = fc.nombreNegocio || 'Panadería';
+  const fechaTxt = todayKey();
+
+  /* ============ INSUMOS ============ */
+  const SI = hoja();
+  SI.cols = [32, 16, 12, 13, 12, 15, 9, 15, 16, 13, 20];
+  titulo(SI, 'INSUMOS · PRECIOS VIGENTES', 11, `Última compra registrada de cada insumo. Precio por unidad base = precio de compra ÷ (cantidad × contenido). Exportado el ${fechaTxt}.`);
+  SI.add(['Insumo', 'Categoría', 'Cantidad comprada', 'Unidad de compra', 'Contenido por unidad', 'Precio de compra', 'Unidad base', 'Precio por unidad base', 'Precio por kg / L / und', 'Última compra', 'Proveedor'].map(h => T(h, ST.head)));
+  const insRow = {}, insPrecio = {};
+  (DB.costos.insumos || []).slice()
+    .sort((a, b) => (a.esMezcla ? 1 : 0) - (b.esMezcla ? 1 : 0) || String(a.categoria || '').localeCompare(String(b.categoria || '')) || a.nombre.localeCompare(b.nombre))
+    .forEach(i => {
+      const st = coEstadoInsumo(i);
+      const pb = st.ok ? coNum(i.precioBase) : 0;
+      const base = coBaseLabel(i.unidadCompra);
+      const r = SI.rows.length + 1;
+      SI.add([
+        C(i.nombre, null, { font: { bold: true } }),
+        C(i.esMezcla ? 'Mezcla propia' : (i.categoria || 'Otros')),
+        i.esMezcla ? C(coNum(i.rendimiento), N2) : C(coNum(i.cantidadComprada), N2),
+        C(i.esMezcla ? 'g (rinde)' : (i.unidadCompra || '')),
+        C(coNum(i.contenidoPorUnidad) > 0 ? coNum(i.contenidoPorUnidad) : '', N2),
+        C(i.esMezcla ? coNum(i.precioCompra) : coNum(i.precioCompra), M0),
+        C(base),
+        C(pb, N4, ST.inp, st.ok ? null : ST.bad),
+        F(`H${r}*IF(OR(G${r}="g",G${r}="ml"),1000,1)`, pb * (base === 'g' || base === 'ml' ? 1000 : 1), M0),
+        C(i.fechaCompra || ''),
+        C(st.ok ? (i.proveedor || '') : `⚠ ${st.motivo}`, null, st.ok ? null : ST.bad)
+      ]);
+      insRow[i.id] = r; insPrecio[i.id] = pb;
+    });
+  SI.add([]);
+  SI.add([T('El precio por unidad base (amarillo) es el que usan las masas y los adicionales. Si cambias uno aquí, todo el libro se recalcula. Las mezclas propias muestran su precio por gramo calculado con sus ingredientes.', ST.nota)]);
+  SI.merges.push({ s: { r: SI.rows.length - 1, c: 0 }, e: { r: SI.rows.length - 1, c: 10 } });
+  const precioRef = (id) => insRow[id] ? `${SH.ins}!$H$${insRow[id]}` : '0';
+
+  /* ============ PARÁMETROS ============ */
+  const indirectos = (DB.costos.indirectos || []);
+  const empleados = (DB.nomina && DB.nomina.empleados) || [];
+  const nominaEnIndirectos = indirectos.some(c => c.activo !== false && /salari|n[oó]mina|sueldo|mano de obra|empleado/i.test(`${c.nombre} ${c.categoria}`));
+  const SP = hoja();
+  SP.cols = [46, 18, 70];
+  titulo(SP, 'PARÁMETROS DEL COSTEO', 3, 'Celdas amarillas (letra azul) = supuestos que puedes cambiar. Todo el libro se recalcula solo.');
+  SP.add(['Concepto', 'Valor', 'Qué significa'].map(h => T(h, ST.head)));
+  const P = {};
+  const par = (key, lbl, cell, nota) => { const r = SP.rows.length + 1; SP.add([C(lbl, null, ST.lbl), cell, C(nota, null, ST.nota)]); P[key] = `${SH.par}!$B$${r}`; return r; };
+  // Las filas de costos fijos se enlazan después de construir esa hoja (se completan abajo).
+  const rVentas = par('ventas', 'Ventas promedio por mes', C(Math.round(ven.ventasMes), M0, ST.inp),
+    ven.dias ? `Calculado con ${ven.pedidos} pedidos de los últimos ${ven.dias} días, llevado a 30 días. Cámbialo si esperas vender otra cosa.` : 'No hay pedidos en los últimos 90 días: escribe cuánto vendes al mes.');
+  const rInd = SP.rows.length + 1; SP.add([]);  // se llena después
+  const rNom = SP.rows.length + 1; SP.add([]);
+  const rCarga = par('carga', 'Carga prestacional sobre la nómina', C(0, P1, ST.inp),
+    'Si pagas prestaciones (salud, pensión, ARL, primas, cesantías, vacaciones), en Colombia suman cerca del 52% del salario. Si pagas solo el salario, déjalo en 0%.');
+  const rIncl = par('incl', 'Incluir nómina en el costeo (1 = sí, 0 = no)', C(nominaEnIndirectos ? 0 : 1, '0', ST.inp),
+    nominaEnIndirectos ? 'Está en 0 porque en "Costos indirectos" ya hay un concepto de salarios/nómina; así no se cuenta dos veces.' : 'La nómina registrada en el panel es mano de obra: entra como costo fijo.');
+  const rCF = SP.rows.length + 1; SP.add([]);
+  const rPct = SP.rows.length + 1; SP.add([]);
+  const rMerma = par('merma', 'Merma de masa', C(0.03, P1, ST.inp),
+    'Masa que se pierde (pegada en la mesa, recortes, panes dañados o quemados). Lo normal es 2% a 5%. Pon 0% si no quieres contarla.');
+  const rMeta = par('meta', 'Margen de ganancia objetivo', C(0.3, P1, ST.inp),
+    'Lo que quieres ganar sobre el precio, después de todos los costos. Se usa para el precio sugerido.');
+  const rDias = par('dias', 'Días de trabajo al mes', C(30, '0', ST.inp), 'Para pasar el punto de equilibrio a ventas por día.');
+
+  /* ============ COSTOS FIJOS ============ */
+  const SC = hoja();
+  SC.cols = [34, 20, 13, 15, 11, 16, 15, 11];
+  titulo(SC, 'COSTOS FIJOS · INDIRECTOS Y NÓMINA', 8, 'Todo se lleva a mes de 30 días: valor ÷ días del período × 30.');
+  SC.add([T('COSTOS INDIRECTOS (arriendo, servicios, gas, transporte…)', ST.sec)]);
+  SC.add(['Concepto', 'Categoría', 'Periodicidad', 'Valor', 'Días del período', 'Costo por mes', 'Costo por día', 'Activo'].map(h => T(h, ST.head)));
+  const indIni = SC.rows.length + 1;
+  let indMes = 0;
+  indirectos.slice().sort((a, b) => String(a.categoria).localeCompare(String(b.categoria))).forEach(c => {
+    const r = SC.rows.length + 1;
+    const d = CO_DIAS[c.periodicidad] || 30;
+    const act = c.activo !== false;
+    if (act) indMes += coNum(c.valor) / d * 30;
+    SC.add([C(c.nombre, null, { font: { bold: true } }), C(c.categoria || 'Otros'), C(c.periodicidad || 'mensual'),
+      C(coNum(c.valor), M0, ST.inp), C(d, '0'),
+      F(`IF(H${r}="Sí",D${r}/E${r}*30,0)`, act ? coNum(c.valor) / d * 30 : 0, M0),
+      F(`IF(H${r}="Sí",D${r}/E${r},0)`, act ? coNum(c.valor) / d : 0, M0),
+      C(act ? 'Sí' : 'No', null, ST.inp)]);
+  });
+  if (!indirectos.length) SC.add([C('(no hay costos indirectos registrados en el panel)', null, ST.nota)]);
+  const indFin = Math.max(indIni, SC.rows.length);
+  const rIndTot = SC.rows.length + 1;
+  SC.add([C('TOTAL INDIRECTOS', null, ST.tot), C('', null, ST.tot), C('', null, ST.tot), C('', null, ST.tot), C('', null, ST.tot),
+    F(`SUM(F${indIni}:F${indFin})`, indMes, M0, ST.tot), F(`SUM(G${indIni}:G${indFin})`, indMes / 30, M0, ST.tot), C('', null, ST.tot)]);
+  SC.add([]);
+  SC.add([T('NÓMINA (mano de obra)', ST.sec)]);
+  SC.add(['Empleado', 'Periodo de pago', 'Salario base', 'Días del período', 'Costo por mes', '', '', ''].map((h, i) => i < 5 ? T(h, ST.head) : null));
+  const nomIni = SC.rows.length + 1;
+  let nomMes = 0;
+  empleados.forEach(e => {
+    const r = SC.rows.length + 1;
+    const d = CO_DIAS[e.periodo] || 30;
+    nomMes += coNum(e.salarioBase) / d * 30;
+    SC.add([C(e.nombre, null, { font: { bold: true } }), C(e.periodo || 'mensual'), C(coNum(e.salarioBase), M0, ST.inp), C(d, '0'), F(`C${r}/D${r}*30`, coNum(e.salarioBase) / d * 30, M0)]);
+  });
+  if (!empleados.length) SC.add([C('(no hay empleados registrados en Nómina)', null, ST.nota)]);
+  const nomFin = Math.max(nomIni, SC.rows.length);
+  const rNomTot = SC.rows.length + 1;
+  SC.add([C('TOTAL NÓMINA (salario base)', null, ST.tot), C('', null, ST.tot), C('', null, ST.tot), C('', null, ST.tot), F(`SUM(E${nomIni}:E${nomFin})`, nomMes, M0, ST.tot)]);
+  SC.add([]);
+  SC.add([T('Los empaques y bolsas por pan NO van aquí: están como adicionales variables de cada pan (hoja Adicionales).', ST.nota)]);
+  SC.merges.push({ s: { r: SC.rows.length - 1, c: 0 }, e: { r: SC.rows.length - 1, c: 7 } });
+
+  // Completa las filas de Parámetros que dependen de los costos fijos.
+  const carga = 0, incl = nominaEnIndirectos ? 0 : 1;
+  const nomCosteo = nomMes * (1 + carga);
+  const cfMes = indMes + nomCosteo * incl;
+  const pctCF = ven.ventasMes > 0 ? cfMes / ven.ventasMes : 0;
+  SP.rows[rInd - 1] = [C('Costos indirectos por mes', null, ST.lbl), F(`${SH.cf}!F${rIndTot}`, indMes, M0), C('Viene de la hoja "Costos fijos" (solo los activos).', null, ST.nota)];
+  SP.rows[rNom - 1] = [C('Nómina por mes (con carga prestacional)', null, ST.lbl), F(`${SH.cf}!E${rNomTot}*(1+B${rCarga})`, nomCosteo, M0), C('Salarios de la hoja "Costos fijos" más la carga prestacional de abajo.', null, ST.nota)];
+  SP.rows[rCF - 1] = [C('TOTAL COSTOS FIJOS POR MES', null, ST.lbl, ST.tot), F(`B${rInd}+B${rNom}*B${rIncl}`, cfMes, M0, ST.tot), C('Indirectos + nómina. Es lo que hay que cubrir cada mes antes de ganar.', null, ST.nota)];
+  SP.rows[rPct - 1] = [C('% de costo fijo sobre ventas', null, ST.lbl, ST.tot), F(`IF(B${rVentas}>0,B${rCF}/B${rVentas},0)`, pctCF, P1, ST.tot), C('De cada $100 que vendes, cuánto se va en costos fijos. Cada pan carga ese % de su precio.', null, ST.nota)];
+  P.ind = `${SH.par}!$B$${rInd}`; P.nom = `${SH.par}!$B$${rNom}`; P.cf = `${SH.par}!$B$${rCF}`; P.pct = `${SH.par}!$B$${rPct}`;
+  const merma = 0.03, meta = 0.3, diasMes = 30;
+
+  /* ============ MASAS ============ */
+  const SM = hoja();
+  SM.cols = [34, 14, 9, 15, 15, 13, 15];
+  titulo(SM, 'MASAS · RECETAS Y COSTO POR BOLITA / GRAMO', 7, 'Cantidad de cada ingrediente según la receta base. % panadero = ingrediente ÷ harina (harina = 100%).');
+  const catInfo = {};
+  cats.forEach(cat => {
+    const snap = coSnapshotCategoria(cat);
+    const rc = coCosteoReceta(snap);
+    const p = coParams(cat.parametros);
+    const ab = coNum(cat.arrobasBase) || 1;
+    SM.add([T(`MASA: ${cat.nombre}`, ST.sec), T('', ST.sec), T('', ST.sec), T('', ST.sec), T('', ST.sec), T('', ST.sec), T('', ST.sec)]);
+    SM.add(['Ingrediente', 'Cantidad (receta)', 'Unidad', 'Precio unitario', 'Costo', '% panadero', 'Por 1 arroba'].map(h => T(h, ST.head)));
+    const ini = SM.rows.length + 1;
+    const harinaQty = (cat.ingredientes || []).filter(g => /harina/i.test(coInsumo(g.insumoId)?.nombre || '')).reduce((a, g) => a + coNum(g.cantidad), 0);
+    const filasHarina = [];
+    (cat.ingredientes || []).forEach(g => {
+      const r = SM.rows.length + 1;
+      const ins = coInsumo(g.insumoId);
+      if (/harina/i.test(ins?.nombre || '')) filasHarina.push(r);
+      const pr = insPrecio[g.insumoId] || 0;
+      SM.add([C(ins ? ins.nombre : '(insumo eliminado)', null, { font: { bold: true } }), C(coNum(g.cantidad), N2, ST.inp), C(ins ? coBaseLabel(ins.unidadCompra) : ''),
+        F(precioRef(g.insumoId), pr, N4), F(`B${r}*D${r}`, coNum(g.cantidad) * pr, M0), null, F(`B${r}/${ab}`, coNum(g.cantidad) / ab, N2)]);
+    });
+    const fin = Math.max(ini, SM.rows.length);
+    const harinaF = filasHarina.length ? filasHarina.map(r => `B${r}`).join('+') : null;
+    for (let r = ini; r <= fin; r++) {
+      const row = SM.rows[r - 1];
+      if (row && row.length) row[5] = harinaF ? F(`IF((${harinaF})>0,B${r}/(${harinaF}),0)`, harinaQty > 0 ? coNum(row[1].v) / harinaQty : 0, P1) : C('—');
+    }
+    const costoRec = (cat.ingredientes || []).reduce((a, g) => a + coNum(g.cantidad) * (insPrecio[g.insumoId] || 0), 0);
+    const rTot = SM.rows.length + 1;
+    SM.add([C('COSTO DE LA RECETA', null, ST.tot), F(`SUM(B${ini}:B${fin})`, (cat.ingredientes || []).reduce((a, g) => a + coNum(g.cantidad), 0), N2, ST.tot), C('', null, ST.tot), C('', null, ST.tot),
+      F(`SUM(E${ini}:E${fin})`, costoRec, M0, ST.tot), harinaF ? F(`SUM(F${ini}:F${fin})`, harinaQty > 0 ? (cat.ingredientes || []).reduce((a, g) => a + coNum(g.cantidad), 0) / harinaQty : 0, P1, ST.tot) : C('', null, ST.tot), C('', null, ST.tot)]);
+    const kv = (lbl, cell, nota) => { const r = SM.rows.length + 1; SM.add([C(lbl, null, ST.lbl), cell, nota ? C(nota, null, ST.nota) : null]); if (nota) SM.merges.push({ s: { r: r - 1, c: 2 }, e: { r: r - 1, c: 6 } }); return r; };
+    const rAb = kv('Arrobas de la receta', C(ab, N2, ST.inp));
+    const rCA = kv('Costo de masa por arroba', F(`E${rTot}/B${rAb}`, costoRec / ab, M0, ST.big));
+    const rPep = kv('Pepas por arroba', C(p.pepasPorArroba, N2, ST.inp));
+    const rBpp = kv('Bolitas por pepa (pique)', C(p.bolitasPorPepa, N2, ST.inp));
+    const rBpa = kv('Bolitas por arroba', F(`B${rPep}*B${rBpp}`, p.pepasPorArroba * p.bolitasPorPepa, N2));
+    const cpb = costoRec / ab / (p.pepasPorArroba * p.bolitasPorPepa);
+    const rCpb = kv('COSTO POR BOLITA', F(`B${rCA}/B${rBpa}`, cpb, M2, ST.big, ST.ok));
+    const pm = coDec(cat.pesoMasaKg) > 0 ? coDec(cat.pesoMasaKg) : '';
+    const rPm = kv('Peso de la masa cruda de 1 arroba (kg)', C(pm, N2, ST.inp), pm ? null : 'Pésala y escríbela aquí para ver el costo por gramo y el peso de la bolita.');
+    kv('Peso de 1 bolita (g)', F(`IF(B${rPm}>0,B${rPm}*1000/B${rBpa},"")`, pm ? pm * 1000 / (p.pepasPorArroba * p.bolitasPorPepa) : '', N2));
+    kv('Costo por gramo de masa', F(`IF(B${rPm}>0,B${rCA}/(B${rPm}*1000),"")`, pm ? costoRec / ab / (pm * 1000) : '', M2));
+    kv('Costo por kilo de masa', F(`IF(B${rPm}>0,B${rCA}/B${rPm},"")`, pm ? costoRec / ab / pm : '', M0));
+    if (rc.motivos.length) kv('⚠ Costeo incompleto en el panel', C(rc.motivos.join(' · '), null, ST.bad));
+    SM.add([]);
+    catInfo[cat.id] = { snap, rc, cpbRef: `${SH.mas}!$B$${rCpb}`, cpb, bpa: p.pepasPorArroba * p.bolitasPorPepa, pesoBol: pm ? pm * 1000 / (p.pepasPorArroba * p.bolitasPorPepa) : null };
+  });
+
+  /* ============ ADICIONALES ============ */
+  const SA = hoja();
+  SA.cols = [22, 26, 30, 11, 9, 20, 7, 14, 13, 14, 30];
+  titulo(SA, 'ADICIONALES Y EMPAQUES POR PAN', 11, 'Rellenos, coberturas, bolsas, etc. Costo por pan = unidades por pan × precio unitario.');
+  SA.add(['Masa', 'Pan', 'Insumo', 'Cantidad', 'Unidad', 'Base', 'N', 'Precio unitario', 'Unidades por pan', 'Costo por pan', 'Nota'].map(h => T(h, ST.head)));
+  const adIni = SA.rows.length + 1;
+  const loteTxt = {};
+  cats.forEach(cat => {
+    const ci = catInfo[cat.id];
+    ci.snap.lineas.forEach((l, li) => {
+      const bpp = coNum(l.bolitasPorPan);
+      const lista = [...(l.adicionales || []).map(a => ({ a, deMasa: false })), ...(ci.snap.adicionales || []).map(a => ({ a, deMasa: true }))];
+      lista.forEach(({ a, deMasa }) => {
+        const r = SA.rows.length + 1;
+        const pr = insPrecio[a.insumoId] || 0;
+        let fU, vU, nota = '';
+        if (a.base === 'pan') { fU = `D${r}`; vU = a.cantidad; }
+        else if (a.base === 'grupo') { fU = `D${r}/G${r}`; vU = a.cantidad / a.grupo; nota = `Se reparte entre ${a.grupo} panes`; }
+        else if (a.base === 'arroba') { fU = `D${r}*${bpp}/${ci.bpa}`; vU = a.cantidad * bpp / ci.bpa; nota = `Por arroba: ${coN(bpp, 4)} bolitas de ${ci.bpa}`; }
+        else { fU = '0'; vU = 0; nota = `Fijo por producción: ${money(a.cantidad * pr)} cada vez (no se suma por pan)`; loteTxt[l.lineaId] = (loteTxt[l.lineaId] || 0) + a.cantidad * pr; }
+        const qty = a.gramosPorUnidad ? a.cantidad : a.cantidad;
+        SA.add([C(cat.nombre), C(l.nombre, null, { font: { bold: true } }), C(a.nombre + (deMasa ? ' (de la masa)' : '')),
+          C(qty, N4, ST.inp), C(a.unidad || 'und'), C(CO_BASES_AD[a.base] || a.base), C(a.base === 'grupo' ? a.grupo : '', '0', a.base === 'grupo' ? ST.inp : null),
+          F(precioRef(a.insumoId), pr, N4), F(fU, vU, N4), F(`I${r}*H${r}`, vU * pr, M2), C(nota, null, ST.nota)]);
+      });
+    });
+  });
+  if (SA.rows.length < adIni) SA.add([C('(ningún pan tiene adicionales configurados)', null, ST.nota)]);
+  const adFin = Math.max(adIni, SA.rows.length);
+
+  /* ============ PANES ============ */
+  const SPn = hoja();
+  const hdr = ['Masa', 'Pan', 'Precio de venta', 'Bolitas por pan', 'Gramos de masa', 'Costo masa', 'Merma', 'Adicionales y empaque', 'Vendajes (regalados)', 'COSTO VARIABLE',
+    'Costo fijo asignado', 'COSTO TOTAL', 'UTILIDAD POR PAN', 'Margen neto %', 'Margen de contribución', 'MC %', 'Precio sugerido', 'Unidades vendidas / mes', '% vendaje', 'Utilidad al mes', 'Estado'];
+  SPn.cols = [18, 26, 12, 10, 10, 12, 10, 13, 12, 13, 12, 13, 13, 10, 13, 9, 13, 12, 9, 14, 13];
+  titulo(SPn, `COSTEO POR PAN · ${negocio}`, hdr.length, 'Costo variable = masa + merma + adicionales + vendajes. Costo total = variable + costo fijo asignado (precio × % de costo fijo sobre ventas).');
+  SPn.add(hdr.map(h => T(h, ST.head)));
+  const pIni = SPn.rows.length + 1;
+  const resumenPanes = [];
+  const costeados = new Set();
+  cats.forEach(cat => {
+    const ci = catInfo[cat.id];
+    ci.snap.lineas.forEach((l, li) => {
+      const r = SPn.rows.length + 1;
+      costeados.add(l.productoId);
+      const u = coCosteoUnitario(ci.snap, l, ci.rc);
+      const precio = coNum(l.precioVenta);
+      const bpp = coNum(l.bolitasPorPan);
+      const linea = (cat.productos || [])[li] || {};
+      const gramos = coNum(linea.gramosMasa) > 0 ? coNum(linea.gramosMasa) / Math.max(1, coNum(linea.piezas, 1)) : (ci.pesoBol ? bpp * ci.pesoBol : '');
+      const masa = bpp * ci.cpb;
+      const mer = masa * merma;
+      // Adicionales: recalculados con los precios de la hoja Insumos (misma regla que el panel).
+      let adic = 0;
+      [...(l.adicionales || []), ...(ci.snap.adicionales || [])].forEach(a => {
+        const pr = insPrecio[a.insumoId] || 0;
+        if (a.base === 'pan') adic += a.cantidad * pr;
+        else if (a.base === 'grupo') adic += a.cantidad * pr / a.grupo;
+        else if (a.base === 'arroba') adic += a.cantidad * pr * bpp / ci.bpa;
+      });
+      const vp = ven.porProd[l.productoId] || { cantMes: 0, pctVend: 0 };
+      const vend = (masa + mer + adic) * vp.pctVend;
+      const cv = masa + mer + adic + vend;
+      const fijo = precio * pctCF;
+      const total = cv + fijo;
+      const util = precio - total;
+      const mpct = precio > 0 ? util / precio : 0;
+      const estado = util < 0 ? 'PÉRDIDA' : (mpct < meta ? 'Margen bajo' : 'OK');
+      const stE = estado === 'PÉRDIDA' ? ST.bad : (estado === 'OK' ? ST.ok : ST.warn);
+      const nombre = l.nombre + (gramos && coNum(linea.piezas) > 1 ? ` (${coNum(linea.gramosMasa)} g ÷ ${linea.piezas})` : '');
+      SPn.add([
+        C(cat.nombre), C(nombre, null, { font: { bold: true } }), C(precio, M0, ST.inp), C(bpp, N4, ST.inp), C(gramos === '' ? '' : Math.round(gramos * 10) / 10, N2),
+        F(`D${r}*${ci.cpbRef}`, masa, M0),
+        F(`F${r}*${P.merma}`, mer, M0),
+        F(`SUMIFS(${SH.ad}!$J$${adIni}:$J$${adFin},${SH.ad}!$A$${adIni}:$A$${adFin},A${r},${SH.ad}!$B$${adIni}:$B$${adFin},"${String(l.nombre).replace(/"/g, '""')}")`, adic, M0),
+        F(`(F${r}+G${r}+H${r})*S${r}`, vend, M0),
+        F(`F${r}+G${r}+H${r}+I${r}`, cv, M0, { font: { bold: true } }),
+        F(`C${r}*${P.pct}`, fijo, M0),
+        F(`J${r}+K${r}`, total, M0, { font: { bold: true } }),
+        F(`C${r}-L${r}`, util, M0, { font: { bold: true } }, util < 0 ? ST.bad : null),
+        F(`IF(C${r}>0,M${r}/C${r},0)`, mpct, P1),
+        F(`C${r}-J${r}`, precio - cv, M0),
+        F(`IF(C${r}>0,O${r}/C${r},0)`, precio > 0 ? (precio - cv) / precio : 0, P1),
+        F(`IF(${P.meta}<1,L${r}/(1-${P.meta}),0)`, total / (1 - meta), M0),
+        C(Math.round(vp.cantMes), '#,##0', ST.inp),
+        C(vp.pctVend, P1, ST.inp),
+        F(`M${r}*R${r}`, util * vp.cantMes, M0),
+        F(`IF(M${r}<0,"PÉRDIDA",IF(N${r}<${P.meta},"Margen bajo","OK"))`, estado, null, stE)
+      ]);
+      resumenPanes.push({ masa: cat.nombre, nombre, precio, cv, total, util, mpct, cant: vp.cantMes, estado, lote: loteTxt[l.lineaId] || 0 });
+    });
+  });
+  const pFin = SPn.rows.length;
+  const ventasMix = resumenPanes.reduce((a, x) => a + x.precio * x.cant, 0);
+  const cvMix = resumenPanes.reduce((a, x) => a + x.cv * x.cant, 0);
+  SPn.add([C('TOTAL / PROMEDIO PONDERADO', null, ST.tot), C('', null, ST.tot), C('', null, ST.tot), C('', null, ST.tot), C('', null, ST.tot), C('', null, ST.tot), C('', null, ST.tot), C('', null, ST.tot), C('', null, ST.tot),
+    C('', null, ST.tot), C('', null, ST.tot), C('', null, ST.tot), C('', null, ST.tot), C('', null, ST.tot), C('', null, ST.tot),
+    F(`IF(SUMPRODUCT(C${pIni}:C${pFin},R${pIni}:R${pFin})>0,SUMPRODUCT(O${pIni}:O${pFin},R${pIni}:R${pFin})/SUMPRODUCT(C${pIni}:C${pFin},R${pIni}:R${pFin}),0)`, ventasMix > 0 ? (ventasMix - cvMix) / ventasMix : 0, P1, ST.tot),
+    C('', null, ST.tot), F(`SUM(R${pIni}:R${pFin})`, resumenPanes.reduce((a, x) => a + x.cant, 0), '#,##0', ST.tot), C('', null, ST.tot),
+    F(`SUM(T${pIni}:T${pFin})`, resumenPanes.reduce((a, x) => a + x.util * x.cant, 0), M0, ST.tot), C('', null, ST.tot)]);
+  SPn.add([]);
+  [
+    'Cómo leer: COSTO VARIABLE es lo que cuesta hacer el pan (sube con cada pan que haces). COSTO FIJO ASIGNADO es la parte de arriendo, servicios y nómina que le toca a ese pan.',
+    'Margen de contribución = precio − costo variable: lo que deja cada pan para pagar los costos fijos. Si es negativo, ese pan pierde plata aunque vendas mucho.',
+    'Precio sugerido = costo total ÷ (1 − margen objetivo). Es el precio para ganar el margen objetivo de la hoja Parámetros con el costo de hoy.',
+    '% vendaje = panes regalados ÷ panes vendidos en los pedidos. Su costo se carga a los panes que sí se cobran.',
+    'Los adicionales "fijos por producción" (ej: color por tanda) no se suman por pan: se ven en la hoja Adicionales.'
+  ].forEach(t => { SPn.add([T('• ' + t, ST.nota)]); SPn.merges.push({ s: { r: SPn.rows.length - 1, c: 0 }, e: { r: SPn.rows.length - 1, c: 12 } }); });
+  const sinCosteo = (DB.productos || []).filter(p => p.activo !== false && !costeados.has(p.id));
+  if (sinCosteo.length) {
+    SPn.add([]);
+    SPn.add([T(`Productos del catálogo SIN costeo por masa (${sinCosteo.length}): ${sinCosteo.map(p => p.nombre).join(', ')}`, ST.nota)]);
+    SPn.merges.push({ s: { r: SPn.rows.length - 1, c: 0 }, e: { r: SPn.rows.length - 1, c: 12 } });
+  }
+
+  /* ============ RESUMEN ============ */
+  const SR = hoja();
+  SR.cols = [46, 20, 20, 14, 14, 11];
+  titulo(SR, `COSTEO DE PRODUCTOS · ${negocio}`, 6, `Exportado del panel el ${fechaTxt}. Celdas amarillas = supuestos editables (hoja Parámetros).`);
+  const secR = (txt, ancho = 2) => { SR.add(Array.from({ length: ancho }, (_, i) => T(i ? '' : txt, ST.sec))); SR.merges.push({ s: { r: SR.rows.length - 1, c: 0 }, e: { r: SR.rows.length - 1, c: ancho - 1 } }); };
+  secR('RESULTADO DEL MES (con la mezcla de ventas de los pedidos)');
+  const kr = (lbl, cell) => { const r = SR.rows.length + 1; SR.add([C(lbl, null, ST.lbl), cell]); return r; };
+  const rVm = kr('Ventas de los panes costeados', F(`SUMPRODUCT(${SH.pan}!C${pIni}:C${pFin},${SH.pan}!R${pIni}:R${pFin})`, ventasMix, M0, ST.big));
+  const rCv = kr('Costo variable (masa, merma, adicionales, vendajes)', F(`SUMPRODUCT(${SH.pan}!J${pIni}:J${pFin},${SH.pan}!R${pIni}:R${pFin})`, cvMix, M0));
+  const rMc = kr('Margen de contribución', F(`B${rVm}-B${rCv}`, ventasMix - cvMix, M0, { font: { bold: true } }));
+  const mcPct = ventasMix > 0 ? (ventasMix - cvMix) / ventasMix : 0;
+  const rMcp = kr('Margen de contribución %', F(`IF(B${rVm}>0,B${rMc}/B${rVm},0)`, mcPct, P1));
+  const rCfm = kr('Costos fijos del mes (indirectos + nómina)', F(P.cf, cfMes, M0));
+  const uOp = ventasMix - cvMix - cfMes;
+  kr('UTILIDAD OPERATIVA DEL MES', F(`B${rMc}-B${rCfm}`, uOp, M0, ST.big, uOp < 0 ? ST.bad : ST.ok));
+  SR.add([]);
+  secR('PUNTO DE EQUILIBRIO');
+  const pe = mcPct > 0 ? cfMes / mcPct : 0;
+  const rPe = kr('Ventas necesarias al mes para no perder', F(`IF(B${rMcp}>0,B${rCfm}/B${rMcp},0)`, pe, M0, ST.big));
+  kr('Ventas necesarias por día', F(`B${rPe}/${P.dias}`, pe / diasMes, M0));
+  kr('Ventas promedio actuales al mes (pedidos)', F(P.ventas, ven.ventasMes, M0));
+  kr('Te sobra (+) o te falta (−) para el equilibrio', F(`${P.ventas}-B${rPe}`, ven.ventasMes - pe, M0, { font: { bold: true } }, ven.ventasMes - pe < 0 ? ST.bad : ST.ok));
+  SR.add([]);
+  secR('ALERTAS');
+  kr('Panes que dan PÉRDIDA', F(`COUNTIF(${SH.pan}!U${pIni}:U${pFin},"PÉRDIDA")`, resumenPanes.filter(x => x.estado === 'PÉRDIDA').length, '0', ST.bad));
+  kr('Panes con margen bajo (menor al objetivo)', F(`COUNTIF(${SH.pan}!U${pIni}:U${pFin},"Margen bajo")`, resumenPanes.filter(x => x.estado === 'Margen bajo').length, '0', ST.warn));
+  kr('Panes OK', F(`COUNTIF(${SH.pan}!U${pIni}:U${pFin},"OK")`, resumenPanes.filter(x => x.estado === 'OK').length, '0', ST.ok));
+  // Ranking (valores del momento de exportar)
+  const ranking = resumenPanes.slice().sort((a, b) => a.mpct - b.mpct);
+  const top = (titulo2, lista) => {
+    SR.add([]);
+    secR(titulo2, 6);
+    SR.add(['Pan', 'Masa', 'Precio', 'Costo total', 'Utilidad', 'Margen'].map(h => T(h, ST.head)));
+    lista.forEach(x => SR.add([C(x.nombre, null, { font: { bold: true } }), C(x.masa), C(x.precio, M0), C(x.total, M0), C(x.util, M0, x.util < 0 ? ST.bad : null), C(x.mpct, P1, x.estado === 'PÉRDIDA' ? ST.bad : x.estado === 'OK' ? ST.ok : ST.warn)]));
+  };
+  if (ranking.length <= 10) top('TODOS LOS PANES, DEL QUE MENOS DEJA AL QUE MÁS DEJA', ranking);
+  else {
+    top('LOS 5 PANES QUE MENOS DEJAN (revisar precio o receta)', ranking.slice(0, 5));
+    top('LOS 5 PANES QUE MÁS DEJAN', ranking.slice(-5).reverse());
+  }
+  SR.add([]);
+  [
+    'Este ranking es una foto del momento de exportar; las cifras de arriba sí se recalculan si cambias algo.',
+    `Costos fijos repartidos por precio: cada pan carga ${coN(pctCF * 100, 1)}% de su precio en costos fijos (Parámetros).`,
+    nominaEnIndirectos ? 'La nómina NO se sumó porque ya hay salarios en Costos indirectos (puedes cambiarlo en Parámetros).' : 'La nómina se sumó como costo fijo (puedes quitarla en Parámetros).'
+  ].forEach(t => { SR.add([T('• ' + t, ST.nota)]); SR.merges.push({ s: { r: SR.rows.length - 1, c: 0 }, e: { r: SR.rows.length - 1, c: 5 } }); });
+
+  /* ---------- libro ---------- */
+  const wb = X.utils.book_new();
+  [['Resumen', SR], ['Parámetros', SP], ['Panes', SPn], ['Masas', SM], ['Adicionales', SA], ['Insumos', SI], ['Costos fijos', SC]]
+    .forEach(([n, S]) => X.utils.book_append_sheet(wb, aWs(S), n));
+  wb.Workbook = { CalcPr: { fullCalcOnLoad: true } };
+  X.writeFile(wb, `Costeo_${negocio.replace(/[^\wáéíóúñÁÉÍÓÚÑ ]/g, '').trim().replace(/\s+/g, '_')}_${fechaTxt}.xlsx`, { cellStyles: true });
+  toast('Excel de costeo descargado', 'success');
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
