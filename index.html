@@ -276,6 +276,43 @@ table.d tr:hover td{background:var(--surface-container-low)}
 .reg-mov-ico.ing{background:#e8f5e9}
 .reg-mov-ico.gas{background:#ffdad6}
 @media(max-width:640px){.reg-valor{font-size:26px}.reg-tbtn{font-size:14px;padding:12px}}
+/* ===== Costos · Insumos y registro de compras ===== */
+.ins-top{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:12px}
+.ins-big{padding:12px 20px;font-size:15px}
+.ins-top input{max-width:280px;flex:1 1 200px}
+.ins-chips{margin-bottom:14px}
+.ins-chips .reg-cat{padding:7px 12px;font-size:13px}
+.ins-cat-h{display:flex;align-items:center;gap:8px;font-size:15px;font-weight:800;color:var(--primary);margin:18px 0 10px}
+.ins-cat-h .muted{font-weight:500;font-size:12px}
+.ins-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}
+.ins-card{display:flex;flex-direction:column;gap:8px;background:var(--surface-container-lowest);border:1px solid var(--outline-variant);border-radius:14px;padding:14px;transition:box-shadow .15s,border-color .15s}
+.ins-card:hover{border-color:var(--primary);box-shadow:0 2px 10px rgba(0,0,0,.06)}
+.ins-card.ins-warn{border-color:#f3d27a;background:#fffbef}
+.ins-nombre{font-size:15px;font-weight:700;line-height:1.25}
+.ins-precio{font-size:22px;font-weight:800;font-family:var(--font-mono);color:var(--on-surface)}
+.ins-precio small{font-size:12px;font-weight:600;color:var(--on-surface-variant);font-family:inherit}
+.ins-ult{font-size:12px;color:var(--on-surface-variant);line-height:1.6}
+.ins-acc{display:flex;gap:4px;align-items:center;margin-top:auto;padding-top:6px;border-top:1px dashed var(--outline-variant)}
+.ins-acc .ins-comprar{flex:1;justify-content:center;white-space:nowrap}
+.ins-acc .ins-ico{width:32px;height:32px;padding:0;justify-content:center;flex:0 0 32px;min-width:0}
+.ins-acc .ins-ico .ms{margin:0}
+.ins-falta{font-size:12.5px;font-weight:600;color:#8a5a00;background:#fff1c7;border-radius:8px;padding:6px 10px;line-height:1.35}
+.ins-aviso{background:#fff8e1;border:1px solid #f3d27a;color:#6b4e00;border-radius:10px;padding:8px 12px;font-size:12.5px;margin-bottom:12px}
+.ins-paso{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:var(--primary);color:#fff;font-size:12px;margin-right:6px;vertical-align:middle}
+.ins-input-lg{font-size:20px!important;font-weight:700;padding:12px 14px!important;border-radius:12px!important;font-family:var(--font-mono)}
+.ins-head{display:flex;gap:12px;align-items:center;background:var(--surface-container-low);border-radius:14px;padding:12px 14px;margin-bottom:16px}
+.ins-head .ms{font-size:30px;color:var(--primary)}
+.ins-res{border-radius:14px;padding:14px 16px;background:var(--surface-container-low);border:2px solid var(--outline-variant);font-size:13px;color:var(--on-surface-variant)}
+.ins-res-main{font-size:22px;font-weight:800;color:var(--on-surface)}
+.ins-res-main b{font-family:var(--font-mono)}
+.ins-res-cmp{margin-top:8px;font-weight:700;font-size:13.5px}
+.ins-res.up{border-color:#ba1a1a;background:#fff1ef}.ins-res.up .ins-res-cmp{color:#ba1a1a}
+.ins-res.down{border-color:#006e4b;background:#ecf8ef}.ins-res.down .ins-res-cmp{color:#006e4b}
+.ins-sel-lista{display:flex;flex-direction:column;gap:6px;max-height:55vh;overflow-y:auto;margin:12px 0}
+.ins-sel-item{display:flex;justify-content:space-between;align-items:center;gap:10px;text-align:left;width:100%;padding:12px 14px;border:2px solid var(--outline-variant);border-radius:12px;background:var(--surface-container-lowest);cursor:pointer;font-size:14px;color:var(--on-surface)}
+.ins-sel-item:hover{border-color:var(--primary);background:var(--surface-container-low)}
+.ins-sel-item .p{font-family:var(--font-mono);font-weight:700;white-space:nowrap}
+@media(max-width:640px){.ins-top input{max-width:none}.ins-big{flex:1 1 100%}}
 
 /* ===================== MÓVIL =====================
    En pantallas pequeñas el menú lateral es un cajón sobre el contenido: sin

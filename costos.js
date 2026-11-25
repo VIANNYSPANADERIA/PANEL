@@ -1119,67 +1119,144 @@ function coTabDashboard(d) {
  * PESTAÑA 2 · INSUMOS (ingredientes y empaques salen del mismo catálogo)
  * ═══════════════════════════════════════════════════════════════════════════ */
 
+/* ---------- Ayudas de formato para el registro de compras ---------- */
+let _coInsCat = '';        // filtro de categoría de la pestaña Insumos ('' = todas)
+let _coInsEdit = null;     // insumo que se está editando o comprando (para comparar el precio)
+/** Nombre de la unidad en plural, para las preguntas del formulario. */
+const CO_UNI_PLURAL = { g: 'gramos', kg: 'kilos', ml: 'mililitros', l: 'litros', unidad: 'unidades', paquete: 'paquetes', caja: 'cajas', bulto: 'bultos' };
+const CO_UNI_SING = { g: 'gramo', kg: 'kilo', ml: 'mililitro', l: 'litro', unidad: 'unidad', paquete: 'paquete', caja: 'caja', bulto: 'bulto' };
+/** "1 bulto", "50 kilos". */
+const coCantUni = (n, u) => `${num(n, 2)} ${(coNum(n) === 1 ? CO_UNI_SING[u] : CO_UNI_PLURAL[u]) || u}`;
+const CO_UNI_ICO ={ g: '⚖️', kg: '⚖️', ml: '🧴', l: '🧴', unidad: '🔢', paquete: '📦', caja: '📦', bulto: '🛍️' };
+/** Pesos escritos con puntos de mil ("120.000") → 120000. */
+const coPesos = (v) => Number(String(v ?? '').replace(/[^\d]/g, '')) || 0;
+const coFmtPesos = (n) => (n ? Number(n).toLocaleString('es-CO', { maximumFractionDigits: 0 }) : '');
+/** Pone los puntos de mil mientras se escribe el precio. */
+function coFmtPesosInput(el) { el.value = coFmtPesos(coPesos(el.value)); }
+/** Cantidad comprada: "2,5" → 2.5 · "1.000" (punto de mil) → 1000 · "1.5" → 1.5. */
+function coCant(v) {
+  const s = String(v ?? '').trim().replace(/\s/g, '');
+  if (/^\d{1,3}(\.\d{3})+$/.test(s)) return Number(s.replace(/\./g, ''));
+  const n = coDec(s);
+  return Number.isFinite(n) ? n : 0;
+}
+/** Cantidad con coma decimal para mostrarla en un campo. */
+const coFmtCant = (n) => (coNum(n) > 0 ? String(coNum(n)).replace('.', ',') : '');
+/** Precio "humano" de un insumo: por kg, por litro o por unidad. */
+function coPrecioHumano(precioBase, unidad) {
+  const b = coBaseDe(unidad);
+  if (b === 'g') return { v: precioBase * 1000, u: 'kg' };
+  if (b === 'ml') return { v: precioBase * 1000, u: 'litro' };
+  return { v: precioBase, u: 'unidad' };
+}
+const coCatDeInsumo = (i) => (i.esMezcla ? 'Mezclas' : (i.categoria || 'Otros'));
+
+function coTarjetaInsumo(i) {
+  if (i.esMezcla) {
+    const m = coCosteoMezcla(i);
+    return `<div class="ins-card ${m.ok ? '' : 'ins-warn'}">
+      <div class="ins-nombre">${coEsc(i.nombre)} <span class="badge" style="background:#ede7f6;color:#5e35b1">Mezcla</span></div>
+      <div class="ins-precio">${m.ok ? `${money(m.precioBase * 1000)} <small>/ kg</small>` : `<span class="badge badge-warn">${coEsc(m.motivo)}</span>`}</div>
+      <div class="ins-ult">🥣 Rinde ${num(m.rendimiento, 2)} g · ${m.detalle.length} ingrediente(s)<br>💲 Se calcula con los precios de hoy</div>
+      <div class="ins-acc">
+        <button class="btn btn-secondary btn-sm ins-comprar" onclick="coMezclaModal('${i.id}')"><span class="ms">edit</span>Editar mezcla</button>
+        <button class="btn btn-danger btn-sm ins-ico" title="Eliminar" onclick="coDelInsumo('${i.id}')"><span class="ms">delete</span></button>
+      </div>
+    </div>`;
+  }
+  const h = i.historial || [];
+  const v = h.length >= 2 ? coNum(h[h.length - 1].variacion) : 0;
+  const st = coEstadoInsumo(i);
+  const ph = coPrecioHumano(coNum(i.precioBase), i.unidadCompra);
+  const cont = CO_CONTENEDOR.includes(i.unidadCompra) && coNum(i.contenidoPorUnidad) > 0 ? ` de ${num(i.contenidoPorUnidad)} und` : '';
+  return `<div class="ins-card ${st.ok ? '' : 'ins-warn'}">
+    <div class="flex fb" style="gap:8px;align-items:flex-start">
+      <div class="ins-nombre">${coEsc(i.nombre)}</div>
+      ${h.length >= 2 && v !== 0 ? `<span class="badge ${v > 0 ? 'badge-error' : 'badge-success'}" title="Cambio frente a la compra anterior">${v > 0 ? '▲ +' : '▼ '}${v.toFixed(1)}%</span>` : ''}
+    </div>
+    ${st.ok ? `<div class="ins-precio">${ph.u === 'unidad' ? '$' + coN(ph.v, 2) : money(ph.v)} <small>/ ${ph.u}</small></div>`
+      : `<div class="ins-falta">⚠ Falta: ${coEsc(st.motivo)}. Toca <b>Registrar compra</b> para completarlo.</div>`}
+    <div class="ins-ult">
+      🛒 ${coCantUni(i.cantidadComprada, i.unidadCompra)}${cont} por <b>${money(i.precioCompra)}</b><br>
+      📅 ${i.fechaCompra ? _fechaCorta(i.fechaCompra) : '—'}${i.proveedor ? ` · 🏪 ${coEsc(i.proveedor)}` : ''}
+    </div>
+    <div class="ins-acc">
+      <button class="btn btn-primary btn-sm ins-comprar" onclick="coCompraModal('${i.id}')"><span class="ms">add_shopping_cart</span>Registrar compra</button>
+      <button class="btn btn-ghost btn-sm ins-ico" title="Historial de precios" onclick="coHistorialInsumo('${i.id}')"><span class="ms">history</span></button>
+      <button class="btn btn-ghost btn-sm ins-ico" title="Editar datos del insumo" onclick="coInsumoModal('${i.id}')"><span class="ms">edit</span></button>
+      <button class="btn btn-danger btn-sm ins-ico" title="Eliminar" onclick="coDelInsumo('${i.id}')"><span class="ms">delete</span></button>
+    </div>
+  </div>`;
+}
+
 function coTabInsumos() {
   const q = _coBusqueda.toLowerCase();
-  const lista = (DB.costos.insumos || [])
-    .filter(i => !q || i.nombre.toLowerCase().includes(q) || (i.categoria || '').toLowerCase().includes(q))
+  const todos = DB.costos.insumos || [];
+  const orden = [...CO_CAT_INSUMO, 'Mezclas'];
+  const pos = (c) => { const k = orden.indexOf(c); return k < 0 ? orden.length : k; };
+  const cats = [...new Set(todos.map(coCatDeInsumo))].sort((a, b) => pos(a) - pos(b) || a.localeCompare(b));
+  if (_coInsCat && !cats.includes(_coInsCat)) _coInsCat = '';
+  const lista = todos
+    .filter(i => !q || i.nombre.toLowerCase().includes(q) || coCatDeInsumo(i).toLowerCase().includes(q))
+    .filter(i => !_coInsCat || coCatDeInsumo(i) === _coInsCat)
     .sort((a, b) => a.nombre.localeCompare(b.nombre));
+  const incompletos = todos.filter(i => !coEstadoInsumo(i).ok).length;
+  const grupos = cats.map(c => ({ c, items: lista.filter(i => coCatDeInsumo(i) === c) })).filter(g => g.items.length);
 
   return `
-    <div class="flex gap mb-md" style="flex-wrap:wrap;align-items:center">
-      <button class="btn btn-primary" onclick="coInsumoModal()"><span class="ms">add</span>Nuevo Insumo</button>
-      <button class="btn btn-secondary" onclick="coMezclaModal()" title="Mezcla general hecha con insumos que ya tienes (ej: cubierta de azúcar y canela)"><span class="ms">blender</span>Nueva mezcla</button>
-      <input placeholder="Buscar insumo o categoría..." value="${coEsc(_coBusqueda)}" oninput="_coBusqueda=this.value;coRefrescarTabla()" style="max-width:280px"/>
-      <span class="muted" style="font-size:12px">${lista.length} insumo(s)</span>
+    <div class="ins-top">
+      <button class="btn btn-primary ins-big" onclick="coCompraSelector()"><span class="ms">shopping_cart</span>Registrar compra</button>
+      <button class="btn btn-secondary" onclick="coInsumoModal()"><span class="ms">add</span>Nuevo insumo</button>
+      <button class="btn btn-ghost" onclick="coMezclaModal()" title="Mezcla general hecha con insumos que ya tienes (ej: cubierta de azúcar y canela)"><span class="ms">blender</span>Nueva mezcla</button>
+      <input placeholder="Buscar insumo..." value="${coEsc(_coBusqueda)}" oninput="_coBusqueda=this.value;coRefrescarTabla()"/>
     </div>
-    ${lista.length === 0 ? '<div class="empty">Sin insumos. Agrega el primero para poder costear tus masas.</div>' : `
-    <div class="tw"><table class="d"><thead><tr>
-      <th>Insumo</th><th>Categoría</th><th>Compra</th><th>Precio compra</th>
-      <th>Precio unitario</th><th>Precio / kg</th><th>Última variación</th><th>Proveedor</th><th></th>
-    </tr></thead><tbody>
-      ${lista.map(i => {
-        if (i.esMezcla) {
-          const m = coCosteoMezcla(i);
-          return `<tr>
-          <td class="bold">${coEsc(i.nombre)} <span class="badge" style="background:#ede7f6;color:#5e35b1">Mezcla</span></td>
-          <td><span class="badge">Mezclas</span></td>
-          <td class="num">Rinde ${num(m.rendimiento, 2)} g <span class="muted">· ${m.detalle.length} ingrediente(s)</span></td>
-          <td class="num">${m.ok ? money(m.costoTotal) : '-'}</td>
-          <td class="num bold">${m.ok ? `$${num(m.precioBase, 4)} <span class="muted">/ g</span>` : `<span class="badge badge-warn" title="${coEsc(m.motivo)}">Costeo incompleto</span>`}</td>
-          <td class="num">${m.ok ? money(m.precioBase * 1000) : '-'}</td>
-          <td><span class="muted">Precios de hoy</span></td>
-          <td>-</td>
-          <td>
-            <button class="btn btn-ghost btn-sm" onclick="coMezclaModal('${i.id}')"><span class="ms">edit</span></button>
-            <button class="btn btn-danger btn-sm" onclick="coDelInsumo('${i.id}')"><span class="ms">delete</span></button>
-          </td>
-        </tr>`;
-        }
-        const h = i.historial || [];
-        const v = h.length >= 2 ? coNum(h[h.length - 1].variacion) : 0;
-        const base = coBaseLabel(i.unidadCompra);
-        const porKg = base === 'und' ? null : coNum(i.precioBase) * 1000;
-        const st = coEstadoInsumo(i);
-        const cont = CO_CONTENEDOR.includes(i.unidadCompra) && coNum(i.contenidoPorUnidad) > 0
-          ? ` <span class="muted">× ${num(i.contenidoPorUnidad)} und</span>` : '';
-        return `<tr>
-          <td class="bold">${coEsc(i.nombre)}</td>
-          <td><span class="badge">${coEsc(i.categoria || '-')}</span></td>
-          <td class="num">${num(i.cantidadComprada, 2)} ${i.unidadCompra}${cont}</td>
-          <td class="num">${money(i.precioCompra)}</td>
-          <td class="num bold">${st.ok ? `$${num(i.precioBase, 4)} <span class="muted">/ ${base}</span>` : `<span class="badge badge-warn" title="${coEsc(st.motivo)}">Contenido sin definir</span>`}</td>
-          <td class="num">${porKg === null ? '-' : money(porKg)}</td>
-          <td>${h.length < 2 ? '<span class="muted">-</span>' :
-            `<span class="badge ${v > 0 ? 'badge-error' : v < 0 ? 'badge-success' : ''}">${v > 0 ? '+' : ''}${v.toFixed(1)}%</span>`}</td>
-          <td>${coEsc(i.proveedor || '-')}</td>
-          <td>
-            <button class="btn btn-ghost btn-sm" title="Historial de precios" onclick="coHistorialInsumo('${i.id}')"><span class="ms">history</span></button>
-            <button class="btn btn-ghost btn-sm" onclick="coInsumoModal('${i.id}')"><span class="ms">edit</span></button>
-            <button class="btn btn-danger btn-sm" onclick="coDelInsumo('${i.id}')"><span class="ms">delete</span></button>
-          </td>
-        </tr>`;
-      }).join('')}
-    </tbody></table></div>`}`;
+    ${incompletos ? `<div class="ins-aviso">⚠ ${incompletos} insumo(s) sin costeo completo (marcados en amarillo). Ábrelos y completa lo que falta para que las masas se costeen bien.</div>` : ''}
+    ${todos.length ? `<div class="reg-cats ins-chips">
+      <button type="button" class="reg-cat ${!_coInsCat ? 'active' : ''}" onclick="_coInsCat='';coRefrescarTabla()">Todos (${todos.length})</button>
+      ${cats.map(c => `<button type="button" class="reg-cat ${_coInsCat === c ? 'active' : ''}" data-c="${coEsc(c)}" onclick="_coInsCat=this.dataset.c;coRefrescarTabla()">${coEsc(c)} (${todos.filter(i => coCatDeInsumo(i) === c).length})</button>`).join('')}
+    </div>` : ''}
+    ${todos.length === 0 ? '<div class="empty">Sin insumos. Agrega el primero para poder costear tus masas.</div>'
+      : grupos.length === 0 ? '<div class="empty">Ningún insumo coincide con la búsqueda.</div>'
+      : grupos.map(g => `
+        <div class="ins-cat-h">${coEsc(g.c)} <span class="muted">· ${g.items.length}</span></div>
+        <div class="ins-grid">${g.items.map(coTarjetaInsumo).join('')}</div>`).join('')}`;
+}
+
+/** Paso previo a "Registrar compra": elegir el insumo que se compró. */
+function coCompraSelector() {
+  const hay = (DB.costos.insumos || []).some(i => !i.esMezcla);
+  if (!hay) { toast('Primero crea el insumo con "Nuevo insumo"', 'error'); return; }
+  modal('¿Qué compraste?', `
+    <input id="cs-q" class="ins-input-lg" placeholder="Escribe el nombre del insumo..." oninput="coCompraSelFiltrar()" autocomplete="off" style="width:100%;font-family:inherit"/>
+    <div id="cs-lista" class="ins-sel-lista"></div>
+    <div class="muted" style="font-size:12.5px">¿No está en la lista? <a href="#" onclick="event.preventDefault();coInsumoModal()">Crear insumo nuevo</a></div>
+  `, `<button class="btn btn-ghost" onclick="closeModal()">Cancelar</button>`);
+  coCompraSelFiltrar();
+  setTimeout(() => $('#cs-q')?.focus(), 50);
+}
+function coCompraSelFiltrar() {
+  const el = $('#cs-lista');
+  if (!el) return;
+  const q = ($('#cs-q')?.value || '').trim().toLowerCase();
+  const lista = (DB.costos.insumos || []).filter(i => !i.esMezcla && (!q || i.nombre.toLowerCase().includes(q) || (i.categoria || '').toLowerCase().includes(q)))
+    .sort((a, b) => a.nombre.localeCompare(b.nombre));
+  el.innerHTML = lista.length ? lista.map(i => {
+    const st = coEstadoInsumo(i);
+    const ph = coPrecioHumano(coNum(i.precioBase), i.unidadCompra);
+    return `<button type="button" class="ins-sel-item" onclick="coCompraModal('${i.id}')">
+      <span><b>${coEsc(i.nombre)}</b><br><span class="muted" style="font-size:12px">${coEsc(i.categoria || 'Otros')}</span></span>
+      <span class="p">${st.ok ? `${ph.u === 'unidad' ? '$' + coN(ph.v, 2) : money(ph.v)} / ${ph.u}` : '<span class="badge badge-warn">Incompleto</span>'}</span>
+    </button>`;
+  }).join('') : '<div class="empty">Ningún insumo coincide.</div>';
+}
+function coCompraModal(id) { coInsumoModal(id, 'compra'); }
+/** Marca un chip de un grupo y guarda su valor en el campo oculto. */
+function coChipSel(btn, hiddenId) {
+  btn.parentElement.querySelectorAll('.reg-cat').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  const h = document.getElementById(hiddenId);
+  if (h) h.value = btn.dataset.v;
+  if (hiddenId === 'ci-uni') coPreviewInsumo();
 }
 
 /** Repinta solo el cuerpo de la pestaña, sin perder el foco del buscador. */
@@ -1187,53 +1264,76 @@ function coRefrescarTabla() {
   const cont = document.querySelector('#view .fade-in');
   if (!cont) return;
   const activo = document.activeElement;
+  const enBuscador = !!(activo && activo.matches && activo.matches('input[placeholder^="Buscar"]'));
   const pos = activo && activo.selectionStart;
   cont.innerHTML = _coTab === 'insumos' ? coTabInsumos() : cont.innerHTML;
   const nuevo = cont.querySelector('input[placeholder^="Buscar"]');
-  if (nuevo) { nuevo.focus(); try { nuevo.setSelectionRange(pos, pos); } catch (e) { /* noop */ } }
+  if (nuevo && enBuscador) { nuevo.focus(); try { nuevo.setSelectionRange(pos, pos); } catch (e) { /* noop */ } }
 }
 
-function coInsumoModal(id) {
+/**
+ * Formulario de insumo, por pasos y con botones grandes.
+ *   modo 'compra' → registrar una compra nueva de un insumo que ya existe: solo
+ *                   pregunta cuánto se compró y cuánto se pagó, y compara el
+ *                   precio con la compra anterior.
+ *   sin modo      → crear un insumo nuevo o editar todos sus datos.
+ */
+function coInsumoModal(id, modo) {
   if (id && coInsumo(id)?.esMezcla) return coMezclaModal(id);
-  const i = id ? coInsumo(id) : {
+  const actual = id ? coInsumo(id) : null;
+  if (id && !actual) return;
+  const compra = modo === 'compra' && !!actual;
+  const i = actual || {
     nombre: '', categoria: 'Harinas', unidadCompra: 'kg', cantidadComprada: 0, contenidoPorUnidad: '',
     precioCompra: 0, proveedor: '', fechaCompra: todayKey(), observaciones: ''
   };
-  if (!i) return;
+  _coInsEdit = actual ? { ...actual } : null;
+  // En una compra solo se ofrecen unidades del mismo tipo (peso, volumen o
+  // unidades): cambiar de gramos a unidades descuadraría las recetas.
+  const unidades = compra ? CO_UNIDADES.filter(u => u.base === coBaseDe(actual.unidadCompra)) : CO_UNIDADES;
+  const ph = actual ? coPrecioHumano(coNum(actual.precioBase), actual.unidadCompra) : null;
+  let paso = 0;
+  const P = (txt) => `<label class="reg-label mt-md"><span class="ins-paso">${++paso}</span>${txt}</label>`;
 
-  modal(id ? 'Editar insumo' : 'Nuevo insumo', `
-    <div class="field"><label>Nombre *</label><input id="ci-nombre" value="${coEsc(i.nombre)}" placeholder="Ej: Harina de trigo, Bolsa pequeña"/></div>
-    <div class="gf">
-      <div class="field"><label>Categoría</label>
-        <select id="ci-cat">${CO_CAT_INSUMO.map(c => `<option ${i.categoria === c ? 'selected' : ''}>${c}</option>`).join('')}</select></div>
-      <div class="field"><label>Proveedor</label><input id="ci-prov" value="${coEsc(i.proveedor || '')}"/></div>
-    </div>
-    <div class="gf3">
-      <div class="field"><label>Unidad de compra</label>
-        <select id="ci-uni" onchange="coPreviewInsumo()">${CO_UNIDADES.map(u => `<option value="${u.v}" ${i.unidadCompra === u.v ? 'selected' : ''}>${u.l}</option>`).join('')}</select></div>
-      <div class="field"><label>Cantidad comprada</label><input id="ci-cant" type="number" step="any" value="${i.cantidadComprada || ''}" oninput="coPreviewInsumo()"/></div>
-      <div class="field"><label>Precio de compra ($)</label><input id="ci-precio" type="number" step="any" value="${i.precioCompra || ''}" oninput="coPreviewInsumo()"/></div>
-    </div>
-    <div class="field" id="ci-cont-box">
-      <label id="ci-cont-lbl">Unidades que trae cada paquete *</label>
-      <input id="ci-cont" type="number" min="1" step="1" value="${i.contenidoPorUnidad || ''}" placeholder="Ej: 200 bolsas" oninput="coPreviewInsumo()"/>
-      <div class="muted" style="font-size:11px">Un paquete o caja no se toma como una sola bolsa. Si no conoces el contenido, registra la compra en <b>Unidad</b> (ej: 200 unidades).</div>
-    </div>
-    <div class="gf">
-      <div class="field"><label>Fecha de compra</label><input id="ci-fecha" type="date" value="${i.fechaCompra || todayKey()}"/></div>
-      <div class="field"><label>Observaciones</label><input id="ci-obs" value="${coEsc(i.observaciones || '')}"/></div>
-    </div>
-    <div class="card mt-md" style="background:var(--surface-container-low)"><div class="card-b">
-      <div class="bold mb-sm">Cálculo automático</div>
-      <div id="ci-preview" style="font-family:var(--font-mono);font-size:13px">—</div>
-      <div class="muted mt-sm" style="font-size:11.5px">
-        Todo se convierte a la unidad base (gramo, mililitro o unidad) para costear masas y empaques.
-        Al cambiar el precio se guarda una nueva entrada en el historial: los precios anteriores nunca se pierden.
-      </div>
+  const cabecera = compra ? `
+    <div class="ins-head"><span class="ms">inventory_2</span><div>
+      <div class="bold" style="font-size:16px">${coEsc(actual.nombre)}</div>
+      <div class="muted" style="font-size:12px">Última compra: ${coCantUni(actual.cantidadComprada, actual.unidadCompra)} por ${money(actual.precioCompra)}${actual.fechaCompra ? ` · ${_fechaCorta(actual.fechaCompra)}` : ''}${coEstadoInsumo(actual).ok ? ` · ${ph.u === 'unidad' ? '$' + coN(ph.v, 2) : money(ph.v)} / ${ph.u}` : ''}</div>
     </div></div>
+    <input type="hidden" id="ci-nombre" value="${coEsc(actual.nombre)}"/>
+    <input type="hidden" id="ci-cat" value="${coEsc(actual.categoria || 'Otros')}"/>` : `
+    ${P('¿Qué insumo es?')}
+    <input id="ci-nombre" class="ins-input-lg" style="width:100%;font-family:inherit" value="${coEsc(i.nombre)}" placeholder="Ej: Harina de trigo, Bolsa pequeña" autocomplete="off"/>
+    <label class="reg-label mt-md">Categoría</label>
+    <div class="reg-cats ins-chips" style="margin-bottom:0">${CO_CAT_INSUMO.map(c => `<button type="button" class="reg-cat ${i.categoria === c ? 'active' : ''}" data-v="${c}" onclick="coChipSel(this,'ci-cat')">${c}</button>`).join('')}</div>
+    <input type="hidden" id="ci-cat" value="${coEsc(CO_CAT_INSUMO.includes(i.categoria) ? i.categoria : 'Otros')}"/>`;
+
+  modal(compra ? 'Registrar compra' : (id ? 'Editar insumo' : 'Nuevo insumo'), `
+    ${cabecera}
+    ${P('¿En qué lo compraste?')}
+    <div class="reg-cats">${unidades.map(u => `<button type="button" class="reg-cat ${i.unidadCompra === u.v ? 'active' : ''}" data-v="${u.v}" onclick="coChipSel(this,'ci-uni')">${CO_UNI_ICO[u.v] || ''} ${u.l}</button>`).join('')}</div>
+    <input type="hidden" id="ci-uni" value="${unidades.some(u => u.v === i.unidadCompra) ? i.unidadCompra : unidades[0].v}"/>
+    <div class="gf mt-md" style="align-items:end">
+      <div class="field" style="margin:0"><label id="ci-cant-lbl">¿Cuántos compraste? *</label>
+        <input id="ci-cant" class="ins-input-lg" type="text" inputmode="decimal" value="${coFmtCant(i.cantidadComprada)}" placeholder="Ej: 50" oninput="coPreviewInsumo()" autocomplete="off"/></div>
+      <div class="field" id="ci-cont-box" style="margin:0"><label id="ci-cont-lbl">¿Cuántas unidades trae cada paquete? *</label>
+        <input id="ci-cont" class="ins-input-lg" type="text" inputmode="numeric" value="${coNum(i.contenidoPorUnidad) || ''}" placeholder="Ej: 200" oninput="coPreviewInsumo()" autocomplete="off"/></div>
+    </div>
+    ${P('¿Cuánto pagaste en total?')}
+    <div class="reg-valor-wrap"><span class="reg-peso">$</span>
+      <input id="ci-precio" class="reg-valor" type="text" inputmode="numeric" placeholder="0" value="${compra ? '' : coFmtPesos(i.precioCompra)}"
+        oninput="coFmtPesosInput(this);coPreviewInsumo()" onkeydown="if(event.key==='Enter')coGuardarInsumo('${id || ''}','${compra ? 'compra' : ''}')" autocomplete="off"/></div>
+    <div id="ci-preview" class="ins-res mt-md">—</div>
+    <div class="gf3 mt-md">
+      <div class="field"><label>Fecha de compra</label><input id="ci-fecha" type="date" value="${compra ? todayKey() : (i.fechaCompra || todayKey())}"/></div>
+      <div class="field"><label>Proveedor</label><input id="ci-prov" value="${coEsc(i.proveedor || '')}" placeholder="Opcional"/></div>
+      <div class="field"><label>Notas</label><input id="ci-obs" value="${coEsc(i.observaciones || '')}" placeholder="Opcional"/></div>
+    </div>
+    <div class="muted" style="font-size:11.5px">Cada compra con precio distinto queda en el historial; las producciones pasadas no cambian.</div>
   `, `<button class="btn btn-ghost" onclick="closeModal()">Cancelar</button>
-      <button class="btn btn-primary" onclick="coGuardarInsumo('${id || ''}')">Guardar</button>`);
+      <button class="btn btn-primary" style="padding:12px 22px;font-size:15px" onclick="coGuardarInsumo('${id || ''}','${compra ? 'compra' : ''}')"><span class="ms">check_circle</span>${compra ? 'Guardar compra' : 'Guardar insumo'}</button>`, 'lg');
   coPreviewInsumo();
+  setTimeout(() => (compra ? $('#ci-precio') : $('#ci-nombre'))?.focus(), 50);
 }
 
 function coPreviewInsumo() {
@@ -1244,46 +1344,68 @@ function coPreviewInsumo() {
   const box = $('#ci-cont-box');
   if (box) box.style.display = contenedor ? '' : 'none';
   const lbl = $('#ci-cont-lbl');
-  if (lbl) lbl.textContent = `Unidades que trae cada ${uni} *`;
+  if (lbl) lbl.textContent = `¿Cuántas unidades trae cada ${uni}? *`;
+  const lblCant = $('#ci-cant-lbl');
+  if (lblCant) lblCant.textContent = `¿Cuántos ${CO_UNI_PLURAL[uni] || uni} compraste? *`;
 
+  const precio = coPesos($('#ci-precio').value);
   const calc = appwriteService.precioBaseInsumo({
     unidadCompra: uni,
-    cantidadComprada: coNum($('#ci-cant').value),
-    precioCompra: coNum($('#ci-precio').value),
-    contenidoPorUnidad: coNum($('#ci-cont')?.value)
+    cantidadComprada: coCant($('#ci-cant').value) || 0,
+    precioCompra: precio,
+    contenidoPorUnidad: coCant($('#ci-cont')?.value) || 0
   });
+  el.classList.remove('up', 'down');
+  if (calc.contenidoPendiente) { el.textContent = `Escribe cuántas unidades trae cada ${uni} para calcular el precio.`; return; }
+  if (calc.baseTotal <= 0 || precio <= 0) { el.innerHTML = '🧮 Escribe la cantidad y lo que pagaste: aquí verás a cómo te sale.'; return; }
+  const ph = coPrecioHumano(calc.precioBase, uni);
+  const fmt = (v) => (ph.u === 'unidad' ? '$' + coN(v, 2) : money(v));
   const base = coBaseLabel(uni);
-  if (calc.contenidoPendiente) { el.textContent = `Indica cuántas unidades trae cada ${uni} para calcular el precio por unidad.`; return; }
-  if (calc.baseTotal <= 0 || coNum($('#ci-precio').value) <= 0) { el.textContent = 'Ingresa cantidad y precio para ver el cálculo.'; return; }
+  let cmp = '';
+  const prev = _coInsEdit;
+  if (prev && !prev.esMezcla && coNum(prev.precioBase) > 0 && coBaseDe(prev.unidadCompra) === coBaseDe(uni)) {
+    const ant = coNum(prev.precioBase);
+    const varPct = (calc.precioBase - ant) / ant * 100;
+    const antH = coPrecioHumano(ant, prev.unidadCompra).v;
+    if (Math.abs(varPct) < 0.05) cmp = `= Mismo precio de la compra anterior (${fmt(antH)} / ${ph.u})`;
+    else {
+      el.classList.add(varPct > 0 ? 'up' : 'down');
+      cmp = `${varPct > 0 ? '▲' : '▼'} ${Math.abs(varPct).toFixed(1)}% ${varPct > 0 ? 'más caro' : 'más barato'} que la compra anterior (${fmt(antH)} / ${ph.u})`;
+    }
+  }
   el.innerHTML = `
-    Total en unidad base: <b>${num(calc.baseTotal, 2)} ${base}</b><br>
-    Precio por ${base}: <b>$${num(calc.precioBase, 4)}</b>
-    ${base !== 'unidad' ? `<br>Precio por kg / litro: <b>${money(calc.precioBase * 1000)}</b>` : ''}`;
+    <div class="ins-res-main">Te sale a <b>${fmt(ph.v)}</b> ${ph.u === 'unidad' ? 'la' : 'el'} ${ph.u}</div>
+    <div>${num(calc.baseTotal, 2)} ${base === 'unidad' ? 'unidades' : base} en total${base !== 'unidad' ? ` · $${num(calc.precioBase, 4)} por ${base}` : ''}</div>
+    ${cmp ? `<div class="ins-res-cmp">${cmp}</div>` : ''}`;
 }
 
-async function coGuardarInsumo(id) {
+async function coGuardarInsumo(id, modo) {
+  const uni = $('#ci-uni').value;
   const data = {
     nombre: $('#ci-nombre').value.trim(),
     categoria: $('#ci-cat').value,
-    unidadCompra: $('#ci-uni').value,
-    cantidadComprada: coNum($('#ci-cant').value),
-    contenidoPorUnidad: CO_CONTENEDOR.includes($('#ci-uni').value) ? coNum($('#ci-cont').value) : null,
-    precioCompra: coNum($('#ci-precio').value),
+    unidadCompra: uni,
+    cantidadComprada: coCant($('#ci-cant').value) || 0,
+    contenidoPorUnidad: CO_CONTENEDOR.includes(uni) ? (coCant($('#ci-cont').value) || 0) : null,
+    precioCompra: coPesos($('#ci-precio').value),
     proveedor: $('#ci-prov').value.trim(),
     fechaCompra: $('#ci-fecha').value,
     observaciones: $('#ci-obs').value.trim()
   };
-  if (!data.nombre) { toast('El nombre es obligatorio', 'error'); return; }
-  if (data.cantidadComprada <= 0) { toast('La cantidad comprada debe ser mayor a 0', 'error'); return; }
-  if (data.precioCompra <= 0) { toast('El precio de compra debe ser mayor a 0', 'error'); return; }
-  if (CO_CONTENEDOR.includes(data.unidadCompra) && !(data.contenidoPorUnidad > 0)) {
-    toast(`Indica cuántas unidades trae cada ${data.unidadCompra}`, 'error'); return;
+  if (!data.nombre) { toast('Escribe el nombre del insumo', 'error'); $('#ci-nombre')?.focus(); return; }
+  if (!id && (DB.costos.insumos || []).some(x => x.nombre.trim().toLowerCase() === data.nombre.toLowerCase())) {
+    toast(`Ya existe un insumo llamado "${data.nombre}". Usa "Registrar compra" en su tarjeta.`, 'error'); return;
   }
+  if (data.cantidadComprada <= 0) { toast('Escribe cuánto compraste', 'error'); $('#ci-cant')?.focus(); return; }
+  if (CO_CONTENEDOR.includes(uni) && !(data.contenidoPorUnidad > 0)) {
+    toast(`Escribe cuántas unidades trae cada ${uni}`, 'error'); $('#ci-cont')?.focus(); return;
+  }
+  if (data.precioCompra <= 0) { toast('Escribe cuánto pagaste', 'error'); $('#ci-precio')?.focus(); return; }
 
   try {
     await appwriteService.guardarInsumo(id ? { id, ...data } : data);
-    saveDB(); closeModal(); renderCostos();
-    toast('Insumo guardado · costeos vigentes recalculados', 'success');
+    saveDB(); closeModal(); _coInsEdit = null; renderCostos();
+    toast(modo === 'compra' ? `Compra de ${data.nombre} registrada · costos recalculados` : 'Insumo guardado · costeos vigentes recalculados', 'success');
   } catch (e) { /* el servicio ya mostró el motivo real y revirtió la copia local */ }
 }
 
